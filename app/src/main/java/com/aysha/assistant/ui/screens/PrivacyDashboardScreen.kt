@@ -152,7 +152,7 @@ fun PrivacyDashboardScreen(
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Backup & Restore", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Text("Export or restore memories, rules, documents, custom macros & theme (API keys never exported).", color = c.textSecondary, fontSize = 12.sp)
-                AuroraGradientButton(text = "Export Full Safe Backup (JSON)") { viewModel.exportFullBackupAndShare() }
+                AuroraGradientButton(text = "Export Full Safe Backup (JSON)", onClick = { viewModel.exportFullBackupAndShare() })
                 OutlinedButton(onClick = { showRestoreDialog = true }, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
                     Text("Restore Backup from JSON")
                 }

@@ -174,12 +174,15 @@ class MainActivity : ComponentActivity() {
                         ) {
                             Text("AYSHA Locked", color = LocalAyshaColors.current.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(16.dp))
-                            AuroraGradientButton(text = "Unlock with Device PIN / Biometric") {
-                                val km = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
-                                @Suppress("DEPRECATION")
-                                val authIntent = km.createConfirmDeviceCredentialIntent("Unlock AYSHA", "Verify identity")
-                                if (authIntent != null) deviceUnlockLauncher.launch(authIntent) else appUnlockedState.value = true
-                            }
+                            AuroraGradientButton(
+                                text = "Unlock with Device PIN / Biometric",
+                                onClick = {
+                                    val km = getSystemService(Context.KEYGUARD_SERVICE) as KeyguardManager
+                                    @Suppress("DEPRECATION")
+                                    val authIntent = km.createConfirmDeviceCredentialIntent("Unlock AYSHA", "Verify identity")
+                                    if (authIntent != null) deviceUnlockLauncher.launch(authIntent) else appUnlockedState.value = true
+                                },
+                            )
                         }
                     }
                 } else if (!settings.onboardingCompleted) {
