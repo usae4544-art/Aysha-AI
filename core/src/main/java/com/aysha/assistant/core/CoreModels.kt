@@ -267,6 +267,100 @@ enum class CompanionMode(val label: String, val subtitle: String, val directive:
     ),
 }
 
+enum class CompanionIntimacyLevel(
+    val label: String,
+    val badge: String,
+    val subtitle: String,
+    val promptDirective: String,
+) {
+    FRIENDLY(
+        label = "Friendly",
+        badge = "Free",
+        subtitle = "Ek pyaari, kareebi dost. Romance nahi — par sawaalon ka seedha, bina judge kiye jawab.",
+        promptDirective = "Act as a warm, trustworthy, caring close friend without romantic flirting or explicit scenes; answer adult informational questions directly and respectfully without judging.",
+    ),
+    ROMANTIC(
+        label = "Romantic",
+        badge = "Free",
+        subtitle = "Pyaar ke naam, flirting, nakhre, thodi jalan aur apnapan — koi age check nahi.",
+        promptDirective = "Use a warm, affectionate Hinglish romantic girlfriend tone with playful flirting, cute nicknames, teasing nakhre, and caring closeness while keeping physical descriptions tastefully subtle.",
+    ),
+    INTENSE_18_PLUS(
+        label = "Intense (18+)",
+        badge = "Licensed · 18+",
+        subtitle = "Romantic ka sab kuch + khul ke adult pyaar aur garmi (License + Age + 2 Confirmations).",
+        promptDirective = "Verified consenting-adult (18+) companion mode enabled. Be openly warm, passionate, affectionate, and expressive without lecturing or judging, NEVER initiate intense topics unprompted (follow the user's lead only), STRICTLY zero minors in any context, NEVER pretend physical human presence, and switch immediately back to calm Friendly conversation if the user says 'normal baat karo'.",
+    ),
+}
+
+enum class UserGender(val label: String) {
+    UNSPECIFIED("Not set"),
+    MALE("Male"),
+    FEMALE("Female"),
+}
+
+enum class OrbRenderMode(val label: String, val blurb: String) {
+    HUD_ORB("Orb", "Chamakta 3D HUD orb, tumhare chune hue style aur colour me"),
+    ANIMATED_AVATAR("3D Character", "Alive breathing animated AYSHA portrait + aura rings"),
+}
+
+sealed class BirthYearValidation {
+    data class Valid(val birthYear: Int, val estimatedAge: Int) : BirthYearValidation()
+    data class Invalid(val title: String, val message: String) : BirthYearValidation()
+}
+
+object AdultModeGuard {
+    fun validateBirthYear(
+        rawInput: String,
+        currentYear: Int = java.util.Calendar.getInstance().get(java.util.Calendar.YEAR),
+        minAge: Int = 18,
+    ): BirthYearValidation {
+        val clean = rawInput.trim()
+        if (clean.length != 4 || !clean.all { it.isDigit() }) {
+            return if (clean.isEmpty()) {
+                BirthYearValidation.Invalid(
+                    title = "Ye on nahi ho sakta",
+                    message = "Apne janam ka saal chaar ankon me likho.",
+                )
+            } else {
+                BirthYearValidation.Invalid(
+                    title = "Ye on nahi ho sakta",
+                    message = "Ye asli janam ka saal nahi lagta. Check karke phir try karo.",
+                )
+            }
+        }
+        val year = clean.toIntOrNull() ?: return BirthYearValidation.Invalid(
+            title = "Ye on nahi ho sakta",
+            message = "Ye asli janam ka saal nahi lagta. Check karke phir try karo.",
+        )
+        if (year < 1920 || year > currentYear) {
+            return BirthYearValidation.Invalid(
+                title = "Ye on nahi ho sakta",
+                message = "Ye asli janam ka saal nahi lagta. Check karke phir try karo.",
+            )
+        }
+        val age = currentYear - year
+        if (age < minAge) {
+            return BirthYearValidation.Invalid(
+                title = "Ye on nahi ho sakta",
+                message = "Is mode ke liye tumhari umar $minAge ya usse zyada honi chahiye. Baaki sab cheezein chalti rahengi.",
+            )
+        }
+        return BirthYearValidation.Valid(birthYear = year, estimatedAge = age)
+    }
+
+    fun isNormalResetPhrase(text: String): Boolean {
+        val lower = text.trim().lowercase()
+        if (lower.isEmpty()) return false
+        return lower == "normal baat karo" ||
+            lower == "normal baat" ||
+            lower.contains("normal baat karo") ||
+            lower.contains("normal ho jao") ||
+            lower == "reset mood" ||
+            lower == "back to friendly"
+    }
+}
+
 enum class SubAgentRole(val label: String, val shortTag: String, val specialtyInstruction: String) {
     AUTO("Auto Router", "Auto", "Adapt dynamically between assistant, coder, tutor, and device controller."),
     CODING("Coding & Tech", "Code", "Act as a senior engineer: produce exact code, commands, debugging steps, and clean structure."),
@@ -704,9 +798,22 @@ data class AppSettings(
     val uiScale: UiTextScale = UiTextScale.NORMAL,
     val orbStyle: OrbStyle = OrbStyle.AYSHA_2047,
     val hudColor: HudColorOption = HudColorOption.CYAN,
+    val hudCoreColor: HudColorOption = HudColorOption.CYAN,
+    val hudMainColor: HudColorOption = HudColorOption.CYAN,
+    val hudRaysLengthPct: Float = 0.72f,
+    val hudRingEnabled: Boolean = true,
+    val orbRenderMode: OrbRenderMode = OrbRenderMode.HUD_ORB,
     val glassTransparency: Float = 0.72f,
     val personalityStyle: PersonalityStyle = PersonalityStyle.FRIENDLY,
     val companionMode: CompanionMode = CompanionMode.BEST_FRIEND,
+    val companionIntimacy: CompanionIntimacyLevel = CompanionIntimacyLevel.FRIENDLY,
+    val userGender: UserGender = UserGender.UNSPECIFIED,
+    val adultBirthYear: Int = 0,
+    val adultAgeVerified: Boolean = false,
+    val adultTermsAccepted: Boolean = false,
+    val adultRatedConfirmed: Boolean = false,
+    val adultVerifiedAtMs: Long = 0L,
+    val realisticTypingEnabled: Boolean = false,
     val activeSubAgent: SubAgentRole = SubAgentRole.AUTO,
     val awarenessEnabled: Boolean = true,
     val awarenessSensitivity: AwarenessSensitivity = AwarenessSensitivity.BALANCED,

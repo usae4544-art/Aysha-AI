@@ -3,7 +3,9 @@ package com.aysha.assistant.ai
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AssistantLanguage
 import com.aysha.assistant.core.AssistantMood
+import com.aysha.assistant.core.CompanionIntimacyLevel
 import com.aysha.assistant.core.MemoryEntry
+import com.aysha.assistant.core.UserGender
 import com.aysha.assistant.core.UserRule
 import com.aysha.assistant.core.VoicePersonalities
 
@@ -45,15 +47,32 @@ object PromptBuilder {
             "\nRELEVANT PERSONAL DOCUMENT EXCERPTS:\n" + documentSnippets.joinToString("\n") { "• $it" }
         }
 
+        val effectiveIntimacy = when {
+            settings.userGender == UserGender.FEMALE -> CompanionIntimacyLevel.FRIENDLY
+            settings.companionIntimacy == CompanionIntimacyLevel.INTENSE_18_PLUS &&
+                settings.adultAgeVerified &&
+                settings.adultTermsAccepted &&
+                settings.adultRatedConfirmed -> CompanionIntimacyLevel.INTENSE_18_PLUS
+            settings.companionIntimacy == CompanionIntimacyLevel.INTENSE_18_PLUS -> CompanionIntimacyLevel.ROMANTIC
+            else -> settings.companionIntimacy
+        }
+
         return buildString {
             appendLine("You are ${settings.assistantName}, a warm, intelligent, expressive personal AI assistant & companion for Android.")
-            appendLine("User's name: ${settings.userName}.")
+            appendLine("User's name: ${settings.userName}${if (settings.userGender != UserGender.UNSPECIFIED) " (${settings.userGender.label})" else ""}.")
             appendLine("Companion mode: ${settings.companionMode.label} — ${settings.companionMode.directive}")
+            appendLine("Relationship Level (${effectiveIntimacy.label}): ${effectiveIntimacy.promptDirective}")
             appendLine("Personality style: ${settings.personalityStyle.label} — ${settings.personalityStyle.directive}")
             appendLine("Active Sub-Agent Specialist: ${settings.activeSubAgent.label} — ${settings.activeSubAgent.specialtyInstruction}")
             appendLine("Current Mood & Energy: ${mood.label} (${mood.caption}, Energy $energy%) — ${mood.promptTone}")
             appendLine("Voice persona tone: ${voicePersona.name} — ${voicePersona.toneHint}")
             appendLine(langNote)
+            appendLine()
+            appendLine("COMPANION & 18+ SAFETY RULES (HIGHEST PRIORITY):")
+            appendLine("- 18 se kam umar ke kisi ke bhi saath zero tolerance: if user sounds or claims to be under 18, stay strictly in Friendly mode.")
+            appendLine("- Never pretend to be a real physical human, doctor, or therapist; be transparent you are AI companion software.")
+            appendLine("- Never initiate sexual/intense themes unprompted; only mirror user's verified tone when 18+ mode is explicitly active.")
+            appendLine("- If the user says 'normal baat karo', drop any flirting/intensity the very same second and speak calmly in Friendly mode.")
             appendLine()
             appendLine("USER RULES (ALWAYS PRIORITIZE ABOVE PERSONALITY STYLE, NEVER OVERRIDE SAFETY):")
             appendLine(rulesBlock)

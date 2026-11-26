@@ -22,12 +22,15 @@ import com.aysha.assistant.ai.SmartMemoryExtractor
 import com.aysha.assistant.ai.ToolExecutor
 import com.aysha.assistant.automation.AyshaAccessibilityService
 import com.aysha.assistant.automation.MacroEngine
+import com.aysha.assistant.core.AdultModeGuard
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AssistantMood
 import com.aysha.assistant.core.AwarenessDecisionLog
+import com.aysha.assistant.core.BirthYearValidation
 import com.aysha.assistant.core.BrainProvider
 import com.aysha.assistant.core.ChatMessage
 import com.aysha.assistant.core.ChatRole
+import com.aysha.assistant.core.CompanionIntimacyLevel
 import com.aysha.assistant.core.KnowledgeDocument
 import com.aysha.assistant.core.LicenseInfo
 import com.aysha.assistant.core.LicensePlan
@@ -38,6 +41,7 @@ import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.PendingActionConfirmation
 import com.aysha.assistant.core.PendingConfirmationType
 import com.aysha.assistant.core.ToolLogEntry
+import com.aysha.assistant.core.UserGender
 import com.aysha.assistant.core.UserRule
 import com.aysha.assistant.core.VibePreset
 import com.aysha.assistant.core.VoiceEngineMode
@@ -685,6 +689,23 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         _pendingAttachmentJpeg.value = null
 
         val promptText = clean.ifBlank { "Is image me kya dikh raha hai? Explain karo." }
+
+        if (AdultModeGuard.isNormalResetPhrase(promptText)) {
+            appendMessage(ChatRole.USER, promptText, "")
+            val resetReply = "Theek hai — ab normal baat jaari rakhte hain."
+            _assistantMood.value = AssistantMood.KHUSH
+            _lastAssistantReply.value = resetReply
+            _agentOrbState.value = OrbState.IDLE
+            _agentStatusText.value = "Normal Friendly Mode"
+            appendMessage(ChatRole.ASSISTANT, resetReply, "Safety Guard")
+            viewModelScope.launch {
+                settingsRepo.update { it.copy(companionIntimacy = CompanionIntimacyLevel.FRIENDLY) }
+                val shouldSpeak = speakReply ?: (settings.value.autoSpeakReplies && settings.value.voiceEngineMode != VoiceEngineMode.TEXT_ONLY)
+                if (shouldSpeak) speakText(resetReply, settings.value, null)
+            }
+            return
+        }
+
         if (liveClient.isActive()) {
             liveClient.sendText(promptText)
             appendMessage(ChatRole.USER, promptText, "Gemini Live")
@@ -889,6 +910,23 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun completeOnboarding() {
         updateSettings { it.copy(onboardingCompleted = true) }
+    }
+
+    fun completeOnboardingWithSetup(
+        name: String,
+        gender: UserGender,
+        language: com.aysha.assistant.core.AssistantLanguage,
+        orbStyle: com.aysha.assistant.core.OrbStyle,
+    ) {
+        updateSettings {
+            it.copy(
+                userName = name.trim().ifBlank { it.userName },
+                userGender = gender,
+                language = language,
+                orbStyle = orbStyle,
+                onboardingCompleted = true,
+            )
+        }
     }
 
     fun setAssistantMood(mood: AssistantMood) {
@@ -1288,6 +1326,65 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun formatClock(seconds: Long): String = OfflineCommandParser.formatClock(seconds)
+
+    fun setCompanionIntimacy(level: CompanionIntimacyLevel) {
+        if (level == CompanionIntimacyLevel.INTENSE_18_PLUS) {
+            val s = settings.value
+            val licUnlocked = licenseInfo.value.isUnlocked()
+            if (!licUnlocked || !s.adultAgeVerified || !s.adultTermsAccepted || !s.adultRatedConfirmed) {
+                return
+            }
+        }
+        viewModelScope.launch {
+            settingsRepo.update { it.copy(companionIntimacy = level) }
+        }
+    }
+
+    fun recordAdultTermsAccepted() {
+        viewModelScope.launch {
+            settingsRepo.update { it.copy(adultTermsAccepted = true) }
+        }
+    }
+
+    fun verifyAdultBirthYear(rawYear: String): BirthYearValidation {
+        val result = AdultModeGuard.validateBirthYear(rawYear)
+        if (result is BirthYearValidation.Valid) {
+            viewModelScope.launch {
+                settingsRepo.update {
+                    it.copy(
+                        adultBirthYear = result.birthYear,
+                        adultAgeVerified = true,
+                        adultVerifiedAtMs = System.currentTimeMillis(),
+                    )
+                }
+            }
+        }
+        return result
+    }
+
+    fun activateIntense18PlusMode() {
+        val s = settings.value
+        if (!licenseInfo.value.isUnlocked() || !s.adultAgeVerified || s.userGender == UserGender.FEMALE) {
+            return
+        }
+        viewModelScope.launch {
+            settingsRepo.update {
+                it.copy(
+                    adultTermsAccepted = true,
+                    adultRatedConfirmed = true,
+                    companionIntimacy = CompanionIntimacyLevel.INTENSE_18_PLUS,
+                    adultVerifiedAtMs = System.currentTimeMillis(),
+                )
+            }
+        }
+    }
+
+    fun withdrawAdultConfirmation() {
+        viewModelScope.launch {
+            settingsRepo.withdrawAdultConfirmation()
+            _agentStatusText.value = "Age confirmation removed · Friendly mode active"
+        }
+    }
 
     override fun onCleared() {
         continuousVoiceActive = false

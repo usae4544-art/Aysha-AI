@@ -1,13 +1,17 @@
 package com.aysha.assistant.ai
 
+import com.aysha.assistant.core.AdultModeGuard
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AssistantLanguage
 import com.aysha.assistant.core.AssistantMood
+import com.aysha.assistant.core.BirthYearValidation
 import com.aysha.assistant.core.BrainProvider
+import com.aysha.assistant.core.CompanionIntimacyLevel
 import com.aysha.assistant.core.LicensePlan
 import com.aysha.assistant.core.LicenseStatus
 import com.aysha.assistant.core.MemoryEntry
 import com.aysha.assistant.core.SubAgentRole
+import com.aysha.assistant.core.UserGender
 import com.aysha.assistant.core.UserRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -186,5 +190,47 @@ class AiUnitTest {
 
         val dateMs = AyshaLicenseManager.parseHttpServerDateMs("Thu, 26 Nov 2026 17:37:49 GMT")
         assertTrue(dateMs > 1_700_000_000_000L)
+    }
+
+    @Test
+    fun `adult birth year validation, normal reset phrase, and prompt intimacy safety`() {
+        assertTrue(AdultModeGuard.validateBirthYear("", currentYear = 2026) is BirthYearValidation.Invalid)
+        assertTrue(AdultModeGuard.validateBirthYear("19", currentYear = 2026) is BirthYearValidation.Invalid)
+        assertTrue(AdultModeGuard.validateBirthYear("2012", currentYear = 2026) is BirthYearValidation.Invalid)
+        val ok = AdultModeGuard.validateBirthYear("1998", currentYear = 2026) as BirthYearValidation.Valid
+        assertEquals(1998, ok.birthYear)
+        assertEquals(28, ok.estimatedAge)
+
+        assertTrue(AdultModeGuard.isNormalResetPhrase("normal baat karo"))
+        assertTrue(AdultModeGuard.isNormalResetPhrase("Hey Aysha please normal baat karo abhi"))
+        assertFalse(AdultModeGuard.isNormalResetPhrase("kaisa mausam hai aaj"))
+
+        // Unverified Intense 18+ automatically falls back to Romantic, and Female preference locks to Friendly
+        val unverifiedPrompt = PromptBuilder.buildSystemInstruction(
+            settings = AppSettings(
+                companionIntimacy = CompanionIntimacyLevel.INTENSE_18_PLUS,
+                adultAgeVerified = false,
+            ),
+            memories = emptyList(),
+            accessibilityEnabled = false,
+            notificationsEnabled = false,
+        )
+        assertTrue(unverifiedPrompt.contains("Relationship Level (Romantic)"))
+        assertFalse(unverifiedPrompt.contains("Maya"))
+
+        val femalePrompt = PromptBuilder.buildSystemInstruction(
+            settings = AppSettings(
+                companionIntimacy = CompanionIntimacyLevel.INTENSE_18_PLUS,
+                userGender = UserGender.FEMALE,
+                adultAgeVerified = true,
+                adultTermsAccepted = true,
+                adultRatedConfirmed = true,
+            ),
+            memories = emptyList(),
+            accessibilityEnabled = false,
+            notificationsEnabled = false,
+        )
+        assertTrue(femalePrompt.contains("Relationship Level (Friendly)"))
+        assertFalse(femalePrompt.contains("Maya"))
     }
 }

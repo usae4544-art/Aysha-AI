@@ -16,12 +16,14 @@ import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AssistantLanguage
 import com.aysha.assistant.core.AwarenessSensitivity
 import com.aysha.assistant.core.BrainProvider
+import com.aysha.assistant.core.CompanionIntimacyLevel
 import com.aysha.assistant.core.CompanionMode
 import com.aysha.assistant.core.CornerStyle
 import com.aysha.assistant.core.HudColorOption
 import com.aysha.assistant.core.LicensePlan
 import com.aysha.assistant.core.LicenseStatus
 import com.aysha.assistant.core.MayaPalette
+import com.aysha.assistant.core.OrbRenderMode
 import com.aysha.assistant.core.OrbStyle
 import com.aysha.assistant.core.PersonalityStyle
 import com.aysha.assistant.core.SubAgentRole
@@ -29,6 +31,7 @@ import com.aysha.assistant.core.SurfaceStyle
 import com.aysha.assistant.core.ThemeMode
 import com.aysha.assistant.core.UiFontFamily
 import com.aysha.assistant.core.UiTextScale
+import com.aysha.assistant.core.UserGender
 import com.aysha.assistant.core.VoiceEngineMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -71,9 +74,22 @@ class SettingsRepository(private val context: Context) {
         val uiScale = stringPreferencesKey("ui_scale")
         val orbStyle = stringPreferencesKey("orb_style")
         val hudColor = stringPreferencesKey("hud_color")
+        val hudCoreColor = stringPreferencesKey("hud_core_color")
+        val hudMainColor = stringPreferencesKey("hud_main_color")
+        val hudRaysLengthPct = floatPreferencesKey("hud_rays_length_pct")
+        val hudRingEnabled = booleanPreferencesKey("hud_ring_enabled")
+        val orbRenderMode = stringPreferencesKey("orb_render_mode")
         val glassTransparency = floatPreferencesKey("glass_transparency")
         val personalityStyle = stringPreferencesKey("personality_style")
         val companionMode = stringPreferencesKey("companion_mode")
+        val companionIntimacy = stringPreferencesKey("companion_intimacy")
+        val userGender = stringPreferencesKey("user_gender")
+        val adultBirthYear = intPreferencesKey("adult_birth_year")
+        val adultAgeVerified = booleanPreferencesKey("adult_age_verified")
+        val adultTermsAccepted = booleanPreferencesKey("adult_terms_accepted")
+        val adultRatedConfirmed = booleanPreferencesKey("adult_rated_confirmed")
+        val adultVerifiedAtMs = longPreferencesKey("adult_verified_at_ms")
+        val realisticTypingEnabled = booleanPreferencesKey("realistic_typing_enabled")
         val activeSubAgent = stringPreferencesKey("active_sub_agent")
         val awarenessEnabled = booleanPreferencesKey("awareness_enabled")
         val awarenessSensitivity = stringPreferencesKey("awareness_sensitivity")
@@ -158,9 +174,22 @@ class SettingsRepository(private val context: Context) {
                 uiScale = enumOrDefault(p[Keys.uiScale], UiTextScale.NORMAL),
                 orbStyle = enumOrDefault(p[Keys.orbStyle], OrbStyle.AYSHA_2047),
                 hudColor = enumOrDefault(p[Keys.hudColor], HudColorOption.CYAN),
+                hudCoreColor = enumOrDefault(p[Keys.hudCoreColor], HudColorOption.CYAN),
+                hudMainColor = enumOrDefault(p[Keys.hudMainColor], HudColorOption.CYAN),
+                hudRaysLengthPct = (p[Keys.hudRaysLengthPct] ?: 0.72f).coerceIn(0.35f, 1.25f),
+                hudRingEnabled = p[Keys.hudRingEnabled] ?: true,
+                orbRenderMode = enumOrDefault(p[Keys.orbRenderMode], OrbRenderMode.HUD_ORB),
                 glassTransparency = (p[Keys.glassTransparency] ?: 0.72f).coerceIn(0.35f, 0.95f),
                 personalityStyle = enumOrDefault(p[Keys.personalityStyle], PersonalityStyle.FRIENDLY),
                 companionMode = enumOrDefault(p[Keys.companionMode], CompanionMode.BEST_FRIEND),
+                companionIntimacy = enumOrDefault(p[Keys.companionIntimacy], CompanionIntimacyLevel.FRIENDLY),
+                userGender = enumOrDefault(p[Keys.userGender], UserGender.UNSPECIFIED),
+                adultBirthYear = p[Keys.adultBirthYear] ?: 0,
+                adultAgeVerified = p[Keys.adultAgeVerified] ?: false,
+                adultTermsAccepted = p[Keys.adultTermsAccepted] ?: false,
+                adultRatedConfirmed = p[Keys.adultRatedConfirmed] ?: false,
+                adultVerifiedAtMs = p[Keys.adultVerifiedAtMs] ?: 0L,
+                realisticTypingEnabled = p[Keys.realisticTypingEnabled] ?: false,
                 activeSubAgent = enumOrDefault(p[Keys.activeSubAgent], SubAgentRole.AUTO),
                 awarenessEnabled = p[Keys.awarenessEnabled] ?: true,
                 awarenessSensitivity = enumOrDefault(p[Keys.awarenessSensitivity], AwarenessSensitivity.BALANCED),
@@ -232,9 +261,22 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.uiScale] = next.uiScale.name
             prefs[Keys.orbStyle] = next.orbStyle.name
             prefs[Keys.hudColor] = next.hudColor.name
+            prefs[Keys.hudCoreColor] = next.hudCoreColor.name
+            prefs[Keys.hudMainColor] = next.hudMainColor.name
+            prefs[Keys.hudRaysLengthPct] = next.hudRaysLengthPct.coerceIn(0.35f, 1.25f)
+            prefs[Keys.hudRingEnabled] = next.hudRingEnabled
+            prefs[Keys.orbRenderMode] = next.orbRenderMode.name
             prefs[Keys.glassTransparency] = next.glassTransparency.coerceIn(0.35f, 0.95f)
             prefs[Keys.personalityStyle] = next.personalityStyle.name
             prefs[Keys.companionMode] = next.companionMode.name
+            prefs[Keys.companionIntimacy] = next.companionIntimacy.name
+            prefs[Keys.userGender] = next.userGender.name
+            prefs[Keys.adultBirthYear] = next.adultBirthYear
+            prefs[Keys.adultAgeVerified] = next.adultAgeVerified
+            prefs[Keys.adultTermsAccepted] = next.adultTermsAccepted
+            prefs[Keys.adultRatedConfirmed] = next.adultRatedConfirmed
+            prefs[Keys.adultVerifiedAtMs] = next.adultVerifiedAtMs
+            prefs[Keys.realisticTypingEnabled] = next.realisticTypingEnabled
             prefs[Keys.activeSubAgent] = next.activeSubAgent.name
             prefs[Keys.awarenessEnabled] = next.awarenessEnabled
             prefs[Keys.awarenessSensitivity] = next.awarenessSensitivity.name
@@ -316,6 +358,19 @@ class SettingsRepository(private val context: Context) {
         }
     }
 
+    suspend fun withdrawAdultConfirmation() {
+        update {
+            it.copy(
+                companionIntimacy = CompanionIntimacyLevel.FRIENDLY,
+                adultBirthYear = 0,
+                adultAgeVerified = false,
+                adultTermsAccepted = false,
+                adultRatedConfirmed = false,
+                adultVerifiedAtMs = 0L,
+            )
+        }
+    }
+
     suspend fun exportSafeConfigJson(): String =
         buildSafeExportJson(settingsFlow.first())
 
@@ -344,8 +399,14 @@ class SettingsRepository(private val context: Context) {
                 put("uiScale", s.uiScale.name)
                 put("orbStyle", s.orbStyle.name)
                 put("hudColor", s.hudColor.name)
+                put("hudCoreColor", s.hudCoreColor.name)
+                put("hudMainColor", s.hudMainColor.name)
+                put("hudRaysLengthPct", s.hudRaysLengthPct.toDouble())
+                put("hudRingEnabled", s.hudRingEnabled)
+                put("orbRenderMode", s.orbRenderMode.name)
                 put("personalityStyle", s.personalityStyle.name)
                 put("companionMode", s.companionMode.name)
+                put("userGender", s.userGender.name)
                 put("activeSubAgent", s.activeSubAgent.name)
                 put("awarenessEnabled", s.awarenessEnabled)
                 put("awarenessSensitivity", s.awarenessSensitivity.name)
@@ -377,8 +438,14 @@ class SettingsRepository(private val context: Context) {
                 uiScale = enumOrDefault(obj.optString("uiScale"), cur.uiScale),
                 orbStyle = enumOrDefault(obj.optString("orbStyle"), cur.orbStyle),
                 hudColor = enumOrDefault(obj.optString("hudColor"), cur.hudColor),
+                hudCoreColor = enumOrDefault(obj.optString("hudCoreColor"), cur.hudCoreColor),
+                hudMainColor = enumOrDefault(obj.optString("hudMainColor"), cur.hudMainColor),
+                hudRaysLengthPct = obj.optDouble("hudRaysLengthPct", cur.hudRaysLengthPct.toDouble()).toFloat().coerceIn(0.35f, 1.25f),
+                hudRingEnabled = obj.optBoolean("hudRingEnabled", cur.hudRingEnabled),
+                orbRenderMode = enumOrDefault(obj.optString("orbRenderMode"), cur.orbRenderMode),
                 personalityStyle = enumOrDefault(obj.optString("personalityStyle"), cur.personalityStyle),
                 companionMode = enumOrDefault(obj.optString("companionMode"), cur.companionMode),
+                userGender = enumOrDefault(obj.optString("userGender"), cur.userGender),
                 activeSubAgent = enumOrDefault(obj.optString("activeSubAgent"), cur.activeSubAgent),
                 awarenessEnabled = obj.optBoolean("awarenessEnabled", cur.awarenessEnabled),
                 awarenessSensitivity = enumOrDefault(obj.optString("awarenessSensitivity"), cur.awarenessSensitivity),

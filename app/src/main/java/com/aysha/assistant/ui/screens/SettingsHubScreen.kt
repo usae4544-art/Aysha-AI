@@ -70,6 +70,7 @@ import com.aysha.assistant.R
 import com.aysha.assistant.core.CompanionMode
 import com.aysha.assistant.core.LicenseStatus
 import com.aysha.assistant.core.PersonalityStyle
+import com.aysha.assistant.core.UserGender
 import com.aysha.assistant.core.ui.ColoredIconBadge
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
@@ -87,6 +88,7 @@ enum class SettingsSubRoute {
     PHONE_CONTROL,
     PRIVACY_SECURITY,
     RULES_AGENTS,
+    SECRET_SETTINGS,
     SCANNER,
     WHITEBOARD,
     BROWSER,
@@ -120,6 +122,7 @@ fun SettingsHubScreen(
 
     val items = listOf(
         SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.RULES_AGENTS, "Rules, Sub-Agents & Mood", "${settings.activeSubAgent.label} · ${mood.label}", Icons.Rounded.Tune, Color(0xFFEC4899)),
+        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.SECRET_SETTINGS, "Secret settings (Girlfriend mode)", "${settings.companionIntimacy.label} · 18+ safety guard", Icons.Rounded.AutoAwesome, Color(0xFFF43F5E)),
         SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.SCANNER, "Camera Vision Scanner", "\"Kya dikh raha hai?\" visual AI", Icons.Rounded.CameraAlt, Color(0xFF0EA5E9)),
         SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.WHITEBOARD, "Study Whiteboard", "Step-by-step tutor & code notes", Icons.Rounded.EditNote, Color(0xFF10B981)),
         SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.BROWSER, "In-App Mini Browser", "Browse & summarize any page", Icons.Rounded.Language, Color(0xFF3B82F6)),
@@ -305,6 +308,7 @@ fun SettingsHubScreen(
         var userInput by remember { mutableStateOf(settings.userName) }
         var styleInput by remember { mutableStateOf(settings.personalityStyle) }
         var companionInput by remember { mutableStateOf(settings.companionMode) }
+        var genderInput by remember { mutableStateOf(settings.userGender) }
 
         AlertDialog(
             onDismissRequest = { showProfileDialog = false },
@@ -316,6 +320,17 @@ fun SettingsHubScreen(
                 ) {
                     OutlinedTextField(value = nameInput, onValueChange = { nameInput = it }, label = { Text("Assistant Name") }, singleLine = true)
                     OutlinedTextField(value = userInput, onValueChange = { userInput = it }, label = { Text("Your Name") }, singleLine = true)
+                    Text("Tumhari pehchan", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        UserGender.entries.forEach { g ->
+                            GlassPill(
+                                text = g.label,
+                                dotColor = if (genderInput == g) c.accentPrimary else null,
+                                onClick = { genderInput = g },
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                    }
                     Text("Companion Mode", fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                     CompanionMode.entries.forEach { mode ->
                         Row(
@@ -354,6 +369,7 @@ fun SettingsHubScreen(
                         it.copy(
                             assistantName = nameInput.trim().ifBlank { "AYSHA" },
                             userName = userInput.trim().ifBlank { "Friend" },
+                            userGender = genderInput,
                             personalityStyle = styleInput,
                             companionMode = companionInput,
                         )

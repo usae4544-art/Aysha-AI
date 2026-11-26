@@ -1,12 +1,21 @@
 package com.aysha.assistant.core.ui
 
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -37,6 +46,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
@@ -289,6 +299,13 @@ fun LiquidAuroraBackground(
 ) {
     val c = LocalAyshaColors.current
     val isPureMinimal = c.palette == MayaPalette.OBSIDIAN || c.surfaceStyle == SurfaceStyle.FLAT
+    val inf = rememberInfiniteTransition(label = "aurora_drift")
+    val drift by inf.animateFloat(
+        initialValue = 0.88f,
+        targetValue = 1.12f,
+        animationSpec = infiniteRepeatable(tween(4200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+        label = "drift",
+    )
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -306,14 +323,14 @@ fun LiquidAuroraBackground(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = if (c.isDark) 0.20f else 0.12f),
+                            c.accentPrimary.copy(alpha = if (c.isDark) 0.22f * drift else 0.12f),
                             Color.Transparent,
                         ),
                         center = Offset(w * 0.20f, h * 0.18f),
-                        radius = w * 0.85f,
+                        radius = w * 0.85f * drift,
                     ),
                     center = Offset(w * 0.20f, h * 0.18f),
-                    radius = w * 0.85f,
+                    radius = w * 0.85f * drift,
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
@@ -415,10 +432,26 @@ fun GlassCard(
     } else {
         Modifier
     }
-    val clickMod = if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed && onClick != null) 0.97f else 1f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 500f),
+        label = "card_press_scale",
+    )
+    val clickMod = if (onClick != null) {
+        Modifier.clickable(
+            interactionSource = interactionSource,
+            indication = null,
+            onClick = onClick,
+        )
+    } else {
+        Modifier
+    }
 
     Box(
         modifier = modifier
+            .scale(pressScale)
             .then(clayShadowMod)
             .clip(shape)
             .background(fillBrush, shape)

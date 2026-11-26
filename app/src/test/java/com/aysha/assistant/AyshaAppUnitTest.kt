@@ -4,14 +4,17 @@ import com.aysha.assistant.core.AccentPalette
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AwarenessSensitivity
 import com.aysha.assistant.core.BrainProvider
+import com.aysha.assistant.core.CompanionIntimacyLevel
 import com.aysha.assistant.core.LicenseInfo
 import com.aysha.assistant.core.LicensePlan
 import com.aysha.assistant.core.LicenseStatus
 import com.aysha.assistant.core.MayaPalette
+import com.aysha.assistant.core.OrbRenderMode
 import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.OrbStyle
 import com.aysha.assistant.core.SurfaceStyle
 import com.aysha.assistant.core.ThemeMode
+import com.aysha.assistant.core.UserGender
 import com.aysha.assistant.core.VoicePersonalities
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,6 +31,10 @@ class AyshaAppUnitTest {
         assertEquals(ThemeMode.DARK, defaults.themeMode)
         assertEquals(MayaPalette.OBSIDIAN, defaults.mayaPalette)
         assertEquals(OrbStyle.AYSHA_2047, defaults.orbStyle)
+        assertEquals(OrbRenderMode.HUD_ORB, defaults.orbRenderMode)
+        assertEquals(CompanionIntimacyLevel.FRIENDLY, defaults.companionIntimacy)
+        assertEquals(UserGender.UNSPECIFIED, defaults.userGender)
+        assertFalse(defaults.adultAgeVerified)
         assertEquals(SurfaceStyle.GLASS, defaults.surfaceStyle)
         assertEquals(AwarenessSensitivity.BALANCED, defaults.awarenessSensitivity)
         assertEquals(AccentPalette.COSMIC_CYAN, defaults.accentPalette)

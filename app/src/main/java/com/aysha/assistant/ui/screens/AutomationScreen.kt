@@ -171,6 +171,35 @@ fun AutomationScreen(
                 screenInspect?.let { Text(it, color = c.textSecondary, fontSize = 11.5.sp) }
             }
         }
+
+        // Maya-style Accessibility Payment Guard & Restricted Settings Helper
+        GlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            cornerRadius = 18.dp,
+            contentPadding = PaddingValues(14.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Payment Apps & Autostart Guide", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                Text(
+                    "Paytm, PhonePe, Google Pay aur zyadatar bank apps Accessibility ON ho to block karte hain. Payment ke waqt 1 tap me Accessibility Settings khol kar temporarily band kar sakte ho.",
+                    color = c.textSecondary,
+                    fontSize = 12.sp,
+                )
+                Text(
+                    "Restricted Settings? Android App Info -> upar 3-dots -> \"Allow restricted settings\" dabao. Xiaomi/Oppo/Realme/Vivo me Autostart ON aur Battery Unrestricted rakho.",
+                    color = c.accentPrimary,
+                    fontSize = 11.5.sp,
+                )
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedButton(onClick = { viewModel.openSystemSettings("accessibility") }, modifier = Modifier.weight(1f)) {
+                        Text("Accessibility", fontSize = 12.sp)
+                    }
+                    OutlinedButton(onClick = { viewModel.openSystemSettings("battery") }, modifier = Modifier.weight(1f)) {
+                        Text("Battery", fontSize = 12.sp)
+                    }
+                }
+            }
+        }
     }
 
     if (showAddDialog) {

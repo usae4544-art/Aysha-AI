@@ -58,6 +58,8 @@ fun PrivacyDashboardScreen(
     val backupFeedback by viewModel.backupFeedback.collectAsState()
 
     var showRestoreDialog by remember { mutableStateOf(false) }
+    var showClearKeysConfirm by remember { mutableStateOf(false) }
+    var wipeStep by remember { mutableStateOf(0) }
     var sosContactDraft by remember(settings.emergencyContact) { mutableStateOf(settings.emergencyContact) }
     var sosMessageDraft by remember(settings.emergencySosMessage) { mutableStateOf(settings.emergencySosMessage) }
 
@@ -162,12 +164,12 @@ fun PrivacyDashboardScreen(
             }
         }
 
-        OutlinedButton(onClick = { viewModel.clearAllApiKeys() }, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
+        OutlinedButton(onClick = { showClearKeysConfirm = true }, shape = RoundedCornerShape(14.dp), modifier = Modifier.fillMaxWidth()) {
             Text("Delete All Stored API Keys")
         }
 
         Button(
-            onClick = { viewModel.wipeAllLocalData() },
+            onClick = { wipeStep = 1 },
             colors = ButtonDefaults.buttonColors(containerColor = c.error),
             shape = RoundedCornerShape(14.dp),
             modifier = Modifier.fillMaxWidth(),
@@ -211,6 +213,54 @@ fun PrivacyDashboardScreen(
                 }) { Text("Restore") }
             },
             dismissButton = { TextButton(onClick = { showRestoreDialog = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (showClearKeysConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearKeysConfirm = false },
+            title = { Text("Saari API keys delete karein?") },
+            text = { Text("Is phone se saari saved Gemini, Groq aur OpenAI keys hata di jayengi. Offline mode chalta rahega.") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = c.error),
+                    onClick = {
+                        viewModel.clearAllApiKeys()
+                        showClearKeysConfirm = false
+                    },
+                ) { Text("Haan, delete karo") }
+            },
+            dismissButton = { TextButton(onClick = { showClearKeysConfirm = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (wipeStep == 1) {
+        AlertDialog(
+            onDismissRequest = { wipeStep = 0 },
+            title = { Text("Saari jaankari mita dein?") },
+            text = { Text("Tumhari saari chats, yaadein, documents, rules aur activity logs delete ho jayenge.") },
+            confirmButton = {
+                Button(onClick = { wipeStep = 2 }) { Text("Aage badho") }
+            },
+            dismissButton = { TextButton(onClick = { wipeStep = 0 }) { Text("Rehne do") } },
+        )
+    }
+
+    if (wipeStep == 2) {
+        AlertDialog(
+            onDismissRequest = { wipeStep = 0 },
+            title = { Text("Pakka sab mita dein?") },
+            text = { Text("Aakhri check: ek baar wipe hone par ye local data wapas nahi aayega.") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = c.error),
+                    onClick = {
+                        viewModel.wipeAllLocalData()
+                        wipeStep = 0
+                    },
+                ) { Text("Haan, sab bhula do") }
+            },
+            dismissButton = { TextButton(onClick = { wipeStep = 0 }) { Text("Rehne do") } },
         )
     }
 }

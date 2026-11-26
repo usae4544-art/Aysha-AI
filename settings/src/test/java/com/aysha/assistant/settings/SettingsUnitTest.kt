@@ -1,7 +1,9 @@
 package com.aysha.assistant.settings
 
 import com.aysha.assistant.core.AppSettings
+import com.aysha.assistant.core.HudColorOption
 import com.aysha.assistant.core.MayaPalette
+import com.aysha.assistant.core.OrbRenderMode
 import com.aysha.assistant.core.OrbStyle
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
@@ -16,6 +18,11 @@ class SettingsUnitTest {
             assistantName = "AYSHA",
             mayaPalette = MayaPalette.OBSIDIAN,
             orbStyle = OrbStyle.AYSHA_2047,
+            hudCoreColor = HudColorOption.GOLD,
+            hudMainColor = HudColorOption.PINK,
+            orbRenderMode = OrbRenderMode.ANIMATED_AVATAR,
+            adultBirthYear = 1998,
+            adultAgeVerified = true,
             geminiApiKey = "AIzaSySecretKeyShouldNotLeak12345",
             groqApiKey = "gsk_SecretGroqShouldNotLeak12345",
             openAiApiKey = "sk-SecretOpenAiShouldNotLeak12345",
@@ -26,11 +33,16 @@ class SettingsUnitTest {
         assertFalse(exported.contains("gsk_"))
         assertFalse(exported.contains("sk-Secret"))
         assertFalse(exported.contains("AEu49SecretRefreshToken"))
+        assertFalse(exported.contains("1998"))
+        assertFalse(exported.contains("adultAgeVerified"))
         val json = JSONObject(exported)
         assertEquals(false, json.getBoolean("apiKeysIncluded"))
         assertEquals("AYSHA", json.getString("assistantName"))
         assertEquals("OBSIDIAN", json.getString("mayaPalette"))
         assertEquals("AYSHA_2047", json.getString("orbStyle"))
+        assertEquals("GOLD", json.getString("hudCoreColor"))
+        assertEquals("PINK", json.getString("hudMainColor"))
+        assertEquals("ANIMATED_AVATAR", json.getString("orbRenderMode"))
     }
 
     @Test

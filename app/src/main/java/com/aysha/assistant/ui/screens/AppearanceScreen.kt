@@ -45,6 +45,7 @@ import com.aysha.assistant.core.AccentPalette
 import com.aysha.assistant.core.CornerStyle
 import com.aysha.assistant.core.HudColorOption
 import com.aysha.assistant.core.MayaPalette
+import com.aysha.assistant.core.OrbRenderMode
 import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.OrbStyle
 import com.aysha.assistant.core.SurfaceStyle
@@ -78,13 +79,53 @@ fun AppearanceScreen(
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
             }
-            Text("Theme & Orb Studio", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text("Appearance & Orb Studio", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
         }
 
-        // Signature Orb Style Picker (11 Maya-style Orbs)
+        // Live 3D AGSL Orb / Character Stage Preview (Maya parity)
+        GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                AyshaVoiceOrb(
+                    orbState = OrbState.SPEAKING,
+                    audioLevel = 0.52f,
+                    onTap = {},
+                    orbSize = 148.dp,
+                    orbStyle = settings.orbStyle,
+                    hudColor = settings.hudColor,
+                    hudCoreColor = settings.hudCoreColor,
+                    hudMainColor = settings.hudMainColor,
+                    hudRaysLengthPct = settings.hudRaysLengthPct,
+                    hudRingEnabled = settings.hudRingEnabled,
+                    renderMode = settings.orbRenderMode,
+                )
+                Text("${settings.orbStyle.label} · ${settings.orbRenderMode.label}", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(settings.orbStyle.tagline, color = c.accentPrimary, fontSize = 11.5.sp)
+            }
+        }
+
+        // Orb vs 3D Animated Character toggle
+        GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Home Stage Look", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(settings.orbRenderMode.blurb, color = c.textSecondary, fontSize = 12.sp)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OrbRenderMode.entries.forEach { mode ->
+                        val active = settings.orbRenderMode == mode
+                        GlassPill(
+                            text = mode.label,
+                            dotColor = if (active) c.accentPrimary else null,
+                            onClick = { viewModel.updateSettings { it.copy(orbRenderMode = mode) } },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+            }
+        }
+
+        // Signature Orb Style Picker (11 Looks + HUD Ring + Core & Main Colors + Ray Length)
         GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text("Voice Orb Style (${OrbStyle.entries.size} Looks)", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
+                Text("Orb ka style (${OrbStyle.entries.size} Looks)", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
                 Text(settings.orbStyle.tagline, color = c.accentPrimary, fontSize = 12.sp)
 
                 Row(
@@ -111,6 +152,10 @@ fun AppearanceScreen(
                                     orbSize = 54.dp,
                                     orbStyle = style,
                                     hudColor = settings.hudColor,
+                                    hudCoreColor = settings.hudCoreColor,
+                                    hudMainColor = settings.hudMainColor,
+                                    hudRaysLengthPct = settings.hudRaysLengthPct,
+                                    hudRingEnabled = false,
                                     showCenterIcon = false,
                                 )
                                 Text(
@@ -126,7 +171,7 @@ fun AppearanceScreen(
                     }
                 }
 
-                Text("HUD Orb Color", color = c.textSecondary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                Text("Main rang (rays, rim, HUD)", color = c.textSecondary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -134,14 +179,14 @@ fun AppearanceScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     HudColorOption.entries.forEach { opt ->
-                        val selected = settings.hudColor == opt
+                        val selected = settings.hudMainColor == opt
                         Box(
                             modifier = Modifier
                                 .size(34.dp)
                                 .clip(CircleShape)
                                 .background(Color(opt.primaryHex))
                                 .border(if (selected) 2.5.dp else 1.dp, if (selected) Color.White else Color.White.copy(alpha = 0.25f), CircleShape)
-                                .clickable { viewModel.updateSettings { it.copy(hudColor = opt) } },
+                                .clickable { viewModel.updateSettings { it.copy(hudMainColor = opt, hudColor = opt) } },
                             contentAlignment = Alignment.Center,
                         ) {
                             if (selected) {
@@ -150,6 +195,50 @@ fun AppearanceScreen(
                         }
                     }
                 }
+
+                Text("Core rang (neurons & inner core)", color = c.textSecondary, fontSize = 12.5.sp, fontWeight = FontWeight.Medium)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    HudColorOption.entries.forEach { opt ->
+                        val selected = settings.hudCoreColor == opt
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color(opt.primaryHex))
+                                .border(if (selected) 2.5.dp else 1.dp, if (selected) Color.White else Color.White.copy(alpha = 0.25f), CircleShape)
+                                .clickable { viewModel.updateSettings { it.copy(hudCoreColor = opt) } },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (selected) {
+                                Icon(Icons.Rounded.CheckCircle, contentDescription = opt.label, tint = Color(0xFF0A0A0A), modifier = Modifier.size(16.dp))
+                            }
+                        }
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    Text("HUD Ring (dots aur labels ring)", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+                    Switch(
+                        checked = settings.hudRingEnabled,
+                        onCheckedChange = { on -> viewModel.updateSettings { it.copy(hudRingEnabled = on) } },
+                    )
+                }
+
+                Text("Rays ki lambai (${(settings.hudRaysLengthPct * 100).toInt()}%)", color = c.textSecondary, fontSize = 12.5.sp)
+                Slider(
+                    value = settings.hudRaysLengthPct,
+                    onValueChange = { v -> viewModel.updateSettings { it.copy(hudRaysLengthPct = v) } },
+                    valueRange = 0.35f..1.25f,
+                )
             }
         }
 

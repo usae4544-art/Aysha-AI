@@ -33,6 +33,7 @@ import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.History
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Lock
@@ -84,6 +85,7 @@ import com.aysha.assistant.ui.screens.PhoneControlScreen
 import com.aysha.assistant.ui.screens.PrivacyDashboardScreen
 import com.aysha.assistant.ui.screens.RulesAndAgentsScreen
 import com.aysha.assistant.ui.screens.ScannerScreen
+import com.aysha.assistant.ui.screens.SecretSettingsScreen
 import com.aysha.assistant.ui.screens.SettingsHubScreen
 import com.aysha.assistant.ui.screens.SettingsSubRoute
 import com.aysha.assistant.ui.screens.SplashOnboardingScreen
@@ -204,7 +206,10 @@ class MainActivity : ComponentActivity() {
                     )
                 } else if (!settings.onboardingCompleted) {
                     SplashOnboardingScreen(
-                        onGetStarted = { viewModel.completeOnboarding() },
+                        initialUserName = settings.userName,
+                        onGetStarted = { name, gender, lang, orbStyle ->
+                            viewModel.completeOnboardingWithSetup(name, gender, lang, orbStyle)
+                        },
                     )
                 } else {
                     AyshaMainRouter(
@@ -394,6 +399,10 @@ private fun AyshaMainRouter(
                         settingsRoute = SettingsSubRoute.AUTOMATION
                         currentScreen = AppScreenRoute.SETTINGS
                     },
+                    onOpenSecretSettings = {
+                        settingsRoute = SettingsSubRoute.SECRET_SETTINGS
+                        currentScreen = AppScreenRoute.SETTINGS
+                    },
                 )
                 AppScreenRoute.CHAT -> ChatScreen(
                     viewModel = viewModel,
@@ -420,6 +429,7 @@ private fun AyshaMainRouter(
                     )
                     SettingsSubRoute.PRIVACY_SECURITY -> PrivacyDashboardScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
                     SettingsSubRoute.RULES_AGENTS -> RulesAndAgentsScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                    SettingsSubRoute.SECRET_SETTINGS -> SecretSettingsScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
                     SettingsSubRoute.SCANNER -> ScannerScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
                     SettingsSubRoute.WHITEBOARD -> WhiteboardScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
                     SettingsSubRoute.BROWSER -> BrowserScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
@@ -511,6 +521,13 @@ private fun AyshaMainRouter(
                         settingsRoute = SettingsSubRoute.PRIVACY_SECURITY
                         currentScreen = AppScreenRoute.SETTINGS
                     }
+                    MoreTile("Secret (18+)", Icons.Rounded.Favorite, Color(0xFFF43F5E), Modifier.weight(1f)) {
+                        showMoreSheet = false
+                        settingsRoute = SettingsSubRoute.SECRET_SETTINGS
+                        currentScreen = AppScreenRoute.SETTINGS
+                    }
+                }
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     MoreTile("All Settings", Icons.Rounded.History, Color(0xFF2563EB), Modifier.weight(1f)) {
                         showMoreSheet = false
                         settingsRoute = SettingsSubRoute.HUB

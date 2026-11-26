@@ -37,6 +37,7 @@ import androidx.compose.material.icons.rounded.Restore
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -89,6 +90,9 @@ fun MemoryHistoryScreen(
     var editingMemory by remember { mutableStateOf<MemoryEntry?>(null) }
     var showAddMemory by remember { mutableStateOf(false) }
     var showAddDoc by remember { mutableStateOf(false) }
+    var showClearChatsConfirm by remember { mutableStateOf(false) }
+    var deleteMemoryTarget by remember { mutableStateOf<MemoryEntry?>(null) }
+    var wipeStep by remember { mutableIntStateOf(0) }
 
     val filteredMsgs = messages.reversed().filter {
         search.isBlank() || it.text.contains(search, ignoreCase = true) || it.providerTag.contains(search, ignoreCase = true)
@@ -208,7 +212,7 @@ fun MemoryHistoryScreen(
                         .clip(RoundedCornerShape(24.dp))
                         .background(Color(0xFF6B1D36).copy(alpha = 0.72f))
                         .border(1.dp, Color(0xFFF43F5E).copy(alpha = 0.5f), RoundedCornerShape(24.dp))
-                        .clickable { viewModel.clearChatHistory() },
+                        .clickable { if (messages.isNotEmpty()) showClearChatsConfirm = true },
                     contentAlignment = Alignment.Center,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
@@ -306,11 +310,25 @@ fun MemoryHistoryScreen(
                                 IconButton(onClick = { viewModel.archiveMemory(mem.id, false) }) {
                                     Icon(Icons.Rounded.Restore, contentDescription = "Restore", tint = c.success)
                                 }
-                                IconButton(onClick = { viewModel.deleteMemory(mem.id) }) {
+                                IconButton(onClick = { deleteMemoryTarget = mem }) {
                                     Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete", tint = c.error)
                                 }
                             }
                         }
+                    }
+                }
+                if (archivedMemories.isNotEmpty() || memories.isNotEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(46.dp)
+                            .clip(RoundedCornerShape(23.dp))
+                            .background(Color(0xFF6B1D36).copy(alpha = 0.72f))
+                            .border(1.dp, Color(0xFFF43F5E).copy(alpha = 0.5f), RoundedCornerShape(23.dp))
+                            .clickable { wipeStep = 1 },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text("Sab bhula do (2-Step Confirm)", color = Color.White, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     }
                 }
             }
@@ -386,6 +404,72 @@ fun MemoryHistoryScreen(
                 }) { Text("Save & Index") }
             },
             dismissButton = { TextButton(onClick = { showAddDoc = false }) { Text("Cancel") } },
+        )
+    }
+
+    if (showClearChatsConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearChatsConfirm = false },
+            title = { Text("Ye chat mita dein?") },
+            text = { Text("Saari purani chat messages is phone se delete ho jayengi.") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = c.error),
+                    onClick = {
+                        viewModel.clearChatHistory()
+                        showClearChatsConfirm = false
+                    },
+                ) { Text("Haan, clear karo") }
+            },
+            dismissButton = { TextButton(onClick = { showClearChatsConfirm = false }) { Text("Rehne do") } },
+        )
+    }
+
+    deleteMemoryTarget?.let { target ->
+        AlertDialog(
+            onDismissRequest = { deleteMemoryTarget = null },
+            title = { Text("Ye yaad delete karein?") },
+            text = { Text("\"${target.title}: ${target.content}\"") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = c.error),
+                    onClick = {
+                        viewModel.deleteMemory(target.id)
+                        deleteMemoryTarget = null
+                    },
+                ) { Text("Delete karo") }
+            },
+            dismissButton = { TextButton(onClick = { deleteMemoryTarget = null }) { Text("Cancel") } },
+        )
+    }
+
+    if (wipeStep == 1) {
+        AlertDialog(
+            onDismissRequest = { wipeStep = 0 },
+            title = { Text("Saari yaadein bhula dein?") },
+            text = { Text("Tumhari saari saved yaadein aur chats hamesha ke liye chali jayengi.") },
+            confirmButton = {
+                Button(onClick = { wipeStep = 2 }) { Text("Aage badho") }
+            },
+            dismissButton = { TextButton(onClick = { wipeStep = 0 }) { Text("Rehne do") } },
+        )
+    }
+
+    if (wipeStep == 2) {
+        AlertDialog(
+            onDismissRequest = { wipeStep = 0 },
+            title = { Text("Pakka sab bhula dein?") },
+            text = { Text("Aakhri confirmation — iske baad sab kuch zero se shuru hoga.") },
+            confirmButton = {
+                Button(
+                    colors = ButtonDefaults.buttonColors(containerColor = c.error),
+                    onClick = {
+                        viewModel.wipeAllLocalData()
+                        wipeStep = 0
+                    },
+                ) { Text("Haan, bhula do") }
+            },
+            dismissButton = { TextButton(onClick = { wipeStep = 0 }) { Text("Rehne do") } },
         )
     }
 }

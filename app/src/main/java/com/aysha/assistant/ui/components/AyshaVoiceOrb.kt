@@ -1,5 +1,8 @@
 package com.aysha.assistant.ui.components
 
+import android.graphics.RuntimeShader
+import android.os.Build
+import androidx.annotation.RequiresApi
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -7,6 +10,7 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -41,16 +45,19 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.ShaderBrush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.aysha.assistant.R
 import com.aysha.assistant.core.HudColorOption
+import com.aysha.assistant.core.OrbRenderMode
 import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.OrbStyle
 import com.aysha.assistant.core.ui.LocalAyshaColors
@@ -58,10 +65,308 @@ import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
 
+private const val AYSHA_ORB_AGSL = """
+uniform float2 uCenter;
+uniform float  uRadius;
+uniform float  uTime;
+uniform float  uLevel;
+uniform int    uPhase;
+uniform int    uLook;
+uniform float2 uTilt;
+uniform float3 uColA;
+uniform float3 uColB;
+uniform float3 uColC;
+uniform float3 uRim;
+uniform float  uGlow;
+uniform int    uSteps;
+uniform int    uInner;
+uniform int    uOct;
+uniform int    uChroma;
+
+const float R = 1.0;
+const float VIEW = 1.12;
+
+float ss(float e0, float e1, float x) {
+  float t = clamp((x - e0) / (e1 - e0), 0.0, 1.0);
+  return t * t * (3.0 - 2.0 * t);
+}
+
+float3 hash3(float3 p) {
+  p = float3(dot(p, float3(127.1, 311.7, 74.7)),
+             dot(p, float3(269.5, 183.3, 246.1)),
+             dot(p, float3(113.5, 271.9, 124.6)));
+  return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+}
+
+float vnoise(float3 p) {
+  float3 i = floor(p);
+  float3 f = fract(p);
+  float3 u = f * f * (3.0 - 2.0 * f);
+  return mix(mix(mix(dot(hash3(i + float3(0.0, 0.0, 0.0)), f - float3(0.0, 0.0, 0.0)),
+                     dot(hash3(i + float3(1.0, 0.0, 0.0)), f - float3(1.0, 0.0, 0.0)), u.x),
+                 mix(dot(hash3(i + float3(0.0, 1.0, 0.0)), f - float3(0.0, 1.0, 0.0)),
+                     dot(hash3(i + float3(1.0, 1.0, 0.0)), f - float3(1.0, 1.0, 0.0)), u.x), u.y),
+             mix(mix(dot(hash3(i + float3(0.0, 0.0, 1.0)), f - float3(0.0, 0.0, 1.0)),
+                     dot(hash3(i + float3(1.0, 0.0, 1.0)), f - float3(1.0, 0.0, 1.0)), u.x),
+                 mix(dot(hash3(i + float3(0.0, 1.0, 1.0)), f - float3(0.0, 1.0, 1.0)),
+                     dot(hash3(i + float3(1.0, 1.0, 1.0)), f - float3(1.0, 1.0, 1.0)), u.x), u.y), u.z);
+}
+
+float fbm(float3 p) {
+  float a = 0.5;
+  float s = 0.0;
+  float an = 0.0;
+  for (int i = 0; i < 4; i++) {
+    if (i >= uOct) break;
+    s += a * vnoise(p);
+    an += a;
+    p = p * 2.03 + float3(1.7, 9.2, 3.1);
+    a *= 0.5;
+  }
+  return s * (0.9375 / max(an, 0.5));
+}
+
+float ridged(float3 p) {
+  float a = 0.55;
+  float s = 0.0;
+  float an = 0.0;
+  for (int i = 0; i < 4; i++) {
+    if (i >= uOct) break;
+    s += a * (1.0 - abs(vnoise(p)));
+    an += a;
+    p = p * 2.1 + float3(3.1, 1.3, 7.7);
+    a *= 0.5;
+  }
+  return s * (1.03125 / max(an, 0.55));
+}
+
+float2 hash2(float2 p) {
+  p = float2(dot(p, float2(127.1, 311.7)), dot(p, float2(269.5, 183.3)));
+  return fract(sin(p) * 43758.5453);
+}
+
+float voro(float3 n, float scale) {
+  float2 uv = float2(atan(n.z, n.x), asin(clamp(n.y, -1.0, 1.0))) * scale;
+  float2 i = floor(uv);
+  float2 f = fract(uv);
+  float d1 = 8.0;
+  float d2 = 8.0;
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      float2 g = float2(float(x), float(y));
+      float2 r = g + hash2(i + g) - f;
+      float d = dot(r, r);
+      if (d < d1) { d2 = d1; d1 = d; } else if (d < d2) { d2 = d; }
+    }
+  }
+  return sqrt(d2) - sqrt(d1);
+}
+
+float2x2 rot(float a) {
+  float c = cos(a);
+  float s = sin(a);
+  return float2x2(c, -s, s, c);
+}
+
+float surf(float3 p) {
+  float rip = 0.0;
+  if (uPhase == 3) {
+    rip = uLevel * 0.10 * vnoise(p * 4.0 + float3(0.0, uTime * 2.4, 0.0))
+        + uLevel * 0.025 * sin(14.0 * p.y + uTime * 9.0);
+  }
+  if (uPhase == 1) {
+    rip = -0.025 * uLevel * vnoise(p * 6.0 - uTime);
+  }
+  return length(p) - R - rip;
+}
+
+float3 nrm(float3 p) {
+  float2 e = float2(0.002, 0.0);
+  return normalize(float3(surf(p + e.xyy) - surf(p - e.xyy),
+                          surf(p + e.yxy) - surf(p - e.yxy),
+                          surf(p + e.yyx) - surf(p - e.yyx)));
+}
+
+float3 env(float3 d) {
+  float3 sky = mix(float3(0.02, 0.04, 0.10), float3(0.08, 0.13, 0.30), ss(-0.6, 0.9, d.y));
+  float band = ss(0.985, 1.0, dot(d, normalize(float3(-0.5, 0.8, 0.3))));
+  float band2 = ss(0.97, 1.0, dot(d, normalize(float3(0.7, 0.4, -0.2)))) * 0.6;
+  float strip = ss(0.02, 0.0, abs(d.y - 0.55)) * ss(0.3, 0.0, abs(d.x)) * 0.35;
+  return sky + float3(1.0) * (band + band2) + float3(0.8, 0.9, 1.0) * strip;
+}
+
+float3 inside(float3 p0, float3 rd) {
+  float3 acc = float3(0.0);
+  float t = 0.0;
+  float3 p = p0;
+  float listening = (uPhase == 1) ? 1.0 : 0.0;
+  float thinking = (uPhase == 2) ? 1.0 : 0.0;
+  float speaking = (uPhase == 3) ? 1.0 : 0.0;
+  float spin = uTime * 0.22 + thinking * uTime * 0.9;
+  float breathe = 1.0 + 0.08 * sin(uTime * 1.1);
+  float pulse = 1.0 + speaking * 0.9 * uLevel + listening * 0.3 * uLevel;
+  float inv = 1.0 / float(uInner);
+  float stepLen = 1.95 * inv;
+  float w = 1.508 * inv;
+  float2x2 spinM = rot(spin);
+  float2x2 leanM = rot(0.4);
+  float2x2 ringM = rot(0.9 + 0.3 * sin(uTime * 0.4));
+  for (int i = 0; i < 20; i++) {
+    if (i >= uInner) break;
+    float3 q = p;
+    q.xz = spinM * q.xz;
+    q.xy = leanM * q.xy;
+    float rr = length(p);
+    float3 flow = float3(0.0, uTime * 0.30, 0.0) + listening * normalize(q + 0.0001) * uTime * 0.9;
+    float n1 = fbm(q * 2.1 * breathe - flow);
+    float n2 = ridged(q * 3.4 + float3(uTime * 0.12, -uTime * 0.2, 0.0));
+    float veins = pow(max(n2 - 0.56, 0.0001) * 2.5, 2.2);
+    float3 q2 = q;
+    q2.yz = ringM * q2.yz;
+    float ring1 = ss(0.045, 0.0, abs(length(q.xz) - 0.62)) * ss(0.05, 0.0, abs(q.y)) * (0.9 + 0.6 * n1);
+    float ring2 = ss(0.04, 0.0, abs(length(q2.xz) - 0.5)) * ss(0.05, 0.0, abs(q2.y)) * (0.4 + 0.6 * n2);
+    float rings = (ring1 + ring2) * (0.7 + 0.8 * uLevel);
+    float cloud = pow(max(ss(0.24, 0.92, n1 + 0.3), 0.0001), 1.25) * ss(1.0, 0.15, rr);
+    float band = thinking * ss(0.09, 0.0, abs(q.y - 0.3 * sin(uTime * 1.6))) * ss(0.95, 0.4, rr) * (0.6 + 0.6 * n2);
+    float core = exp(-rr * rr * 9.0) * pulse;
+    float3 col = mix(uColA, uColB, ss(0.15, 0.85, n1 + 0.35)) * cloud * (0.95 + 0.5 * uLevel)
+               + uColC * rings * 0.9
+               + mix(uColB, uColC, ss(0.9, 0.2, rr)) * veins * ss(1.0, 0.25, rr) * (1.3 + 1.2 * uLevel)
+               + uColC * band * 2.4
+               + mix(uColC, float3(1.0), 0.6) * core * 1.1;
+    acc += col * w * (1.0 - 0.5 * float(i) * inv);
+    t += stepLen;
+    p = p0 + rd * t;
+    if (length(p) > R + 0.05) break;
+  }
+  return acc;
+}
+
+half4 main(float2 fragCoord) {
+  float2 uv = (fragCoord - uCenter) / max(uRadius, 1.0) * VIEW;
+  uv.y = -uv.y;
+  float edge = 1.0 - ss(0.96, VIEW, length(uv));
+  float3 ro = float3(0.0, 0.0, 3.2);
+  float3 rd = normalize(float3(uv, -2.6));
+  float2x2 tx = rot(uTilt.x * 0.35);
+  float2x2 ty = rot(-uTilt.y * 0.3);
+  ro.xz = tx * ro.xz;
+  rd.xz = tx * rd.xz;
+  ro.yz = ty * ro.yz;
+  rd.yz = ty * rd.yz;
+  float3 col = float3(0.0);
+  float alpha = 0.0;
+
+  float t = 0.0;
+  bool hit = false;
+  float3 p = ro;
+  for (int i = 0; i < 42; i++) {
+    if (i >= uSteps) break;
+    p = ro + rd * t;
+    float d = surf(p);
+    if (d < 0.002) { hit = true; break; }
+    t += d * 0.85;
+    if (t > 6.0) break;
+  }
+  float dist = length(cross(rd, -ro));
+  float tight = exp(-max(dist - R, 0.0) * 9.0) * (0.55 + 1.0 * uLevel);
+  float wide = exp(-max(dist - R, 0.0) * 2.2) * (0.18 + 0.5 * uLevel);
+  float act = (uPhase > 0) ? 1.0 : 0.55;
+  col += uRim * (tight + wide) * act;
+
+  if (hit) {
+    float3 n = nrm(p);
+    float3 v = -rd;
+    float fres = pow(max(1.0 - max(dot(n, v), 0.0), 0.0001), 3.0);
+    float3 rr = refract(rd, n, 1.0 / 1.42);
+    float3 glow = inside(p + rr * 0.02, rr);
+    if (uChroma == 1) {
+      float3 rr2 = refract(rd, n, 1.0 / 1.5);
+      glow.b = mix(glow.b, inside(p + rr2 * 0.02, rr2).b, 0.5);
+    }
+    float3 refl = env(reflect(rd, n));
+    float3 l1 = normalize(float3(-0.5, 0.8, 0.6));
+    float3 l2 = normalize(float3(0.7, 0.3, 0.5));
+    float sp = pow(max(dot(reflect(-l1, n), v), 0.0001), 180.0) + 0.45 * pow(max(dot(reflect(-l2, n), v), 0.0001), 65.0);
+    float detail = 0.0;
+    if (uLook == 1) {
+      float3 q = abs(fract(n * 6.0 + float3(0.0, uTime * 0.05, 0.0)) - 0.5);
+      float grid = ss(0.06, 0.0, min(min(q.x, q.y), q.z)) * 1.6;
+      float f = fbm(n * 5.0 + uTime * 0.15);
+      float travel = 0.5 + 0.5 * sin(uTime * 3.0 + (n.x + n.y) * 12.0);
+      detail = grid * ss(0.05, 0.45, f) * (0.7 + 0.6 * travel);
+    }
+    if (uLook == 2) {
+      float e = voro(n, 2.2 + 0.6 * sin(uTime * 0.6));
+      detail = ss(0.09, 0.0, e) * (0.7 + 0.5 * sin(uTime * 2.0 + e * 20.0));
+    }
+    float3 surfaceCol = glow * (0.9 - 0.4 * fres) + refl * (0.10 + 0.85 * fres) + float3(1.0) * sp * 1.3 + uRim * detail * (0.9 + 0.9 * uLevel);
+    surfaceCol += uRim * fres * (0.7 + 0.8 * uLevel);
+    col = surfaceCol + col * 0.4;
+    alpha = 1.0;
+  } else {
+    alpha = clamp((tight + wide) * 1.3, 0.0, 1.0) * edge;
+    col *= edge;
+  }
+  col *= uGlow;
+  col = col / (1.0 + col * 0.35);
+  col = pow(max(col, float3(0.0001)), float3(0.90));
+  col = clamp(col, 0.0, 1.0);
+  return half4(col * alpha, alpha);
+}
+"""
+
+@RequiresApi(Build.VERSION_CODES.TIRAMISU)
+private object AyshaOrbAgslHelper {
+    fun buildShaderOrNull(): RuntimeShader? = runCatching { RuntimeShader(AYSHA_ORB_AGSL) }.getOrNull()
+
+    fun configureAndBrush(
+        shader: RuntimeShader,
+        center: Offset,
+        radius: Float,
+        timeSec: Float,
+        level: Float,
+        orbState: OrbState,
+        orbStyle: OrbStyle,
+        coreColor: Color,
+        mainColor: Color,
+    ): ShaderBrush {
+        val phaseInt = when (orbState) {
+            OrbState.LISTENING -> 1
+            OrbState.PROCESSING, OrbState.CONNECTING, OrbState.AUTOMATING -> 2
+            OrbState.SPEAKING -> 3
+            else -> 0
+        }
+        val lookInt = when (orbStyle) {
+            OrbStyle.JARVIS_3D -> 1
+            OrbStyle.ULTRON -> 2
+            else -> 0
+        }
+        shader.setFloatUniform("uCenter", center.x, center.y)
+        shader.setFloatUniform("uRadius", radius.coerceAtLeast(10f))
+        shader.setFloatUniform("uTime", timeSec)
+        shader.setFloatUniform("uLevel", level.coerceIn(0f, 1.2f))
+        shader.setIntUniform("uPhase", phaseInt)
+        shader.setIntUniform("uLook", lookInt)
+        shader.setFloatUniform("uTilt", sin(timeSec * 0.6f) * 0.22f, cos(timeSec * 0.45f) * 0.16f)
+        shader.setFloatUniform("uColA", mainColor.red * 0.45f, mainColor.green * 0.45f, mainColor.blue * 0.5f)
+        shader.setFloatUniform("uColB", mainColor.red, mainColor.green, mainColor.blue)
+        shader.setFloatUniform("uColC", coreColor.red, coreColor.green, coreColor.blue)
+        shader.setFloatUniform("uRim", mainColor.red, mainColor.green, mainColor.blue)
+        shader.setFloatUniform("uGlow", 1.16f + level * 0.28f)
+        shader.setIntUniform("uSteps", 36)
+        shader.setIntUniform("uInner", 14)
+        shader.setIntUniform("uOct", 3)
+        shader.setIntUniform("uChroma", 1)
+        return ShaderBrush(shader)
+    }
+}
+
 @Composable
 fun AyshaAvatarRing(
     size: Dp = 112.dp,
     isSpeaking: Boolean = false,
+    audioLevel: Float = 0f,
     modifier: Modifier = Modifier,
 ) {
     val c = LocalAyshaColors.current
@@ -78,17 +383,26 @@ fun AyshaAvatarRing(
         animationSpec = infiniteRepeatable(tween(900, easing = FastOutSlowInEasing), RepeatMode.Reverse),
         label = "ring_pulse",
     )
+    val smoothAudio by animateFloatAsState(
+        targetValue = audioLevel.coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 420f),
+        label = "avatar_audio",
+    )
 
     Box(
         modifier = modifier
             .size(size)
-            .scale(pulse),
+            .scale(pulse + smoothAudio * 0.06f),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             drawCircle(
                 brush = Brush.radialGradient(
-                    colors = listOf(c.accentPrimary.copy(alpha = 0.42f), c.accentSecondary.copy(alpha = 0.18f), Color.Transparent),
+                    colors = listOf(
+                        c.accentPrimary.copy(alpha = (0.38f + smoothAudio * 0.25f).coerceIn(0.25f, 0.75f)),
+                        c.accentSecondary.copy(alpha = 0.18f),
+                        Color.Transparent,
+                    ),
                 ),
                 radius = this.size.minDimension * 0.56f,
             )
@@ -109,7 +423,12 @@ fun AyshaAvatarRing(
             modifier = Modifier
                 .size(size - 10.dp)
                 .clip(CircleShape)
-                .border(1.5.dp, Color.White.copy(alpha = 0.35f), CircleShape),
+                .border(1.5.dp, Color.White.copy(alpha = 0.35f), CircleShape)
+                .graphicsLayer {
+                    val zoom = 1f + smoothAudio * 0.045f
+                    scaleX = zoom
+                    scaleY = zoom
+                },
         )
     }
 }
@@ -123,6 +442,11 @@ fun AyshaVoiceOrb(
     orbSize: Dp = 148.dp,
     orbStyle: OrbStyle = OrbStyle.AYSHA_2047,
     hudColor: HudColorOption = HudColorOption.CYAN,
+    hudCoreColor: HudColorOption = hudColor,
+    hudMainColor: HudColorOption = hudColor,
+    hudRaysLengthPct: Float = 0.72f,
+    hudRingEnabled: Boolean = true,
+    renderMode: OrbRenderMode = OrbRenderMode.HUD_ORB,
     showCenterIcon: Boolean = true,
 ) {
     val c = LocalAyshaColors.current
@@ -130,7 +454,7 @@ fun AyshaVoiceOrb(
 
     val smoothLevel by animateFloatAsState(
         targetValue = audioLevel.coerceIn(0f, 1f),
-        animationSpec = tween(90),
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 460f),
         label = "audio_level",
     )
 
@@ -155,13 +479,68 @@ fun AyshaVoiceOrb(
         ),
         label = "orb_spin",
     )
+    val agslSec by inf.animateFloat(
+        initialValue = 0f,
+        targetValue = 60f,
+        animationSpec = infiniteRepeatable(tween(60_000, easing = LinearEasing)),
+        label = "agsl_time",
+    )
 
-    val styleColors = resolveOrbPalette(orbStyle, hudColor, orbState, c.error, c.success)
-    val statePrimary = styleColors.first
-    val stateSecondary = styleColors.second
+    val agslShader = remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            AyshaOrbAgslHelper.buildShaderOrNull()
+        } else {
+            null
+        }
+    }
+
+    val styleColors = resolveOrbPalette(orbStyle, hudMainColor, hudCoreColor, orbState, c.error, c.success)
+    val mainPrimary = styleColors.first
+    val coreAccent = styleColors.second
 
     val breathe = 1f + sin(phase.toDouble()).toFloat() * (if (orbState == OrbState.IDLE) 0.025f else 0.055f)
     val totalScale = (breathe + smoothLevel * 0.14f).coerceIn(0.95f, 1.22f)
+
+    if (renderMode == OrbRenderMode.ANIMATED_AVATAR) {
+        Box(
+            modifier = modifier
+                .size(orbSize + 44.dp)
+                .clickable(
+                    interactionSource = remember { MutableInteractionSource() },
+                    indication = null,
+                    onClick = onTap,
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawHudTelemetryRing(
+                    primary = mainPrimary,
+                    secondary = coreAccent,
+                    spin = spin,
+                    level = smoothLevel,
+                    raysPct = hudRaysLengthPct,
+                    ringEnabled = hudRingEnabled,
+                )
+            }
+            AyshaAvatarRing(
+                size = orbSize * 0.92f,
+                isSpeaking = orbState == OrbState.SPEAKING || orbState == OrbState.LISTENING,
+                audioLevel = smoothLevel,
+            )
+        }
+        return
+    }
+
+    val useAgsl = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+        agslShader != null &&
+        orbStyle in setOf(
+            OrbStyle.AYSHA_2047,
+            OrbStyle.NOVA_3D,
+            OrbStyle.JARVIS_3D,
+            OrbStyle.LIQUID_CORE,
+            OrbStyle.PULSE_REACTOR,
+            OrbStyle.ULTRON,
+        )
 
     Box(
         modifier = modifier
@@ -174,19 +553,52 @@ fun AyshaVoiceOrb(
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
-            drawStyledOrb(
-                style = orbStyle,
-                primary = statePrimary,
-                secondary = stateSecondary,
-                phase = phase,
-                spin = spin,
-                level = smoothLevel,
-                scale = totalScale,
-                isActive = orbState != OrbState.IDLE,
-            )
+            val cPos = Offset(size.width / 2f, size.height / 2f)
+            val r = size.minDimension * 0.46f
+
+            if (useAgsl && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && agslShader != null) {
+                drawHudTelemetryRing(
+                    primary = mainPrimary,
+                    secondary = coreAccent,
+                    spin = spin,
+                    level = smoothLevel,
+                    raysPct = hudRaysLengthPct,
+                    ringEnabled = hudRingEnabled,
+                )
+                val shaderRadius = r * 0.68f * totalScale
+                val brush = AyshaOrbAgslHelper.configureAndBrush(
+                    shader = agslShader,
+                    center = cPos,
+                    radius = shaderRadius,
+                    timeSec = agslSec,
+                    level = smoothLevel,
+                    orbState = orbState,
+                    orbStyle = orbStyle,
+                    coreColor = coreAccent,
+                    mainColor = mainPrimary,
+                )
+                drawCircle(
+                    brush = brush,
+                    center = cPos,
+                    radius = shaderRadius * 1.15f,
+                )
+            } else {
+                drawStyledOrb(
+                    style = orbStyle,
+                    primary = mainPrimary,
+                    secondary = coreAccent,
+                    phase = phase,
+                    spin = spin,
+                    level = smoothLevel,
+                    scale = totalScale,
+                    isActive = orbState != OrbState.IDLE,
+                    raysPct = hudRaysLengthPct,
+                    ringEnabled = hudRingEnabled,
+                )
+            }
         }
 
-        if (showCenterIcon) {
+        if (showCenterIcon && !useAgsl) {
             val icon = when (orbState) {
                 OrbState.LISTENING, OrbState.SPEAKING -> Icons.Rounded.Stop
                 OrbState.PROCESSING, OrbState.CONNECTING -> Icons.Rounded.AutoAwesome
@@ -204,7 +616,8 @@ fun AyshaVoiceOrb(
 
 private fun resolveOrbPalette(
     orbStyle: OrbStyle,
-    hudColor: HudColorOption,
+    hudMain: HudColorOption,
+    hudCore: HudColorOption,
     orbState: OrbState,
     errorColor: Color,
     successColor: Color,
@@ -215,9 +628,47 @@ private fun resolveOrbPalette(
     return when (orbStyle) {
         OrbStyle.JARVIS, OrbStyle.JARVIS_3D -> Color(0xFFF59E0B) to Color(0xFFEA580C)
         OrbStyle.FRIDAY -> Color(0xFFFACC15) to Color(0xFFF97316)
-        OrbStyle.RED_HUD -> Color(0xFFEF4444) to Color(0xFFF97316)
+        OrbStyle.RED_HUD -> Color(hudMain.primaryHex) to Color(hudCore.primaryHex)
         OrbStyle.ULTRON -> Color(0xFF38BDF8) to Color(0xFF2563EB)
-        else -> Color(hudColor.primaryHex) to Color(hudColor.secondaryHex)
+        else -> Color(hudMain.primaryHex) to Color(hudCore.primaryHex)
+    }
+}
+
+private fun DrawScope.drawHudTelemetryRing(
+    primary: Color,
+    secondary: Color,
+    spin: Float,
+    level: Float,
+    raysPct: Float,
+    ringEnabled: Boolean,
+) {
+    val r = size.minDimension * 0.46f
+    val cPos = Offset(size.width / 2f, size.height / 2f)
+    if (!ringEnabled) return
+
+    val tickCount = 36
+    val rayReach = raysPct.coerceIn(0.35f, 1.25f)
+    for (i in 0 until tickCount) {
+        val a = (i * 10f + spin * 0.35f) * (PI / 180.0)
+        val inner = r * 0.80f
+        val extra = if (i % 3 == 0) 0.14f * rayReach else 0.07f * rayReach
+        val outer = r * (0.82f + extra) + level * 7f
+        drawLine(
+            color = (if (i % 6 == 0) secondary else primary).copy(alpha = if (i % 3 == 0) 0.72f else 0.25f),
+            start = Offset(cPos.x + (cos(a) * inner).toFloat(), cPos.y + (sin(a) * inner).toFloat()),
+            end = Offset(cPos.x + (cos(a) * outer).toFloat(), cPos.y + (sin(a) * outer).toFloat()),
+            strokeWidth = if (i % 3 == 0) 2.dp.toPx() else 1.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+    }
+    for (d in 0 until 6) {
+        val a = (d * 60f - spin * 0.65f) * (PI / 180.0)
+        val orbitR = r * 0.94f
+        drawCircle(
+            color = if (d % 2 == 0) secondary else primary,
+            radius = 2.6.dp.toPx(),
+            center = Offset(cPos.x + (cos(a) * orbitR).toFloat(), cPos.y + (sin(a) * orbitR).toFloat()),
+        )
     }
 }
 
@@ -230,11 +681,12 @@ private fun DrawScope.drawStyledOrb(
     level: Float,
     scale: Float,
     isActive: Boolean,
+    raysPct: Float,
+    ringEnabled: Boolean,
 ) {
     val r = size.minDimension * 0.46f
     val cPos = Offset(size.width / 2f, size.height / 2f)
 
-    // Soft ambient radial halo
     drawCircle(
         brush = Brush.radialGradient(
             colors = listOf(
@@ -249,23 +701,12 @@ private fun DrawScope.drawStyledOrb(
         radius = r * (1.06f + level * 0.16f),
     )
 
+    if (ringEnabled && style != OrbStyle.RED_HUD) {
+        drawHudTelemetryRing(primary, secondary, spin, level, raysPct, true)
+    }
+
     when (style) {
         OrbStyle.AYSHA_2047 -> {
-            // Outer telemetry ticks
-            val tickCount = 36
-            for (i in 0 until tickCount) {
-                val a = (i * 10f + spin * 0.4f) * (PI / 180.0)
-                val inner = r * 0.85f
-                val outer = r * (if (i % 3 == 0) 0.96f else 0.91f) + level * 8f
-                drawLine(
-                    color = primary.copy(alpha = if (i % 3 == 0) 0.72f else 0.28f),
-                    start = Offset(cPos.x + (cos(a) * inner).toFloat(), cPos.y + (sin(a) * inner).toFloat()),
-                    end = Offset(cPos.x + (cos(a) * outer).toFloat(), cPos.y + (sin(a) * outer).toFloat()),
-                    strokeWidth = if (i % 3 == 0) 2.2.dp.toPx() else 1.2.dp.toPx(),
-                    cap = StrokeCap.Round,
-                )
-            }
-            // Counter-rotating HUD arcs
             rotate(spin) {
                 drawArc(
                     brush = Brush.sweepGradient(listOf(primary, secondary, Color.White.copy(alpha = 0.8f), primary)),
@@ -288,7 +729,6 @@ private fun DrawScope.drawStyledOrb(
                     style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
                 )
             }
-            // Core sphere
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(primary.copy(alpha = 0.9f), secondary.copy(alpha = 0.85f), Color(0xFF050811)),
@@ -385,7 +825,6 @@ private fun DrawScope.drawStyledOrb(
         }
 
         OrbStyle.FRIDAY -> {
-            // Golden visor horizontal bracket arcs + wave core
             rotate(spin * 0.35f) {
                 drawArc(
                     color = primary,
@@ -411,7 +850,6 @@ private fun DrawScope.drawStyledOrb(
                 center = cPos,
                 radius = r * 0.62f * scale,
             )
-            // Visor wave lines
             val wavePath = Path()
             val steps = 28
             for (i in 0..steps) {
@@ -424,30 +862,41 @@ private fun DrawScope.drawStyledOrb(
         }
 
         OrbStyle.RED_HUD -> {
-            val rayCount = 16
+            val rayCount = 24
+            val reach = raysPct.coerceIn(0.35f, 1.25f)
             for (i in 0 until rayCount) {
                 val a = (i * (360f / rayCount) + spin * 0.5f) * (PI / 180.0)
-                val len = r * (0.64f + 0.28f * (sin(phase + i).toFloat() * 0.5f + 0.5f) + level * 0.12f)
+                val len = r * (0.58f + 0.30f * reach * (sin(phase + i).toFloat() * 0.5f + 0.5f) + level * 0.12f)
                 drawLine(
-                    color = if (i % 2 == 0) primary else secondary,
-                    start = Offset(cPos.x + (cos(a) * r * 0.3f).toFloat(), cPos.y + (sin(a) * r * 0.3f).toFloat()),
+                    color = if (i % 3 == 0) secondary else primary,
+                    start = Offset(cPos.x + (cos(a) * r * 0.32f).toFloat(), cPos.y + (sin(a) * r * 0.32f).toFloat()),
                     end = Offset(cPos.x + (cos(a) * len).toFloat(), cPos.y + (sin(a) * len).toFloat()),
-                    strokeWidth = 2.2.dp.toPx(),
+                    strokeWidth = if (i % 2 == 0) 2.4.dp.toPx() else 1.4.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
             }
+            // Core neuron cluster
+            for (n in 0 until 8) {
+                val a = (n * 45f - spin * 0.8f) * (PI / 180.0)
+                val nr = r * 0.24f * (sin(phase + n).toFloat() * 0.35f + 0.75f)
+                drawCircle(
+                    color = secondary,
+                    radius = 2.8.dp.toPx(),
+                    center = Offset(cPos.x + (cos(a) * nr).toFloat(), cPos.y + (sin(a) * nr).toFloat()),
+                )
+            }
             drawCircle(
-                brush = Brush.radialGradient(listOf(Color.White.copy(alpha = 0.7f), primary, Color(0xFF140406))),
+                brush = Brush.radialGradient(listOf(Color.White.copy(alpha = 0.72f), secondary, primary.copy(alpha = 0.85f), Color(0xFF140406))),
                 center = cPos,
-                radius = r * 0.46f * scale,
+                radius = r * 0.44f * scale,
             )
         }
 
         OrbStyle.PARTICLE_SWARM -> {
-            val count = 24
+            val count = 28
             for (i in 0 until count) {
                 val angle = (i * (2f * PI.toFloat() / count)) + (spin * PI.toFloat() / 180f) * (if (i % 2 == 0) 1f else -0.7f)
-                val orbit = r * (0.56f + (i % 4) * 0.10f + level * 0.12f)
+                val orbit = r * (0.54f + (i % 4) * 0.10f * raysPct + level * 0.12f)
                 val px = cPos.x + cos(angle) * orbit
                 val py = cPos.y + sin(angle) * orbit
                 drawCircle(

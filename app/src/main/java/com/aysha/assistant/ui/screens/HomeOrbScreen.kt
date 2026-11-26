@@ -4,6 +4,11 @@ import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -40,6 +45,7 @@ import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.ColorLens
 import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Language
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
@@ -103,6 +109,7 @@ fun HomeOrbScreen(
     onOpenBrowser: () -> Unit = {},
     onOpenRulesAgents: () -> Unit = {},
     onOpenAutomation: () -> Unit = {},
+    onOpenSecretSettings: () -> Unit = {},
 ) {
     val c = LocalAyshaColors.current
     val context = LocalContext.current
@@ -225,7 +232,7 @@ fun HomeOrbScreen(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        // Maya-style Personalized Greeting + Mood & Energy Row
+        // Maya-style Personalized Greeting + Mood/Energy/Level Telemetry Strip
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -235,24 +242,31 @@ fun HomeOrbScreen(
                 Text(
                     text = greeting,
                     color = c.textPrimary,
-                    fontSize = 15.5.sp,
+                    fontSize = 16.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${settings.orbStyle.label} · ${settings.companionMode.label}",
+                    text = "${settings.orbStyle.label} · ${settings.companionIntimacy.label} · ${mood.caption}",
                     color = c.textSecondary,
                     fontSize = 11.5.sp,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            GlassPill(
-                text = "${mood.label} · $energy%",
-                dotColor = Color(mood.colorHex),
-                onClick = onOpenRulesAgents,
-            )
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                GlassPill(
+                    text = settings.companionIntimacy.label,
+                    dotColor = Color(0xFFEC4899),
+                    onClick = onOpenSecretSettings,
+                )
+                GlassPill(
+                    text = "${mood.label} · $energy%",
+                    dotColor = Color(mood.colorHex),
+                    onClick = onOpenRulesAgents,
+                )
+            }
         }
 
         if (timerRemaining > 0L) {
@@ -307,13 +321,18 @@ fun HomeOrbScreen(
             QuickChip("Scanner", Icons.Rounded.CameraAlt, onOpenScanner)
             QuickChip("Whiteboard", Icons.Rounded.EditNote, onOpenWhiteboard)
             QuickChip("Browser", Icons.Rounded.Language, onOpenBrowser)
-            QuickChip("Rules & Agents", Icons.Rounded.Tune, onOpenRulesAgents)
+            QuickChip("Secret", Icons.Rounded.Favorite, onOpenSecretSettings)
+            QuickChip("Rules", Icons.Rounded.Tune, onOpenRulesAgents)
             QuickChip("Vibes", Icons.Rounded.MusicNote, onOpenRulesAgents)
             QuickChip("Automation", Icons.Rounded.Bolt, onOpenAutomation)
+            QuickChip("Dil ki baat", Icons.Rounded.ChatBubbleOutline) {
+                viewModel.sendTextMessage("Dil ki baat karni hai — sunogi?")
+                onOpenChat()
+            }
             QuickChip("SOS", Icons.Rounded.Warning) { viewModel.triggerSosConfirmation() }
         }
 
-        // Main Center Stage
+        // Main Center Stage with Smooth Animated Transition
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -322,215 +341,252 @@ fun HomeOrbScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            when (orbState) {
-                OrbState.LISTENING, OrbState.CONNECTING -> {
-                    GlassCard(
-                        cornerRadius = 50.dp,
-                        elevated = true,
-                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 9.dp),
-                    ) {
-                        val label = when {
-                            orbState == OrbState.CONNECTING -> "Connect ho rahi hai..."
-                            followUpLeft > 0 -> "Follow-up (${followUpLeft}s) · Sun rahi hai..."
-                            else -> "Sun rahi hai..."
-                        }
-                        Text(label, color = c.textPrimary, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                    }
-                    Spacer(modifier = Modifier.height(22.dp))
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        EqualizerWaveformRow(active = true, audioLevel = audioLevel, barCount = 7, maxHeight = 56.dp)
-                        Spacer(modifier = Modifier.width(4.dp))
-                        AyshaVoiceOrb(
-                            orbState = orbState,
-                            audioLevel = audioLevel,
-                            onTap = { viewModel.stopActiveVoiceOrSpeech() },
-                            orbSize = 158.dp,
-                            orbStyle = settings.orbStyle,
-                            hudColor = settings.hudColor,
-                        )
-                        Spacer(modifier = Modifier.width(4.dp))
-                        EqualizerWaveformRow(active = true, audioLevel = audioLevel, barCount = 7, maxHeight = 56.dp)
-                    }
-                    Spacer(modifier = Modifier.height(14.dp))
-                    if (statusText.isNotBlank() && !statusText.contains("Listening", ignoreCase = true)) {
-                        GlassCard(
-                            modifier = Modifier.fillMaxWidth(0.92f),
-                            cornerRadius = 18.dp,
-                            contentPadding = PaddingValues(12.dp),
-                        ) {
-                            Text(
-                                text = statusText,
-                                color = c.textPrimary,
-                                fontSize = 13.5.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth(),
-                            )
-                        }
-                        Spacer(modifier = Modifier.height(14.dp))
-                    }
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        GlassCard(
-                            cornerRadius = 50.dp,
-                            elevated = true,
-                            onClick = { viewModel.stopActiveVoiceOrSpeech() },
-                            contentPadding = PaddingValues(horizontal = 26.dp, vertical = 12.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Stop, contentDescription = "Stop", tint = c.textPrimary, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Tap to stop", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                            }
-                        }
-                        if (settings.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE) {
+            AnimatedContent(
+                targetState = orbState,
+                transitionSpec = { fadeIn(tween(240)) togetherWith fadeOut(tween(180)) },
+                label = "orb_stage_transition",
+            ) { stage ->
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    when (stage) {
+                        OrbState.LISTENING, OrbState.CONNECTING -> {
                             GlassCard(
                                 cornerRadius = 50.dp,
                                 elevated = true,
-                                onClick = { viewModel.toggleLiveMute() },
+                                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 9.dp),
+                            ) {
+                                val label = when {
+                                    stage == OrbState.CONNECTING -> "CONNECT HO RAHI HAI…"
+                                    liveMuted -> "MIC MUTE HAI"
+                                    followUpLeft > 0 -> "Follow-up (${followUpLeft}s) · SUN RAHI HAI…"
+                                    else -> "SUN RAHI HAI…"
+                                }
+                                Text(label, color = c.textPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                            }
+                            Spacer(modifier = Modifier.height(22.dp))
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                EqualizerWaveformRow(active = true, audioLevel = audioLevel, barCount = 7, maxHeight = 56.dp)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                AyshaVoiceOrb(
+                                    orbState = stage,
+                                    audioLevel = audioLevel,
+                                    onTap = { viewModel.stopActiveVoiceOrSpeech() },
+                                    orbSize = 158.dp,
+                                    orbStyle = settings.orbStyle,
+                                    hudColor = settings.hudColor,
+                                    hudCoreColor = settings.hudCoreColor,
+                                    hudMainColor = settings.hudMainColor,
+                                    hudRaysLengthPct = settings.hudRaysLengthPct,
+                                    hudRingEnabled = settings.hudRingEnabled,
+                                    renderMode = settings.orbRenderMode,
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                EqualizerWaveformRow(active = true, audioLevel = audioLevel, barCount = 7, maxHeight = 56.dp)
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            if (statusText.isNotBlank() && !statusText.contains("Listening", ignoreCase = true)) {
+                                GlassCard(
+                                    modifier = Modifier.fillMaxWidth(0.92f),
+                                    cornerRadius = 18.dp,
+                                    contentPadding = PaddingValues(12.dp),
+                                ) {
+                                    Text(
+                                        text = statusText,
+                                        color = c.textPrimary,
+                                        fontSize = 13.5.sp,
+                                        textAlign = TextAlign.Center,
+                                        modifier = Modifier.fillMaxWidth(),
+                                    )
+                                }
+                                Spacer(modifier = Modifier.height(14.dp))
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                GlassCard(
+                                    cornerRadius = 50.dp,
+                                    elevated = true,
+                                    onClick = { viewModel.stopActiveVoiceOrSpeech() },
+                                    contentPadding = PaddingValues(horizontal = 26.dp, vertical = 12.dp),
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.Stop, contentDescription = "Stop", tint = c.textPrimary, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Roko", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                    }
+                                }
+                                if (settings.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE) {
+                                    GlassCard(
+                                        cornerRadius = 50.dp,
+                                        elevated = true,
+                                        onClick = { viewModel.toggleLiveMute() },
+                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                                    ) {
+                                        Icon(
+                                            imageVector = if (liveMuted) Icons.Rounded.MicOff else Icons.Rounded.Mic,
+                                            contentDescription = "Mute",
+                                            tint = if (liveMuted) c.warning else c.accentPrimary,
+                                            modifier = Modifier.size(20.dp),
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        OrbState.SPEAKING -> {
+                            GlassCard(
+                                cornerRadius = 50.dp,
+                                elevated = true,
+                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 7.dp),
+                            ) {
+                                Text("BOL RAHI HAI…", color = c.accentPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                            }
+                            Spacer(modifier = Modifier.height(10.dp))
+                            GlassCard(
+                                modifier = Modifier.fillMaxWidth(0.92f),
+                                cornerRadius = 20.dp,
+                                elevated = true,
                                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                             ) {
-                                Icon(
-                                    imageVector = if (liveMuted) Icons.Rounded.MicOff else Icons.Rounded.Mic,
-                                    contentDescription = "Mute",
-                                    tint = if (liveMuted) c.warning else c.accentPrimary,
-                                    modifier = Modifier.size(20.dp),
+                                Text(
+                                    text = lastReply,
+                                    color = c.textPrimary,
+                                    fontSize = 13.5.sp,
+                                    maxLines = 4,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth(),
                                 )
                             }
-                        }
-                    }
-                }
-
-                OrbState.SPEAKING -> {
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth(0.92f),
-                        cornerRadius = 20.dp,
-                        elevated = true,
-                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                    ) {
-                        Text(
-                            text = lastReply,
-                            color = c.textPrimary,
-                            fontSize = 13.5.sp,
-                            maxLines = 4,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    AyshaVoiceOrb(
-                        orbState = orbState,
-                        audioLevel = audioLevel.coerceAtLeast(0.45f),
-                        onTap = { viewModel.stopActiveVoiceOrSpeech() },
-                        orbSize = 156.dp,
-                        orbStyle = settings.orbStyle,
-                        hudColor = settings.hudColor,
-                    )
-                    Spacer(modifier = Modifier.height(14.dp))
-                    EqualizerWaveformRow(
-                        active = true,
-                        audioLevel = audioLevel.coerceAtLeast(0.45f),
-                        barCount = 24,
-                        maxHeight = 40.dp,
-                    )
-                    if (settings.bargeInEnabled) {
-                        Text(
-                            text = "Barge-in ON — beech me bol kar rok sakte ho",
-                            color = c.textSecondary,
-                            fontSize = 11.sp,
-                            modifier = Modifier.padding(top = 6.dp),
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        GlassCard(
-                            cornerRadius = 50.dp,
-                            elevated = true,
-                            onClick = { viewModel.stopActiveVoiceOrSpeech() },
-                            contentPadding = PaddingValues(horizontal = 26.dp, vertical = 11.dp),
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Stop, contentDescription = "Stop", tint = c.textPrimary, modifier = Modifier.size(18.dp))
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text("Stop", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                            Spacer(modifier = Modifier.height(14.dp))
+                            AyshaVoiceOrb(
+                                orbState = stage,
+                                audioLevel = audioLevel.coerceAtLeast(0.45f),
+                                onTap = { viewModel.stopActiveVoiceOrSpeech() },
+                                orbSize = 156.dp,
+                                orbStyle = settings.orbStyle,
+                                hudColor = settings.hudColor,
+                                hudCoreColor = settings.hudCoreColor,
+                                hudMainColor = settings.hudMainColor,
+                                hudRaysLengthPct = settings.hudRaysLengthPct,
+                                hudRingEnabled = settings.hudRingEnabled,
+                                renderMode = settings.orbRenderMode,
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            EqualizerWaveformRow(
+                                active = true,
+                                audioLevel = audioLevel.coerceAtLeast(0.45f),
+                                barCount = 24,
+                                maxHeight = 40.dp,
+                            )
+                            if (settings.bargeInEnabled) {
+                                Text(
+                                    text = "Barge-in ON — beech me bol kar rok sakte ho",
+                                    color = c.textSecondary,
+                                    fontSize = 11.sp,
+                                    modifier = Modifier.padding(top = 6.dp),
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                GlassCard(
+                                    cornerRadius = 50.dp,
+                                    elevated = true,
+                                    onClick = { viewModel.stopActiveVoiceOrSpeech() },
+                                    contentPadding = PaddingValues(horizontal = 26.dp, vertical = 11.dp),
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.Stop, contentDescription = "Stop", tint = c.textPrimary, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Roko", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                                    }
+                                }
+                                GlassCard(
+                                    cornerRadius = 50.dp,
+                                    elevated = true,
+                                    onClick = { viewModel.replayLastResponse() },
+                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
+                                ) {
+                                    Icon(Icons.Rounded.Replay, contentDescription = "Replay", tint = c.accentPrimary, modifier = Modifier.size(20.dp))
+                                }
                             }
                         }
-                        GlassCard(
-                            cornerRadius = 50.dp,
-                            elevated = true,
-                            onClick = { viewModel.replayLastResponse() },
-                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
-                        ) {
-                            Icon(Icons.Rounded.Replay, contentDescription = "Replay", tint = c.accentPrimary, modifier = Modifier.size(20.dp))
+
+                        else -> {
+                            if (settings.orbRenderMode != com.aysha.assistant.core.OrbRenderMode.ANIMATED_AVATAR) {
+                                AyshaAvatarRing(size = 82.dp, isSpeaking = false)
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+
+                            GlassCard(
+                                modifier = Modifier.fillMaxWidth(0.94f),
+                                cornerRadius = 18.dp,
+                                elevated = true,
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            ) {
+                                Text(
+                                    text = when (stage) {
+                                        OrbState.PROCESSING, OrbState.AUTOMATING -> statusText
+                                        OrbState.ERROR -> statusText
+                                        else -> lastReply.ifBlank { "BOLO, KAISE HELP KARUN?" }
+                                    },
+                                    color = if (stage == OrbState.ERROR) c.error else c.textPrimary,
+                                    fontSize = 13.5.sp,
+                                    maxLines = 3,
+                                    overflow = TextOverflow.Ellipsis,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth(),
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center,
+                            ) {
+                                EqualizerWaveformRow(
+                                    active = stage == OrbState.PROCESSING || stage == OrbState.AUTOMATING,
+                                    audioLevel = audioLevel,
+                                    barCount = 5,
+                                    maxHeight = 42.dp,
+                                )
+                                AyshaVoiceOrb(
+                                    orbState = stage,
+                                    audioLevel = audioLevel,
+                                    onTap = { viewModel.onOrbTap() },
+                                    orbSize = 138.dp,
+                                    orbStyle = settings.orbStyle,
+                                    hudColor = settings.hudColor,
+                                    hudCoreColor = settings.hudCoreColor,
+                                    hudMainColor = settings.hudMainColor,
+                                    hudRaysLengthPct = settings.hudRaysLengthPct,
+                                    hudRingEnabled = settings.hudRingEnabled,
+                                    renderMode = settings.orbRenderMode,
+                                )
+                                EqualizerWaveformRow(
+                                    active = stage == OrbState.PROCESSING || stage == OrbState.AUTOMATING,
+                                    audioLevel = audioLevel,
+                                    barCount = 5,
+                                    maxHeight = 42.dp,
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                            ) {
+                                HomeDockCircle("Chat", Icons.Rounded.ChatBubbleOutline, onOpenChat)
+                                HomeDockCircle("Talk start", Icons.Rounded.Mic) { viewModel.onOrbTap() }
+                                HomeDockCircle("Scanner", Icons.Rounded.CameraAlt, onOpenScanner)
+                                HomeDockCircle("Hub", Icons.Rounded.Apps, onOpenMoreSheet)
+                            }
                         }
-                    }
-                }
-
-                else -> {
-                    AyshaAvatarRing(size = 86.dp, isSpeaking = false)
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    GlassCard(
-                        modifier = Modifier.fillMaxWidth(0.94f),
-                        cornerRadius = 18.dp,
-                        elevated = true,
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                    ) {
-                        Text(
-                            text = when (orbState) {
-                                OrbState.PROCESSING, OrbState.AUTOMATING -> statusText
-                                OrbState.ERROR -> statusText
-                                else -> lastReply
-                            },
-                            color = if (orbState == OrbState.ERROR) c.error else c.textPrimary,
-                            fontSize = 13.5.sp,
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis,
-                            textAlign = TextAlign.Center,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.Center,
-                    ) {
-                        EqualizerWaveformRow(
-                            active = orbState == OrbState.PROCESSING || orbState == OrbState.AUTOMATING,
-                            audioLevel = audioLevel,
-                            barCount = 5,
-                            maxHeight = 42.dp,
-                        )
-                        AyshaVoiceOrb(
-                            orbState = orbState,
-                            audioLevel = audioLevel,
-                            onTap = { viewModel.onOrbTap() },
-                            orbSize = 132.dp,
-                            orbStyle = settings.orbStyle,
-                            hudColor = settings.hudColor,
-                        )
-                        EqualizerWaveformRow(
-                            active = orbState == OrbState.PROCESSING || orbState == OrbState.AUTOMATING,
-                            audioLevel = audioLevel,
-                            barCount = 5,
-                            maxHeight = 42.dp,
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(6.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly,
-                    ) {
-                        HomeDockCircle("Chat", Icons.Rounded.ChatBubbleOutline, onOpenChat)
-                        HomeDockCircle("Voice", Icons.Rounded.Mic) { viewModel.onOrbTap() }
-                        HomeDockCircle("Scanner", Icons.Rounded.CameraAlt, onOpenScanner)
-                        HomeDockCircle("Hub", Icons.Rounded.Apps, onOpenMoreSheet)
                     }
                 }
             }
