@@ -1,0 +1,11 @@
+.gradle/
+build/
+*/build/
+.idea/
+*.iml
+local.properties
+*.keystore
+*.jks
+apk-out/
+wakeword/src/main/assets/model-en-in/
+!gradle/wrapper/gradle-wrapper.jar

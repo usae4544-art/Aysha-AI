@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AYSHA – Your Personal AI Assistant</string>
+    <string name="accessibility_service_label">AYSHA Automation &amp; Screen Helper</string>
+    <string name="accessibility_service_description">Optional user-controlled automation for AYSHA voice workflows, reading screen text when asked, and executing your saved macros.</string>
+    <string name="notification_listener_label">AYSHA Notification Reader</string>
+</resources>

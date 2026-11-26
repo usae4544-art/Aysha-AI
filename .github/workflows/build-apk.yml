@@ -1,0 +1,98 @@
+name: Build AYSHA AI Android APK
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-apk:
+    name: Test, Lint & Build AYSHA APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Accept Android SDK Licenses
+        run: |
+          SDKMGR=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/cmdline-tools" -name sdkmanager | head -n 1)
+          if [ -n "$SDKMGR" ]; then
+            yes | "$SDKMGR" --licenses >/dev/null 2>&1 || true
+          fi
+
+      - name: Bundle Offline Vosk Wake-Word Model
+        run: |
+          mkdir -p wakeword/src/main/assets/model-en-in /tmp/vosk-unpack
+          curl -sSL --retry 3 https://alphacephei.com/vosk/models/vosk-model-small-en-in-0.4.zip -o /tmp/vosk-in.zip
+          unzip -q /tmp/vosk-in.zip -d /tmp/vosk-unpack
+          cp -r /tmp/vosk-unpack/vosk-model-small-en-in-0.4/* wakeword/src/main/assets/model-en-in/
+          ls -la wakeword/src/main/assets/model-en-in/
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.10.2"
+
+      - name: Generate Release Keystore
+        run: |
+          keytool -genkeypair -v \
+            -keystore aysha-release.keystore \
+            -storepass ayshafree123 \
+            -alias aysha \
+            -keypass ayshafree123 \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=AYSHA AI,OU=OpenSource,O=AYSHA,C=IN"
+
+      - name: Run All Module Unit Tests
+        run: gradle testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Run Lint Check
+        run: gradle :app:lintDebug --no-daemon
+
+      - name: Build Debug & Signed Release APKs
+        run: gradle assembleDebug assembleRelease --no-daemon --stacktrace
+
+      - name: Package & Verify APKs
+        run: |
+          mkdir -p apk-out
+          DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          cp "$DEBUG_APK" apk-out/AYSHA-v1.0.0-debug.apk
+          cp "$RELEASE_APK" apk-out/AYSHA-v1.0.0-release.apk
+          APKSIGNER=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -name apksigner | sort -V | tail -n 1)
+          "$APKSIGNER" verify --verbose apk-out/AYSHA-v1.0.0-release.apk
+          ls -lh apk-out/
+          sha256sum apk-out/*.apk
+
+      - name: Upload APK Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: aysha-ai-apk
+          path: apk-out/*.apk
+          retention-days: 30
+
+      - name: Publish GitHub Release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v1.0.0"
+          gh release delete "$TAG" --yes 2>/dev/null || true
+          gh release create "$TAG" apk-out/AYSHA-v1.0.0-release.apk apk-out/AYSHA-v1.0.0-debug.apk \
+            --title "AYSHA v1.0.0 – Your Personal AI Assistant" \
+            --notes "Free-first native modular Kotlin + Jetpack Compose Android AI Assistant with Liquid Glass UI, offline mode, multi-provider AI fallback, Android Keystore encryption, Room history/memory, multi-personality voice engine, on-device Vosk wake-word detection, floating glass orb, and accessibility automation." \
+            --latest

@@ -1,0 +1,31 @@
+package com.aysha.assistant.wakeword
+
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+
+object WakeWordStatusBus {
+    private val _isRunning = MutableStateFlow(false)
+    val isRunning: StateFlow<Boolean> = _isRunning.asStateFlow()
+
+    private val _modelState = MutableStateFlow(WakeModelState.IDLE)
+    val modelState: StateFlow<WakeModelState> = _modelState.asStateFlow()
+
+    private val _statusText = MutableStateFlow("Wake word off")
+    val statusText: StateFlow<String> = _statusText.asStateFlow()
+
+    private val _micEnergy = MutableStateFlow(0f)
+    val micEnergy: StateFlow<Float> = _micEnergy.asStateFlow()
+
+    fun publish(
+        running: Boolean? = null,
+        state: WakeModelState? = null,
+        status: String? = null,
+        energy: Float? = null,
+    ) {
+        if (running != null) _isRunning.value = running
+        if (state != null) _modelState.value = state
+        if (status != null) _statusText.value = status
+        if (energy != null) _micEnergy.value = energy
+    }
+}
