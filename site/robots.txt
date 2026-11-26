@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /Aysha-AI/
+Disallow: /Aysha-AI/app-auth.html
+Disallow: /Aysha-AI/firebase-config.json
+
+Sitemap: https://usae4544-art.github.io/Aysha-AI/sitemap.xml
