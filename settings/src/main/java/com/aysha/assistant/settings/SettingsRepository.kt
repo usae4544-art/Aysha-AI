@@ -7,14 +7,25 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
+import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.aysha.assistant.core.AccentPalette
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AssistantLanguage
+import com.aysha.assistant.core.AwarenessSensitivity
 import com.aysha.assistant.core.BrainProvider
+import com.aysha.assistant.core.CompanionMode
+import com.aysha.assistant.core.CornerStyle
+import com.aysha.assistant.core.HudColorOption
+import com.aysha.assistant.core.MayaPalette
+import com.aysha.assistant.core.OrbStyle
 import com.aysha.assistant.core.PersonalityStyle
+import com.aysha.assistant.core.SubAgentRole
+import com.aysha.assistant.core.SurfaceStyle
 import com.aysha.assistant.core.ThemeMode
+import com.aysha.assistant.core.UiFontFamily
+import com.aysha.assistant.core.UiTextScale
 import com.aysha.assistant.core.VoiceEngineMode
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,8 +61,26 @@ class SettingsRepository(private val context: Context) {
         val floatingOrbEnabled = booleanPreferencesKey("floating_orb_enabled")
         val themeMode = stringPreferencesKey("theme_mode")
         val accentPalette = stringPreferencesKey("accent_palette")
+        val mayaPalette = stringPreferencesKey("maya_palette")
+        val surfaceStyle = stringPreferencesKey("surface_style")
+        val cornerStyle = stringPreferencesKey("corner_style")
+        val uiFont = stringPreferencesKey("ui_font")
+        val uiScale = stringPreferencesKey("ui_scale")
+        val orbStyle = stringPreferencesKey("orb_style")
+        val hudColor = stringPreferencesKey("hud_color")
         val glassTransparency = floatPreferencesKey("glass_transparency")
         val personalityStyle = stringPreferencesKey("personality_style")
+        val companionMode = stringPreferencesKey("companion_mode")
+        val activeSubAgent = stringPreferencesKey("active_sub_agent")
+        val awarenessEnabled = booleanPreferencesKey("awareness_enabled")
+        val awarenessSensitivity = stringPreferencesKey("awareness_sensitivity")
+        val followUpWindowSeconds = intPreferencesKey("followup_window_seconds")
+        val bargeInEnabled = booleanPreferencesKey("barge_in_enabled")
+        val muteDuringMedia = booleanPreferencesKey("mute_during_media")
+        val emergencyContact = stringPreferencesKey("emergency_contact")
+        val emergencySosMessage = stringPreferencesKey("emergency_sos_message")
+        val appLockEnabled = booleanPreferencesKey("app_lock_enabled")
+        val selectedVibeId = stringPreferencesKey("selected_vibe_id")
         val geminiTextModel = stringPreferencesKey("gemini_text_model")
         val geminiLiveModel = stringPreferencesKey("gemini_live_model")
         val groqModel = stringPreferencesKey("groq_model")
@@ -60,6 +89,7 @@ class SettingsRepository(private val context: Context) {
         val localBaseUrl = stringPreferencesKey("local_base_url")
         val localModel = stringPreferencesKey("local_model")
         val onboardingCompleted = booleanPreferencesKey("onboarding_completed")
+        val autoMemoryEnabled = booleanPreferencesKey("auto_memory_enabled")
         val soundFeedbackEnabled = booleanPreferencesKey("sound_feedback_enabled")
         val notificationSummaryEnabled = booleanPreferencesKey("notification_summary_enabled")
 
@@ -82,6 +112,7 @@ class SettingsRepository(private val context: Context) {
             if (err is IOException) emit(emptyPreferences()) else throw err
         }
         .map { p ->
+            val mayaPal = enumOrDefault(p[Keys.mayaPalette], MayaPalette.OBSIDIAN)
             AppSettings(
                 assistantName = p[Keys.assistantName]?.ifBlank { "AYSHA" } ?: "AYSHA",
                 userName = p[Keys.userName]?.ifBlank { "Friend" } ?: "Friend",
@@ -101,10 +132,29 @@ class SettingsRepository(private val context: Context) {
                 wakeWordsCsv = p[Keys.wakeWordsCsv]?.ifBlank { "Hey Aysha,Hello Aysha,Wake up Aysha" }
                     ?: "Hey Aysha,Hello Aysha,Wake up Aysha",
                 floatingOrbEnabled = p[Keys.floatingOrbEnabled] ?: false,
-                themeMode = enumOrDefault(p[Keys.themeMode], ThemeMode.DARK),
+                themeMode = if (mayaPal.isDark) ThemeMode.DARK else ThemeMode.LIGHT,
                 accentPalette = enumOrDefault(p[Keys.accentPalette], AccentPalette.COSMIC_CYAN),
+                mayaPalette = mayaPal,
+                surfaceStyle = enumOrDefault(p[Keys.surfaceStyle], SurfaceStyle.GLASS),
+                cornerStyle = enumOrDefault(p[Keys.cornerStyle], CornerStyle.ROUNDED),
+                uiFont = enumOrDefault(p[Keys.uiFont], UiFontFamily.INTER),
+                uiScale = enumOrDefault(p[Keys.uiScale], UiTextScale.NORMAL),
+                orbStyle = enumOrDefault(p[Keys.orbStyle], OrbStyle.AYSHA_2047),
+                hudColor = enumOrDefault(p[Keys.hudColor], HudColorOption.CYAN),
                 glassTransparency = (p[Keys.glassTransparency] ?: 0.72f).coerceIn(0.35f, 0.95f),
                 personalityStyle = enumOrDefault(p[Keys.personalityStyle], PersonalityStyle.FRIENDLY),
+                companionMode = enumOrDefault(p[Keys.companionMode], CompanionMode.BEST_FRIEND),
+                activeSubAgent = enumOrDefault(p[Keys.activeSubAgent], SubAgentRole.AUTO),
+                awarenessEnabled = p[Keys.awarenessEnabled] ?: true,
+                awarenessSensitivity = enumOrDefault(p[Keys.awarenessSensitivity], AwarenessSensitivity.BALANCED),
+                followUpWindowSeconds = (p[Keys.followUpWindowSeconds] ?: 12).coerceIn(0, 60),
+                bargeInEnabled = p[Keys.bargeInEnabled] ?: true,
+                muteDuringMedia = p[Keys.muteDuringMedia] ?: false,
+                emergencyContact = p[Keys.emergencyContact] ?: "",
+                emergencySosMessage = p[Keys.emergencySosMessage]?.ifBlank { "Emergency! Please call me or check on me right now." }
+                    ?: "Emergency! Please call me or check on me right now.",
+                appLockEnabled = p[Keys.appLockEnabled] ?: false,
+                selectedVibeId = p[Keys.selectedVibeId]?.ifBlank { "chill" } ?: "chill",
                 geminiTextModel = p[Keys.geminiTextModel]?.ifBlank { "gemini-3.8-flash" } ?: "gemini-3.8-flash",
                 geminiLiveModel = p[Keys.geminiLiveModel]?.ifBlank { "gemini-3.8-live" } ?: "gemini-3.8-live",
                 groqModel = p[Keys.groqModel]?.ifBlank { "llama-3.3-70b-versatile" } ?: "llama-3.3-70b-versatile",
@@ -113,6 +163,7 @@ class SettingsRepository(private val context: Context) {
                 localBaseUrl = p[Keys.localBaseUrl]?.ifBlank { "http://127.0.0.1:11434/v1" } ?: "http://127.0.0.1:11434/v1",
                 localModel = p[Keys.localModel]?.ifBlank { "llama3.2" } ?: "llama3.2",
                 onboardingCompleted = p[Keys.onboardingCompleted] ?: false,
+                autoMemoryEnabled = p[Keys.autoMemoryEnabled] ?: true,
                 soundFeedbackEnabled = p[Keys.soundFeedbackEnabled] ?: true,
                 notificationSummaryEnabled = p[Keys.notificationSummaryEnabled] ?: true,
                 geminiApiKey = KeystoreCrypto.decrypt(p[Keys.encGeminiKey].orEmpty()),
@@ -143,10 +194,28 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.wakeWordEnabled] = next.wakeWordEnabled
             prefs[Keys.wakeWordsCsv] = next.wakeWordsCsv
             prefs[Keys.floatingOrbEnabled] = next.floatingOrbEnabled
-            prefs[Keys.themeMode] = next.themeMode.name
+            prefs[Keys.themeMode] = if (next.mayaPalette.isDark) ThemeMode.DARK.name else ThemeMode.LIGHT.name
             prefs[Keys.accentPalette] = next.accentPalette.name
+            prefs[Keys.mayaPalette] = next.mayaPalette.name
+            prefs[Keys.surfaceStyle] = next.surfaceStyle.name
+            prefs[Keys.cornerStyle] = next.cornerStyle.name
+            prefs[Keys.uiFont] = next.uiFont.name
+            prefs[Keys.uiScale] = next.uiScale.name
+            prefs[Keys.orbStyle] = next.orbStyle.name
+            prefs[Keys.hudColor] = next.hudColor.name
             prefs[Keys.glassTransparency] = next.glassTransparency.coerceIn(0.35f, 0.95f)
             prefs[Keys.personalityStyle] = next.personalityStyle.name
+            prefs[Keys.companionMode] = next.companionMode.name
+            prefs[Keys.activeSubAgent] = next.activeSubAgent.name
+            prefs[Keys.awarenessEnabled] = next.awarenessEnabled
+            prefs[Keys.awarenessSensitivity] = next.awarenessSensitivity.name
+            prefs[Keys.followUpWindowSeconds] = next.followUpWindowSeconds.coerceIn(0, 60)
+            prefs[Keys.bargeInEnabled] = next.bargeInEnabled
+            prefs[Keys.muteDuringMedia] = next.muteDuringMedia
+            prefs[Keys.emergencyContact] = next.emergencyContact.trim()
+            prefs[Keys.emergencySosMessage] = next.emergencySosMessage.trim()
+            prefs[Keys.appLockEnabled] = next.appLockEnabled
+            prefs[Keys.selectedVibeId] = next.selectedVibeId
             prefs[Keys.geminiTextModel] = next.geminiTextModel
             prefs[Keys.geminiLiveModel] = next.geminiLiveModel
             prefs[Keys.groqModel] = next.groqModel
@@ -155,6 +224,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.localBaseUrl] = next.localBaseUrl
             prefs[Keys.localModel] = next.localModel
             prefs[Keys.onboardingCompleted] = next.onboardingCompleted
+            prefs[Keys.autoMemoryEnabled] = next.autoMemoryEnabled
             prefs[Keys.soundFeedbackEnabled] = next.soundFeedbackEnabled
             prefs[Keys.notificationSummaryEnabled] = next.notificationSummaryEnabled
 
@@ -187,10 +257,15 @@ class SettingsRepository(private val context: Context) {
     suspend fun exportSafeConfigJson(): String =
         buildSafeExportJson(settingsFlow.first())
 
+    suspend fun restoreSafeSettings(jsonObj: JSONObject) {
+        update { cur -> applySafeRestoreJson(cur, jsonObj) }
+    }
+
     companion object {
         fun buildSafeExportJson(s: AppSettings): String {
             return JSONObject().apply {
                 put("app", "AYSHA – Your Personal AI Assistant")
+                put("version", "2.0.0")
                 put("assistantName", s.assistantName)
                 put("userName", s.userName)
                 put("language", s.language.name)
@@ -200,10 +275,57 @@ class SettingsRepository(private val context: Context) {
                 put("voicePersonalityId", s.voicePersonalityId)
                 put("themeMode", s.themeMode.name)
                 put("accentPalette", s.accentPalette.name)
+                put("mayaPalette", s.mayaPalette.name)
+                put("surfaceStyle", s.surfaceStyle.name)
+                put("cornerStyle", s.cornerStyle.name)
+                put("uiFont", s.uiFont.name)
+                put("uiScale", s.uiScale.name)
+                put("orbStyle", s.orbStyle.name)
+                put("hudColor", s.hudColor.name)
                 put("personalityStyle", s.personalityStyle.name)
+                put("companionMode", s.companionMode.name)
+                put("activeSubAgent", s.activeSubAgent.name)
+                put("awarenessEnabled", s.awarenessEnabled)
+                put("awarenessSensitivity", s.awarenessSensitivity.name)
+                put("followUpWindowSeconds", s.followUpWindowSeconds)
+                put("bargeInEnabled", s.bargeInEnabled)
+                put("muteDuringMedia", s.muteDuringMedia)
                 put("wakeWordsCsv", s.wakeWordsCsv)
+                put("emergencyContact", s.emergencyContact)
                 put("apiKeysIncluded", false)
             }.toString(2)
+        }
+
+        fun applySafeRestoreJson(cur: AppSettings, obj: JSONObject): AppSettings {
+            val palette = enumOrDefault(obj.optString("mayaPalette"), cur.mayaPalette)
+            return cur.copy(
+                assistantName = obj.optString("assistantName").ifBlank { cur.assistantName },
+                userName = obj.optString("userName").ifBlank { cur.userName },
+                language = enumOrDefault(obj.optString("language"), cur.language),
+                activeProvider = enumOrDefault(obj.optString("activeProvider"), cur.activeProvider),
+                fallbackEnabled = obj.optBoolean("fallbackEnabled", cur.fallbackEnabled),
+                offlineOnlyMode = obj.optBoolean("offlineOnlyMode", cur.offlineOnlyMode),
+                voicePersonalityId = obj.optString("voicePersonalityId").ifBlank { cur.voicePersonalityId },
+                mayaPalette = palette,
+                themeMode = if (palette.isDark) ThemeMode.DARK else ThemeMode.LIGHT,
+                accentPalette = enumOrDefault(obj.optString("accentPalette"), cur.accentPalette),
+                surfaceStyle = enumOrDefault(obj.optString("surfaceStyle"), cur.surfaceStyle),
+                cornerStyle = enumOrDefault(obj.optString("cornerStyle"), cur.cornerStyle),
+                uiFont = enumOrDefault(obj.optString("uiFont"), cur.uiFont),
+                uiScale = enumOrDefault(obj.optString("uiScale"), cur.uiScale),
+                orbStyle = enumOrDefault(obj.optString("orbStyle"), cur.orbStyle),
+                hudColor = enumOrDefault(obj.optString("hudColor"), cur.hudColor),
+                personalityStyle = enumOrDefault(obj.optString("personalityStyle"), cur.personalityStyle),
+                companionMode = enumOrDefault(obj.optString("companionMode"), cur.companionMode),
+                activeSubAgent = enumOrDefault(obj.optString("activeSubAgent"), cur.activeSubAgent),
+                awarenessEnabled = obj.optBoolean("awarenessEnabled", cur.awarenessEnabled),
+                awarenessSensitivity = enumOrDefault(obj.optString("awarenessSensitivity"), cur.awarenessSensitivity),
+                followUpWindowSeconds = obj.optInt("followUpWindowSeconds", cur.followUpWindowSeconds).coerceIn(0, 60),
+                bargeInEnabled = obj.optBoolean("bargeInEnabled", cur.bargeInEnabled),
+                muteDuringMedia = obj.optBoolean("muteDuringMedia", cur.muteDuringMedia),
+                wakeWordsCsv = obj.optString("wakeWordsCsv").ifBlank { cur.wakeWordsCsv },
+                emergencyContact = obj.optString("emergencyContact", cur.emergencyContact),
+            )
         }
 
         private inline fun <reified T : Enum<T>> enumOrDefault(raw: String?, default: T): T {

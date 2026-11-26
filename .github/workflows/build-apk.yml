@@ -72,10 +72,10 @@ jobs:
           mkdir -p apk-out
           DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          cp "$DEBUG_APK" apk-out/AYSHA-v1.0.0-debug.apk
-          cp "$RELEASE_APK" apk-out/AYSHA-v1.0.0-release.apk
+          cp "$DEBUG_APK" apk-out/AYSHA-v2.0.0-debug.apk
+          cp "$RELEASE_APK" apk-out/AYSHA-v2.0.0-release.apk
           APKSIGNER=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -name apksigner | sort -V | tail -n 1)
-          "$APKSIGNER" verify --verbose apk-out/AYSHA-v1.0.0-release.apk
+          "$APKSIGNER" verify --verbose apk-out/AYSHA-v2.0.0-release.apk
           ls -lh apk-out/
           sha256sum apk-out/*.apk
 
@@ -90,9 +90,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v1.0.0"
+          TAG="v2.0.0"
           gh release delete "$TAG" --yes 2>/dev/null || true
-          gh release create "$TAG" apk-out/AYSHA-v1.0.0-release.apk apk-out/AYSHA-v1.0.0-debug.apk \
-            --title "AYSHA v1.0.0 – Your Personal AI Assistant" \
-            --notes "Free-first native modular Kotlin + Jetpack Compose Android AI Assistant with Liquid Glass UI, offline mode, multi-provider AI fallback, Android Keystore encryption, Room history/memory, multi-personality voice engine, on-device Vosk wake-word detection, floating glass orb, and accessibility automation." \
+          gh release create "$TAG" apk-out/AYSHA-v2.0.0-release.apk apk-out/AYSHA-v2.0.0-debug.apk \
+            --title "AYSHA v2.0.0 – Maya-Parity UI & Internal Engine" \
+            --notes "Free & Open-Source (MIT) native modular Kotlin + Jetpack Compose Android AI Assistant: 11 interactive HUD/3D Orbs, 9 Obsidian/Midnight/Abyss/Ember/Clay themes, Barge-In + Awareness Gate + Follow-up window, Semantic TF-IDF Memory + AYSHA Rules + Documents, Sub-Agents, Camera Vision Scanner, Study Whiteboard, In-App Browser, Backup & Restore, and Emergency SOS." \
             --latest

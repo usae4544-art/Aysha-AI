@@ -1,0 +1,245 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AYSHA — Your Personal Android AI Assistant</title>
+  <meta name="description" content="Free & Open-Source (MIT) native Android AI assistant with 11 interactive HUD voice orbs, speaker barge-in, semantic local memory, rules, camera scanner, study whiteboard, and AES-256 keystore privacy." />
+  <meta name="theme-color" content="#000000" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="nav-wrap">
+    <div class="container nav">
+      <a class="brand" href="index.html">
+        <span class="brand-mark" aria-hidden="true"></span>
+        <span>AYSHA</span>
+        <span class="version-tag mono" id="nav-version">v2.0.0</span>
+      </a>
+      <nav class="nav-links" aria-label="Main Navigation">
+        <a href="#features">Architecture</a>
+        <a href="#orbs">Orbs &amp; Themes</a>
+        <a href="#security">Privacy</a>
+        <a href="license.html">MIT License</a>
+        <a href="https://github.com/usae4544-art/Aysha-AI" target="_blank" rel="noopener">GitHub</a>
+      </nav>
+      <a class="btn btn-primary btn-sm" id="nav-download" href="https://github.com/usae4544-art/Aysha-AI/releases/latest" target="_blank" rel="noopener">
+        Download APK
+      </a>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero container">
+      <div class="hero-copy">
+        <div class="status-line mono">
+          <span class="live-dot" aria-hidden="true"></span>
+          <span>100% Free &amp; Open Source · MIT Licensed · Android 8.0–15</span>
+        </div>
+        <h1>A personal AI assistant built for your Android phone</h1>
+        <p class="lead">
+          AYSHA runs real voice conversations, speaker barge-in, on-device wake words, semantic memory, user rules, camera vision scanning, and accessibility automation — with zero subscriptions, zero ads, and hardware-encrypted keys.
+        </p>
+
+        <div class="hero-actions">
+          <a class="btn btn-primary" id="hero-download-btn" href="https://github.com/usae4544-art/Aysha-AI/releases/latest" target="_blank" rel="noopener">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span id="hero-download-label">Download Latest APK</span>
+          </a>
+          <a class="btn btn-ghost" href="https://github.com/usae4544-art/Aysha-AI" target="_blank" rel="noopener">
+            Source on GitHub
+          </a>
+        </div>
+
+        <div class="release-meta mono" id="release-meta">
+          <span>Package: <strong class="text-hi">com.aysha.assistant</strong></span>
+          <span>Build: <strong class="text-hi" id="release-tag-text">v2.0.0</strong></span>
+          <span id="release-size-text">Signed Release + Debug APKs</span>
+        </div>
+      </div>
+
+      <div class="hero-stage" id="orbs">
+        <div class="device-frame">
+          <div class="device-topbar">
+            <span class="pill-chip mono"><span class="live-dot"></span><span id="orb-stage-status">Ready · Obsidian</span></span>
+            <span class="pill-chip mono" id="orb-stage-name">AYSHA 2047</span>
+          </div>
+
+          <div class="orb-canvas-wrap">
+            <canvas id="orb-canvas" width="360" height="360" aria-label="Interactive AYSHA Voice Orb Preview"></canvas>
+          </div>
+
+          <div class="device-reply-box">
+            <div class="mono reply-kicker">Follow-up Window · 12s · Barge-In Active</div>
+            <p id="orb-demo-line">Namaste! Main Aysha hoon — bolo, aaj phone pe kya kaam karoon?</p>
+          </div>
+
+          <div class="orb-switcher" role="tablist" aria-label="Orb Style Switcher">
+            <button class="orb-tab active" data-orb="aysha2047" type="button">AYSHA 2047</button>
+            <button class="orb-tab" data-orb="liquid" type="button">Liquid Core</button>
+            <button class="orb-tab" data-orb="jarvis" type="button">J.A.R.V.I.S.</button>
+            <button class="orb-tab" data-orb="reactor" type="button">Pulse Reactor</button>
+            <button class="orb-tab" data-orb="ultron" type="button">Ultron</button>
+          </div>
+
+          <div class="orb-controls">
+            <button class="btn-sim" id="sim-voice-btn" type="button">Simulate Voice Pulse</button>
+            <span class="mono hint-text">Move cursor or tap orb</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="metrics-band">
+      <div class="container metrics-grid">
+        <div class="metric-item">
+          <div class="metric-num mono">10</div>
+          <div class="metric-label">Modular Kotlin Gradle Libraries</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-num mono">11</div>
+          <div class="metric-label">Interactive HUD &amp; Plasma Orbs</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-num mono">9</div>
+          <div class="metric-label">Obsidian, Clay &amp; Glass Themes</div>
+        </div>
+        <div class="metric-item">
+          <div class="metric-num mono">0</div>
+          <div class="metric-label">Paywalls, Ads or Daily Limits</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container" id="features">
+      <div class="section-head">
+        <span class="kicker mono">Core Architecture</span>
+        <h2>Built end-to-end for real phone control and natural Hinglish voice</h2>
+        <p>Every layer runs cleanly in native Kotlin and Jetpack Compose with offline-first fallbacks and explicit user control.</p>
+      </div>
+
+      <div class="bento-grid">
+        <article class="card card-wide">
+          <div class="card-meta mono">Voice &amp; Awareness Engine</div>
+          <h3>Speaker Barge-In, Follow-Up Window &amp; On-Device Wake Word</h3>
+          <p>
+            Talk naturally without repeating "Hey Aysha" on every turn. AYSHA monitors speaker barge-in using Android hardware AcousticEchoCanceler &amp; NoiseSuppressor, respects media/TV mute preferences, and processes wake phrases locally via Vosk with Reserved, Balanced, and Alert sensitivity profiles.
+          </p>
+          <div class="tag-row mono">
+            <span>Gemini Live Audio</span>
+            <span>Vosk KWS</span>
+            <span>AEC3 / NS Barge-In</span>
+            <span>Decision Log</span>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-meta mono">Semantic Memory &amp; Rules</div>
+          <h3>Hinglish TF-IDF Recall + AYSHA Rules</h3>
+          <p>
+            Stores memories in Room SQLite with source tags, archive/restore, document chunking, and user-defined behavior rules (e.g. "Ab se hamesha chhote jawab dena") prioritized directly in the system prompt.
+          </p>
+        </article>
+
+        <article class="card">
+          <div class="card-meta mono">Theme &amp; Surface Engine</div>
+          <h3>Obsidian, Midnight, Clay &amp; Inter/Mono</h3>
+          <p>
+            Switch seamlessly across 9 palettes, 4 card surfaces (Glass, Clay, Flat, Soft), 4 corner radii, UI scaling, and bundled SIL OFL Inter, Nunito, and JetBrains Mono typefaces.
+          </p>
+        </article>
+
+        <article class="card">
+          <div class="card-meta mono">Vision, Tutor &amp; Browser</div>
+          <h3>Scanner, Study Whiteboard &amp; Mini Browser</h3>
+          <p>
+            Capture or pick photos to solve questions visually, learn step-by-step on the dark Study Whiteboard with code blocks, or summarize any webpage from the built-in browser.
+          </p>
+        </article>
+
+        <article class="card">
+          <div class="card-meta mono">Phone &amp; Accessibility</div>
+          <h3>Smart Macros &amp; Confirmation Safety</h3>
+          <p>
+            Open apps, toggle flashlight, set reminders, inspect screens, and run multi-step macros. Sensitive actions like Calls, SMS, and Emergency SOS always require explicit confirmation.
+          </p>
+        </article>
+      </div>
+    </section>
+
+    <section class="section container" id="security">
+      <div class="split-panel">
+        <div>
+          <span class="kicker mono">Privacy &amp; BYOK</span>
+          <h2>Your keys, your data, encrypted on your phone</h2>
+          <p>
+            Bring your own free Google Gemini, Groq, OpenAI-compatible, or local Ollama endpoint—or run 100% offline with zero keys. All secrets are encrypted inside hardware-backed AndroidKeyStore AES-256-GCM and redacted from logs and JSON backups.
+          </p>
+          <div class="check-list">
+            <div><span class="check-dot"></span>Hardware-backed AES-256-GCM Keystore vault</div>
+            <div><span class="check-dot"></span>Full JSON Backup &amp; Restore (API keys never exported)</div>
+            <div><span class="check-dot"></span>Optional Device PIN / Biometric launch guard</div>
+            <div><span class="check-dot"></span>100% MIT Open-Source code auditable on GitHub</div>
+          </div>
+        </div>
+        <div class="code-panel mono">
+          <div class="code-panel-head">
+            <span>aysha-modules.gradle.kts</span>
+            <span>Kotlin 2.1 · API 35</span>
+          </div>
+<pre><code>include(
+  ":app",
+  ":core",              // Palettes, Surfaces, OFL Fonts
+  ":settings",          // AndroidKeyStore AES-256-GCM
+  ":memory",            // Room v2, TF-IDF, Rules, Docs
+  ":voice",             // STT/TTS + BargeInDetector
+  ":wakeword",          // Vosk VAD + Awareness Gate
+  ":phonecontrol",      // Calls, SMS, SOS, Weather
+  ":automation",        // Accessibility + MacroEngine
+  ":ai",                // Gemini Live + Multi-Provider
+  ":floatingassistant"  // Draggable Overlay Orb
+)</code></pre>
+        </div>
+      </div>
+    </section>
+
+    <section class="section container cta-section">
+      <div class="cta-box">
+        <div>
+          <span class="kicker mono">Get Started</span>
+          <h2>Install AYSHA v2.0.0 on Android</h2>
+          <p>Free forever. Download the signed Release APK directly from GitHub Releases or inspect and compile the source yourself.</p>
+        </div>
+        <div class="cta-actions">
+          <a class="btn btn-primary" id="footer-download-btn" href="https://github.com/usae4544-art/Aysha-AI/releases/latest" target="_blank" rel="noopener">
+            Download APK
+          </a>
+          <a class="btn btn-ghost" href="license.html">Read MIT License</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer container">
+    <div class="footer-left">
+      <span class="brand-name">AYSHA AI</span>
+      <span class="muted">MIT Open Source · Built with Kotlin &amp; Jetpack Compose</span>
+    </div>
+    <div class="footer-links">
+      <a href="privacy.html">Privacy Policy</a>
+      <a href="license.html">MIT License</a>
+      <a href="https://github.com/usae4544-art/Aysha-AI" target="_blank" rel="noopener">GitHub Repo</a>
+      <a href="https://github.com/usae4544-art/Aysha-AI/releases" target="_blank" rel="noopener">Releases</a>
+    </div>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

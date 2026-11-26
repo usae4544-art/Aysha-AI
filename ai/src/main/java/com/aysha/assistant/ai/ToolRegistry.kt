@@ -40,9 +40,11 @@ object ToolRegistry {
         ),
         ToolSpec(
             name = "create_reminder",
-            description = "Schedule an in-app notification reminder minutes from now.",
+            description = "Schedule an Android notification reminder either minutes from now OR at an exact 24-hour clock_time (HH:mm).",
             params = listOf(
-                ToolParamSpec("minutes", "integer", "Minutes from now", required = true),
+                ToolParamSpec("minutes", "integer", "Minutes from now if relative duration"),
+                ToolParamSpec("clock_time", "string", "Optional 24h clock time like '08:00' or '19:30'"),
+                ToolParamSpec("tomorrow", "boolean", "True if reminder is specifically for tomorrow"),
                 ToolParamSpec("message", "string", "Reminder text", required = true),
             ),
         ),
@@ -131,6 +133,11 @@ object ToolRegistry {
             ),
         ),
         ToolSpec(
+            name = "trigger_sos",
+            description = "Prepare an Emergency SOS call/alert (always prompts user confirmation in UI).",
+            params = listOf(ToolParamSpec("note", "string", "Optional SOS reason or note")),
+        ),
+        ToolSpec(
             name = "get_weather",
             description = "Get live current weather temperature, humidity, and wind for a city.",
             params = listOf(ToolParamSpec("city", "string", "City name", required = true)),
@@ -153,6 +160,30 @@ object ToolRegistry {
             name = "recall_memories",
             description = "Search user-approved saved memories.",
             params = listOf(ToolParamSpec("query", "string", "Topic to search")),
+        ),
+        ToolSpec(
+            name = "save_rule",
+            description = "Save a persistent behavior rule for AYSHA (e.g. 'Keep answers short', 'Call me boss').",
+            params = listOf(ToolParamSpec("rule", "string", "The rule text to save", required = true)),
+        ),
+        ToolSpec(
+            name = "list_rules",
+            description = "List all persistent rules saved by the user.",
+            params = emptyList(),
+        ),
+        ToolSpec(
+            name = "search_documents",
+            description = "Search uploaded/pasted personal documents and notes.",
+            params = listOf(ToolParamSpec("query", "string", "Search keywords", required = true)),
+        ),
+        ToolSpec(
+            name = "show_whiteboard",
+            description = "Display a structured study explanation or code lesson on AYSHA's Study Whiteboard.",
+            params = listOf(
+                ToolParamSpec("title", "string", "Lesson or topic title", required = true),
+                ToolParamSpec("steps", "string", "Steps separated by newline", required = true),
+                ToolParamSpec("code", "string", "Optional formula or code snippet"),
+            ),
         ),
         ToolSpec(
             name = "run_macro",

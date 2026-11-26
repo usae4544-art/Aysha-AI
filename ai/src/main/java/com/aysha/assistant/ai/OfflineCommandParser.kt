@@ -85,18 +85,16 @@ object OfflineCommandParser {
             return OfflineResolution.InAppTimer(secs, "$assistantName Timer")
         }
 
-        // 6. Reminders
-        if (lower.contains("remind") || lower.contains("reminder")) {
-            val mins = Regex("(\\d+)\\s*(min|minute|minutes)").find(lower)?.groupValues?.get(1)?.toIntOrNull() ?: 5
-            val msg = text
-                .replace(Regex("(?i)remind me( in \\d+ minutes?)?( to)?"), "")
-                .replace(Regex("(?i)\\d+\\s*minute(s)?\\s*(baad|me)?\\s*(ka)?\\s*reminder( lagao| set karo)?"), "")
-                .trim()
-                .ifBlank { "AYSHA Reminder" }
+        // 6. Natural Reminders (relative minutes OR clock times like "kal 8 baje")
+        SmartMemoryExtractor.extractNaturalReminder(text)?.let { rem ->
             return OfflineResolution.ToolCall(
                 "create_reminder",
-                JSONObject().put("minutes", mins).put("message", msg),
-                "Setting reminder...",
+                JSONObject()
+                    .put("minutes", rem.minutesFromNow)
+                    .put("clock_time", rem.clockTime24h)
+                    .put("tomorrow", rem.tomorrow)
+                    .put("message", rem.message),
+                "Scheduling reminder...",
             )
         }
 
@@ -210,7 +208,30 @@ object OfflineCommandParser {
             return OfflineResolution.ToolCall("web_search", JSONObject().put("query", q), "Searching web...")
         }
 
-        // 17. Memory save / recall
+        // 17. Memory save / recall & AYSHA Rules
+        SmartMemoryExtractor.extractAutoRule(text)?.let { rule ->
+            return OfflineResolution.ToolCall(
+                "save_rule",
+                JSONObject().put("rule", rule),
+                "Saving AYSHA rule...",
+            )
+        }
+        if (lower.contains("my rules") || lower.contains("mere rules") || lower.contains("list rules")) {
+            return OfflineResolution.ToolCall("list_rules", JSONObject(), "Checking AYSHA rules...")
+        }
+        if (lower == "sos" || lower.contains("emergency sos") || lower.contains("help emergency")) {
+            return OfflineResolution.ToolCall("trigger_sos", JSONObject().put("note", text), "Preparing Emergency SOS...")
+        }
+        if (lower.startsWith("vibe ") || lower.contains("play chill") || lower.contains("play study beats") || lower.contains("play gym")) {
+            val vibeQ = when {
+                lower.contains("gym") -> "high energy gym workout bollywood"
+                lower.contains("study") -> "deep focus instrumental study music"
+                lower.contains("party") -> "latest party hits bollywood"
+                lower.contains("sad") -> "soulful hindi unplugged songs"
+                else -> "lofi chill hindi beats"
+            }
+            return OfflineResolution.ToolCall("play_youtube", JSONObject().put("query", vibeQ), "Starting Vibe...")
+        }
         val memSave = Regex("^(?:yaad rakho|remember that|remember)\\s+(.+)$", RegexOption.IGNORE_CASE).find(text)
         if (memSave != null) {
             val fact = memSave.groupValues[1].trim()

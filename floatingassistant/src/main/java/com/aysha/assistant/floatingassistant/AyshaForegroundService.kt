@@ -108,7 +108,13 @@ class AyshaForegroundService : Service() {
                 promoteForeground()
                 scope.launch {
                     val s = settingsRepo.settingsFlow.first()
-                    wakeEngine.start(s.wakeWordsCsv, s.assistantName)
+                    wakeEngine.start(
+                        wakeWordsCsv = s.wakeWordsCsv,
+                        assistantName = s.assistantName,
+                        awareness = s.awarenessEnabled,
+                        sens = s.awarenessSensitivity,
+                        muteMedia = s.muteDuringMedia,
+                    )
                 }
             }
             ACTION_STOP_WAKEWORD -> {
@@ -243,9 +249,16 @@ class AyshaForegroundService : Service() {
 
         val iconView = ImageView(this).apply {
             scaleType = ImageView.ScaleType.CENTER_CROP
-            val pad = (4 * density).toInt()
+            val pad = (3 * density).toInt()
             setPadding(pad, pad, pad, pad)
-            runCatching { setImageDrawable(packageManager.getApplicationIcon(packageName)) }
+            runCatching {
+                val portraitId = resources.getIdentifier("aysha_portrait", "drawable", packageName)
+                if (portraitId != 0) {
+                    setImageResource(portraitId)
+                } else {
+                    setImageDrawable(packageManager.getApplicationIcon(packageName))
+                }
+            }
         }
         orbContainer.addView(iconView, FrameLayout.LayoutParams(sizePx, sizePx))
 
@@ -396,7 +409,13 @@ class AyshaForegroundService : Service() {
         addMenuItem("🎙 Voice Command", "#558B5CF6") {
             launchAssistant(startVoice = true, quickTab = null)
         }
-        addMenuItem("⚡ Quick Actions", "#5514B8A6") {
+        addMenuItem("📷 Camera Scanner", "#550EA5E9") {
+            launchAssistant(startVoice = false, quickTab = "scanner")
+        }
+        addMenuItem("✏ Study Whiteboard", "#5510B981") {
+            launchAssistant(startVoice = false, quickTab = "whiteboard")
+        }
+        addMenuItem("⚡ Phone Control", "#5514B8A6") {
             launchAssistant(startVoice = false, quickTab = "phone_control")
         }
         addMenuItem("✕ Hide Floating", "#44F43F5E") {

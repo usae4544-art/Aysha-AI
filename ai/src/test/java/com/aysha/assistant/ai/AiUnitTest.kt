@@ -2,10 +2,14 @@ package com.aysha.assistant.ai
 
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AssistantLanguage
+import com.aysha.assistant.core.AssistantMood
 import com.aysha.assistant.core.BrainProvider
 import com.aysha.assistant.core.MemoryEntry
+import com.aysha.assistant.core.SubAgentRole
+import com.aysha.assistant.core.UserRule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -21,7 +25,7 @@ class AiUnitTest {
     }
 
     @Test
-    fun `offline command parser resolves core commands without keys`() {
+    fun `offline command parser resolves core commands and rules without keys`() {
         val math = OfflineCommandParser.parse("25 * 48 kitna hota hai") as OfflineResolution.DirectReply
         assertTrue(math.reply.contains("1200"))
 
@@ -38,6 +42,13 @@ class AiUnitTest {
 
         val call = OfflineCommandParser.parse("Call Rahul") as OfflineResolution.ToolCall
         assertEquals("prepare_phone_call", call.toolName)
+
+        val rule = OfflineCommandParser.parse("Ab se hamesha chhote jawab dena") as OfflineResolution.ToolCall
+        assertEquals("save_rule", rule.toolName)
+        assertTrue(rule.args.getString("rule").contains("chhote jawab", ignoreCase = true))
+
+        val sos = OfflineCommandParser.parse("emergency sos") as OfflineResolution.ToolCall
+        assertEquals("trigger_sos", sos.toolName)
     }
 
     @Test
@@ -58,17 +69,56 @@ class AiUnitTest {
     }
 
     @Test
-    fun `prompt builder includes AYSHA identity and excludes paid locks`() {
+    fun `prompt builder includes AYSHA identity, rules, subagent and excludes paid locks`() {
         val prompt = PromptBuilder.buildSystemInstruction(
-            settings = AppSettings(assistantName = "AYSHA", userName = "Aman", language = AssistantLanguage.HINGLISH),
+            settings = AppSettings(
+                assistantName = "AYSHA",
+                userName = "Aman",
+                language = AssistantLanguage.HINGLISH,
+                activeSubAgent = SubAgentRole.CODING,
+            ),
             memories = listOf(MemoryEntry(1, "City", "Jaipur")),
             accessibilityEnabled = true,
             notificationsEnabled = false,
+            rules = listOf(UserRule(1, "Keep replies crisp and short")),
+            mood = AssistantMood.KHUSH,
+            energy = 92,
+            documentSnippets = listOf("[Resume] Android & Kotlin developer"),
         )
         assertTrue(prompt.contains("AYSHA"))
         assertTrue(prompt.contains("Aman"))
         assertTrue(prompt.contains("Jaipur"))
+        assertTrue(prompt.contains("Keep replies crisp and short"))
+        assertTrue(prompt.contains("Coding & Tech"))
+        assertTrue(prompt.contains("Android & Kotlin developer"))
         assertTrue(prompt.contains("NO subscriptions"))
         assertFalse(prompt.contains("Maya"))
+    }
+
+    @Test
+    fun `smart memory extractor detects natural facts, rules, mood shifts and hindi reminders`() {
+        val facts = SmartMemoryExtractor.extractAutoFacts("Mera naam Aman hai aur mujhe cold coffee pasand hai")
+        assertTrue(facts.any { it.content.contains("Aman") })
+
+        val rule = SmartMemoryExtractor.extractAutoRule("Always reply in 2 lines")
+        assertNotNull(rule)
+        assertTrue(rule!!.contains("2 lines"))
+
+        val (warmMood, warmEnergy) = SmartMemoryExtractor.analyzeMoodShift("Thank you, you are the best!", AssistantMood.ROOTHI, 60)
+        assertEquals(AssistantMood.KHUSH, warmMood)
+        assertTrue(warmEnergy > 60)
+
+        val (sulkyMood, sulkyEnergy) = SmartMemoryExtractor.analyzeMoodShift("You are stupid and useless", AssistantMood.KHUSH, 80)
+        assertEquals(AssistantMood.ROOTHI, sulkyMood)
+        assertTrue(sulkyEnergy < 80)
+
+        val rem = SmartMemoryExtractor.extractNaturalReminder("Kal subah 8 baje gym jana yaad dilana")!!
+        assertEquals("08:00", rem.clockTime24h)
+        assertTrue(rem.tomorrow)
+        assertTrue(rem.message.contains("gym", ignoreCase = true))
+
+        val relRem = SmartMemoryExtractor.extractNaturalReminder("15 minute baad pani peene ka reminder lagao")!!
+        assertEquals(15, relRem.minutesFromNow)
+        assertEquals("", relRem.clockTime24h)
     }
 }

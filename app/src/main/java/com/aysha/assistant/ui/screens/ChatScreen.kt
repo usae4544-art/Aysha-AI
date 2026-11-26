@@ -17,8 +17,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -30,6 +32,7 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.Send
 import androidx.compose.material.icons.rounded.Call
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -74,6 +77,7 @@ import java.util.Locale
 @Composable
 fun ChatScreen(
     viewModel: AyshaViewModel,
+    onBack: () -> Unit,
     onSwitchToVoiceOrb: () -> Unit,
 ) {
     val c = LocalAyshaColors.current
@@ -93,15 +97,17 @@ fun ChatScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .imePadding()
             .padding(horizontal = 14.dp, vertical = 8.dp),
     ) {
-        // Header matching Screen 5
+        // Screen 5 Header: <- Avatar AYSHA Online + Call + Export + Clear
         GlassCard(
             modifier = Modifier.fillMaxWidth(),
             cornerRadius = 20.dp,
             elevated = true,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 8.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -109,27 +115,23 @@ fun ChatScreen(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
+                    }
                     Image(
                         painter = painterResource(id = R.drawable.aysha_portrait),
                         contentDescription = "AYSHA",
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .size(40.dp)
-                            .clip(CircleShape),
+                        modifier = Modifier.size(38.dp).clip(CircleShape),
                     )
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(settings.assistantName, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(
-                                modifier = Modifier
-                                    .size(7.dp)
-                                    .clip(CircleShape)
-                                    .background(c.success),
-                            )
+                            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(c.success))
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = if (settings.offlineOnlyMode) "Offline Ready" else "Online · ${settings.activeProvider.displayName}",
+                                text = if (settings.offlineOnlyMode) "Online (Offline Mode)" else "Online",
                                 color = c.textSecondary,
                                 fontSize = 11.5.sp,
                             )
@@ -145,10 +147,10 @@ fun ChatScreen(
                         Icon(Icons.Rounded.Call, contentDescription = "Voice Call", tint = c.accentPrimary)
                     }
                     IconButton(onClick = { viewModel.exportAndShareChats(asJson = false) }) {
-                        Icon(Icons.Rounded.FileDownload, contentDescription = "Export Chats", tint = c.textPrimary)
+                        Icon(Icons.Rounded.FileDownload, contentDescription = "Export", tint = c.textPrimary)
                     }
                     IconButton(onClick = { viewModel.clearChatHistory() }) {
-                        Icon(Icons.Rounded.DeleteSweep, contentDescription = "Clear Chat", tint = c.error)
+                        Icon(Icons.Rounded.DeleteSweep, contentDescription = "Clear", tint = c.error)
                     }
                 }
             }
@@ -163,7 +165,7 @@ fun ChatScreen(
                         Text("Namaste ${settings.userName}!", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                         Spacer(modifier = Modifier.height(6.dp))
                         Text(
-                            "Main ${settings.assistantName} hoon. Hindi, English ya Hinglish me kuch bhi poochho ya command do — offline aur online dono modes 100% free hain!",
+                            "Kuch bhi baat karo — main automatic aapki important baatein aur reminders yaad rakhungi!",
                             color = c.textSecondary,
                             fontSize = 13.5.sp,
                         )
@@ -178,7 +180,7 @@ fun ChatScreen(
                 contentPadding = PaddingValues(vertical = 8.dp),
             ) {
                 items(messages, key = { it.id }) { msg ->
-                    ChatBubbleRow(
+                    ChatBubbleItem(
                         message = msg,
                         onSpeak = { viewModel.speakMessage(msg.text) },
                         onCopy = {
@@ -195,25 +197,21 @@ fun ChatScreen(
             Text(statusText, color = c.accentPrimary, fontSize = 12.sp, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
         }
 
-        // Composer
         GlassCard(
             modifier = Modifier.fillMaxWidth(),
             cornerRadius = 28.dp,
             elevated = true,
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+            contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = {
                         viewModel.onOrbTap()
                         onSwitchToVoiceOrb()
                     },
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(38.dp),
                 ) {
-                    Icon(Icons.Rounded.Mic, contentDescription = "Voice input", tint = c.accentPrimary, modifier = Modifier.size(20.dp))
+                    Icon(Icons.Rounded.Mic, contentDescription = "Voice", tint = c.accentPrimary, modifier = Modifier.size(20.dp))
                 }
                 BasicTextField(
                     value = draft,
@@ -237,7 +235,7 @@ fun ChatScreen(
                 )
                 Box(
                     modifier = Modifier
-                        .size(38.dp)
+                        .size(40.dp)
                         .clip(CircleShape)
                         .background(Brush.linearGradient(listOf(c.accentPrimary, c.accentSecondary)))
                         .clickable {
@@ -256,7 +254,7 @@ fun ChatScreen(
 }
 
 @Composable
-private fun ChatBubbleRow(
+private fun ChatBubbleItem(
     message: ChatMessage,
     onSpeak: () -> Unit,
     onCopy: () -> Unit,
@@ -276,9 +274,7 @@ private fun ChatBubbleRow(
                 painter = painterResource(id = R.drawable.aysha_portrait),
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .size(30.dp)
-                    .clip(CircleShape),
+                modifier = Modifier.size(30.dp).clip(CircleShape),
             )
             Spacer(modifier = Modifier.width(6.dp))
         }
@@ -286,9 +282,9 @@ private fun ChatBubbleRow(
         if (isUser) {
             Box(
                 modifier = Modifier
-                    .widthIn(max = 285.dp)
+                    .widthIn(max = 280.dp)
                     .clip(RoundedCornerShape(18.dp, 18.dp, 4.dp, 18.dp))
-                    .background(Brush.linearGradient(listOf(c.accentPrimary, c.accentSecondary)))
+                    .background(Brush.linearGradient(listOf(Color(0xFF2563EB), Color(0xFF6366F1))))
                     .padding(horizontal = 14.dp, vertical = 10.dp),
             ) {
                 Column {
@@ -324,18 +320,8 @@ private fun ChatBubbleRow(
                             modifier = Modifier.weight(1f),
                         )
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            Icon(
-                                imageVector = Icons.Rounded.VolumeUp,
-                                contentDescription = "Speak",
-                                tint = c.accentPrimary,
-                                modifier = Modifier.size(16.dp).clickable(onClick = onSpeak),
-                            )
-                            Icon(
-                                imageVector = Icons.Rounded.ContentCopy,
-                                contentDescription = "Copy",
-                                tint = c.textSecondary,
-                                modifier = Modifier.size(15.dp).clickable(onClick = onCopy),
-                            )
+                            Icon(Icons.Rounded.VolumeUp, contentDescription = "Speak", tint = c.accentPrimary, modifier = Modifier.size(16.dp).clickable(onClick = onSpeak))
+                            Icon(Icons.Rounded.ContentCopy, contentDescription = "Copy", tint = c.textSecondary, modifier = Modifier.size(15.dp).clickable(onClick = onCopy))
                         }
                     }
                 }

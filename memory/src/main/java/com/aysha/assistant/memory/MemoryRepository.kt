@@ -4,11 +4,13 @@ import android.content.Context
 import androidx.room.Room
 import com.aysha.assistant.core.ChatMessage
 import com.aysha.assistant.core.ChatRole
+import com.aysha.assistant.core.KnowledgeDocument
 import com.aysha.assistant.core.MacroDefinition
 import com.aysha.assistant.core.MacroStep
 import com.aysha.assistant.core.MemoryEntry
 import com.aysha.assistant.core.SafeLogger
 import com.aysha.assistant.core.ToolLogEntry
+import com.aysha.assistant.core.UserRule
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -20,15 +22,17 @@ class MemoryRepository(private val context: Context) {
             AyshaDatabase::class.java,
             "aysha_vault.db",
         )
+            .addMigrations(AyshaDatabase.MIGRATION_1_2)
             .fallbackToDestructiveMigration()
             .build()
     }
 
     suspend fun ensureBuiltInMacrosSeeded() {
-        val existing = db.macroDao().getAll()
-        if (existing.isNotEmpty()) return
+        val existingNames = db.macroDao().getAll().map { it.name }.toSet()
         for (macro in BuiltInMacros.defaults()) {
-            upsertMacro(macro)
+            if (macro.name !in existingNames) {
+                upsertMacro(macro)
+            }
         }
     }
 
@@ -66,6 +70,7 @@ class MemoryRepository(private val context: Context) {
         content: String,
         tags: String = "",
         approvedByUser: Boolean = true,
+        source: String = "aapne bataya",
     ): Long {
         val cleanTitle = title.trim().ifBlank { "Note" }
         val existing = db.memoryDao().findByTitle(cleanTitle)
@@ -77,6 +82,8 @@ class MemoryRepository(private val context: Context) {
                 tags = tags.trim(),
                 approvedByUser = approvedByUser,
                 updatedAtMs = System.currentTimeMillis(),
+                source = source.ifBlank { existing?.source ?: "aapne bataya" },
+                archived = false,
             ),
         )
     }
@@ -90,16 +97,28 @@ class MemoryRepository(private val context: Context) {
                 tags = entry.tags.trim(),
                 approvedByUser = entry.approvedByUser,
                 updatedAtMs = System.currentTimeMillis(),
+                source = entry.source,
+                archived = entry.archived,
             ),
         )
     }
 
-    suspend fun getAllMemories(): List<MemoryEntry> {
-        return db.memoryDao().getAll().map { it.toDomain() }
+    suspend fun setMemoryArchived(id: Long, archived: Boolean) {
+        db.memoryDao().setArchived(id, archived)
+    }
+
+    suspend fun getAllMemories(includeArchived: Boolean = false): List<MemoryEntry> {
+        return db.memoryDao().getAll()
+            .map { it.toDomain() }
+            .filter { includeArchived || !it.archived }
+    }
+
+    suspend fun getArchivedMemories(): List<MemoryEntry> {
+        return db.memoryDao().getAll().map { it.toDomain() }.filter { it.archived }
     }
 
     suspend fun searchMemories(query: String, limit: Int = 8): List<MemoryEntry> {
-        return MemoryMatcher.rank(getAllMemories(), query, limit)
+        return MemoryMatcher.rank(getAllMemories(includeArchived = false), query, limit)
     }
 
     suspend fun deleteMemory(id: Long) {
@@ -109,6 +128,84 @@ class MemoryRepository(private val context: Context) {
     suspend fun clearMemories() {
         db.memoryDao().clearAll()
     }
+
+    // ---- AYSHA Rules ("Aysha ke Rules") ----
+
+    suspend fun getAllRules(): List<UserRule> {
+        return db.ruleDao().getAll().map {
+            UserRule(id = it.id, text = it.text, enabled = it.enabled, createdAtMs = it.createdAtMs)
+        }
+    }
+
+    suspend fun saveRule(text: String, enabled: Boolean = true): Long {
+        val clean = text.trim()
+        if (clean.isEmpty()) return -1L
+        val existing = db.ruleDao().findByText(clean)
+        return db.ruleDao().upsert(
+            UserRuleEntity(
+                id = existing?.id ?: 0L,
+                text = clean,
+                enabled = enabled,
+                createdAtMs = existing?.createdAtMs ?: System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    suspend fun updateRule(rule: UserRule) {
+        db.ruleDao().upsert(
+            UserRuleEntity(
+                id = rule.id,
+                text = rule.text.trim(),
+                enabled = rule.enabled,
+                createdAtMs = rule.createdAtMs,
+            ),
+        )
+    }
+
+    suspend fun deleteRule(id: Long) {
+        db.ruleDao().deleteById(id)
+    }
+
+    // ---- Documents Knowledge Base ----
+
+    suspend fun getAllDocuments(): List<KnowledgeDocument> {
+        return db.documentDao().getAll().map {
+            KnowledgeDocument(
+                id = it.id,
+                title = it.title,
+                content = it.content,
+                chunkCount = it.chunkCount,
+                addedAtMs = it.addedAtMs,
+            )
+        }
+    }
+
+    suspend fun saveDocument(title: String, content: String): Long {
+        val cleanTitle = title.trim().ifBlank { "Personal Note" }
+        val cleanContent = content.trim()
+        if (cleanContent.isEmpty()) return -1L
+        val chunks = MemoryMatcher.chunkDocument(cleanContent)
+        val existing = db.documentDao().findByTitle(cleanTitle)
+        return db.documentDao().upsert(
+            KnowledgeDocumentEntity(
+                id = existing?.id ?: 0L,
+                title = cleanTitle,
+                content = cleanContent,
+                chunkCount = chunks.size.coerceAtLeast(1),
+                addedAtMs = System.currentTimeMillis(),
+            ),
+        )
+    }
+
+    suspend fun searchDocumentSnippets(query: String, limit: Int = 3): List<String> {
+        return MemoryMatcher.searchDocuments(getAllDocuments(), query, limit)
+    }
+
+    suspend fun deleteDocument(id: Long) {
+        db.documentDao().deleteById(id)
+    }
+
+    // ---- Macros & Trained Tasks ----
 
     suspend fun getAllMacros(): List<MacroDefinition> {
         ensureBuiltInMacrosSeeded()
@@ -129,9 +226,15 @@ class MemoryRepository(private val context: Context) {
         db.macroDao().upsert(macro.toEntity())
     }
 
+    suspend fun markMacroPlayed(name: String) {
+        db.macroDao().incrementPlayed(name)
+    }
+
     suspend fun deleteMacro(name: String) {
         db.macroDao().deleteByName(name)
     }
+
+    // ---- Audit Logs ----
 
     suspend fun logTool(toolName: String, summary: String, success: Boolean) {
         db.toolLogDao().insert(
@@ -160,6 +263,8 @@ class MemoryRepository(private val context: Context) {
         db.chatDao().clearAll()
         db.memoryDao().clearAll()
         db.toolLogDao().clearAll()
+        db.ruleDao().clearAll()
+        db.documentDao().clearAll()
     }
 
     private fun ChatMessageEntity.toDomain(): ChatMessage = ChatMessage(
@@ -178,6 +283,8 @@ class MemoryRepository(private val context: Context) {
         tags = tags,
         approvedByUser = approvedByUser,
         updatedAtMs = updatedAtMs,
+        source = source,
+        archived = archived,
     )
 
     private fun MacroEntity.toDomain(): MacroDefinition {
@@ -209,6 +316,7 @@ class MemoryRepository(private val context: Context) {
             params = params,
             steps = steps,
             isBuiltIn = isBuiltIn,
+            playedCount = playedCount,
         )
     }
 
@@ -233,6 +341,7 @@ class MemoryRepository(private val context: Context) {
             stepsJson = stepsArr.toString(),
             isBuiltIn = isBuiltIn,
             updatedAtMs = System.currentTimeMillis(),
+            playedCount = playedCount,
         )
     }
 }
@@ -251,11 +360,21 @@ object BuiltInMacros {
         MacroDefinition(
             name = "Study Mode",
             triggerPhrase = "start study",
-            intent = "Open study app, set focus timer for 25 minutes & adjust volume",
+            intent = "Quiet ring volume, start 25-min Pomodoro timer & open study workspace",
             steps = listOf(
                 MacroStep(tool = "set_volume", args = mapOf("stream" to "ring", "percent" to "10"), optional = true),
                 MacroStep(tool = "start_timer", args = mapOf("seconds" to "1500", "label" to "Study Focus")),
                 MacroStep(tool = "open_app", args = mapOf("name" to "YouTube"), optional = true),
+            ),
+            isBuiltIn = true,
+        ),
+        MacroDefinition(
+            name = "Deep Focus 45m",
+            triggerPhrase = "deep focus",
+            intent = "Mute ring volume and run a 45-minute deep work sprint",
+            steps = listOf(
+                MacroStep(tool = "set_volume", args = mapOf("stream" to "ring", "percent" to "0"), optional = true),
+                MacroStep(tool = "start_timer", args = mapOf("seconds" to "2700", "label" to "Deep Work")),
             ),
             isBuiltIn = true,
         ),
@@ -274,6 +393,36 @@ object BuiltInMacros {
             intent = "Switch on the rear flashlight torch",
             steps = listOf(
                 MacroStep(tool = "set_torch", args = mapOf("enabled" to "true")),
+            ),
+            isBuiltIn = true,
+        ),
+        MacroDefinition(
+            name = "ChatGPT se Poochho",
+            triggerPhrase = "chatgpt se poochho",
+            intent = "Ask a question in the ChatGPT app and read the reply",
+            params = listOf("question"),
+            steps = listOf(
+                MacroStep(tool = "open_app_by_name", args = mapOf("name" to "ChatGPT")),
+                MacroStep(tool = "wait", args = mapOf("seconds" to "3")),
+                MacroStep(tool = "tap_text", args = mapOf("text" to "New chat"), optional = true),
+                MacroStep(tool = "wait", args = mapOf("seconds" to "2")),
+                MacroStep(tool = "type_text", args = mapOf("text" to "{question}")),
+                MacroStep(tool = "tap_text", args = mapOf("text" to "Send Message"), optional = true),
+            ),
+            isBuiltIn = true,
+        ),
+        MacroDefinition(
+            name = "Gemini se Poochho",
+            triggerPhrase = "gemini se poochho",
+            intent = "Ask a question in the Gemini app via Accessibility",
+            params = listOf("question"),
+            steps = listOf(
+                MacroStep(tool = "open_app_by_name", args = mapOf("name" to "Gemini")),
+                MacroStep(tool = "wait", args = mapOf("seconds" to "3")),
+                MacroStep(tool = "tap_text", args = mapOf("text" to "New chat"), optional = true),
+                MacroStep(tool = "wait", args = mapOf("seconds" to "2")),
+                MacroStep(tool = "type_text", args = mapOf("text" to "{question}")),
+                MacroStep(tool = "tap_text", args = mapOf("text" to "Send"), optional = true),
             ),
             isBuiltIn = true,
         ),

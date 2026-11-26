@@ -7,5 +7,6 @@ local.properties
 *.keystore
 *.jks
 apk-out/
+apk-release/
 wakeword/src/main/assets/model-en-in/
 !gradle/wrapper/gradle-wrapper.jar

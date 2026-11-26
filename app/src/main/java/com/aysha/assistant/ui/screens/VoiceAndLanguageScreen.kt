@@ -12,16 +12,17 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.CheckCircle
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.Icon
@@ -47,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aysha.assistant.R
 import com.aysha.assistant.core.AssistantLanguage
+import com.aysha.assistant.core.AwarenessSensitivity
 import com.aysha.assistant.core.VoiceEngineMode
 import com.aysha.assistant.core.VoiceGender
 import com.aysha.assistant.core.VoicePersonalities
@@ -71,75 +73,27 @@ fun VoiceAndLanguageScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(11.dp),
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
             }
-            Text("Voice & Language", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text("Voice & Awareness Engine", color = c.textPrimary, fontSize = 20.5.sp, fontWeight = FontWeight.Bold)
         }
 
-        // Language Picker
-        Text("Conversation Language", color = c.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            AssistantLanguage.entries.forEach { lang ->
-                val active = settings.language == lang
-                GlassCard(
-                    modifier = Modifier.weight(1f),
-                    cornerRadius = 14.dp,
-                    elevated = active,
-                    borderColor = if (active) c.accentPrimary else null,
-                    onClick = { viewModel.updateSettings { it.copy(language = lang) } },
-                    contentPadding = PaddingValues(vertical = 10.dp),
-                ) {
-                    Text(
-                        text = lang.label,
-                        color = if (active) c.accentPrimary else c.textPrimary,
-                        fontSize = 12.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-            }
-        }
-
-        // Voice Engine Mode
-        Text("Voice Engine Mode", color = c.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            VoiceEngineMode.entries.forEach { mode ->
-                val active = settings.voiceEngineMode == mode
-                GlassCard(
-                    modifier = Modifier.weight(1f),
-                    cornerRadius = 14.dp,
-                    elevated = active,
-                    borderColor = if (active) c.accentPrimary else null,
-                    onClick = { viewModel.updateSettings { it.copy(voiceEngineMode = mode) } },
-                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
-                ) {
-                    Text(
-                        text = mode.label,
-                        color = if (active) c.accentPrimary else c.textPrimary,
-                        fontSize = 11.5.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.align(Alignment.Center),
-                    )
-                }
-            }
-        }
-
-        // Female / Male Segmented Selector matching Screen 12
-        Text("Voice Selection & Personalities", color = c.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-        GlassCard(cornerRadius = 16.dp, contentPadding = PaddingValues(4.dp)) {
+        GlassCard(cornerRadius = 50.dp, contentPadding = PaddingValues(4.dp)) {
             Row(modifier = Modifier.fillMaxWidth()) {
                 VoiceGender.entries.forEach { g ->
                     val selected = genderTab == g
                     Box(
                         modifier = Modifier
                             .weight(1f)
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(CircleShape)
                             .background(
                                 if (selected) Brush.horizontalGradient(listOf(c.accentPrimary, c.accentSecondary))
                                 else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent)),
@@ -148,12 +102,7 @@ fun VoiceAndLanguageScreen(
                             .padding(vertical = 10.dp),
                         contentAlignment = Alignment.Center,
                     ) {
-                        Text(
-                            text = g.label,
-                            color = if (selected) Color.White else c.textSecondary,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 14.sp,
-                        )
+                        Text(g.label, color = if (selected) Color.White else c.textSecondary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                     }
                 }
             }
@@ -169,111 +118,166 @@ fun VoiceAndLanguageScreen(
                 onClick = { viewModel.updateSettings { it.copy(voicePersonalityId = persona.id) } },
                 contentPadding = PaddingValues(12.dp),
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Image(
                         painter = painterResource(id = R.drawable.aysha_portrait),
                         contentDescription = persona.name,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(44.dp).clip(CircleShape),
+                        modifier = Modifier.size(42.dp).clip(CircleShape),
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(persona.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                        Text(persona.subtitle, color = c.textSecondary, fontSize = 12.sp)
+                        Text(persona.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                        Text("(${persona.subtitle})", color = c.textSecondary, fontSize = 12.sp)
                     }
                     IconButton(onClick = { viewModel.previewVoicePersonality(persona) }) {
                         Icon(Icons.Rounded.PlayArrow, contentDescription = "Preview", tint = c.accentPrimary)
                     }
                     if (selected) {
-                        Icon(Icons.Rounded.CheckCircle, contentDescription = "Selected", tint = c.accentPrimary)
+                        Icon(Icons.Rounded.CheckCircle, contentDescription = "Selected", tint = c.accentSecondary)
+                    } else {
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
                     }
                 }
             }
         }
 
-        // System Installed Offline TTS Voices
+        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Speech Speed", color = c.textPrimary, fontWeight = FontWeight.SemiBold)
+                    Text(String.format(Locale.US, "%.1fx", settings.ttsSpeechRate), color = c.accentPrimary, fontWeight = FontWeight.Bold)
+                }
+                Slider(value = settings.ttsSpeechRate, onValueChange = { v -> viewModel.updateSettings { it.copy(ttsSpeechRate = v) } }, valueRange = 0.6f..1.8f)
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Speech Volume", color = c.textPrimary, fontWeight = FontWeight.SemiBold)
+                    Text("${(settings.ttsVolume * 100).toInt()}%", color = c.accentPrimary, fontWeight = FontWeight.Bold)
+                }
+                Slider(value = settings.ttsVolume, onValueChange = { v -> viewModel.updateSettings { it.copy(ttsVolume = v) } }, valueRange = 0.1f..1.0f)
+            }
+        }
+
+        // Maya-style Awareness, Barge-In & Follow-Up Controls
+        GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Maya-Grade Voice & Awareness", color = c.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Speaker Barge-In (AEC3/NS)", color = c.textPrimary, fontWeight = FontWeight.Medium)
+                        Text("Bol kar AYSHA ko beech me rok sako", color = c.textSecondary, fontSize = 11.5.sp)
+                    }
+                    Switch(checked = settings.bargeInEnabled, onCheckedChange = { on -> viewModel.updateSettings { it.copy(bargeInEnabled = on) } })
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Awareness Gate", color = c.textPrimary, fontWeight = FontWeight.Medium)
+                        Text("Smart VAD gate for background wake detection", color = c.textSecondary, fontSize = 11.5.sp)
+                    }
+                    Switch(checked = settings.awarenessEnabled, onCheckedChange = { on -> viewModel.updateSettings { it.copy(awarenessEnabled = on) } })
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Mute During Music / TV", color = c.textPrimary, fontWeight = FontWeight.Medium)
+                        Text("Avoid false wakes when media is playing", color = c.textSecondary, fontSize = 11.5.sp)
+                    }
+                    Switch(checked = settings.muteDuringMedia, onCheckedChange = { on -> viewModel.updateSettings { it.copy(muteDuringMedia = on) } })
+                }
+
+                Text("Awareness Sensitivity (${settings.awarenessSensitivity.label})", color = c.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AwarenessSensitivity.entries.forEach { sens ->
+                        GlassPill(
+                            text = sens.label,
+                            dotColor = if (settings.awarenessSensitivity == sens) c.accentPrimary else null,
+                            onClick = { viewModel.updateSettings { it.copy(awarenessSensitivity = sens) } },
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                }
+
+                Text("Follow-Up Window (${settings.followUpWindowSeconds}s)", color = c.textPrimary, fontWeight = FontWeight.Medium, fontSize = 13.sp)
+                Text("Jawab ke baad bina 'Hey Aysha' bole baat jaari rakho", color = c.textSecondary, fontSize = 11.5.sp)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    listOf(0, 8, 12, 20, 30).forEach { secs ->
+                        GlassPill(
+                            text = if (secs == 0) "Off" else "${secs}s",
+                            dotColor = if (settings.followUpWindowSeconds == secs) c.accentSecondary else null,
+                            onClick = { viewModel.updateSettings { it.copy(followUpWindowSeconds = secs) } },
+                        )
+                    }
+                }
+            }
+        }
+
+        Text("Language & Engine", color = c.textSecondary, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            AssistantLanguage.entries.forEach { lang ->
+                val active = settings.language == lang
+                GlassCard(
+                    modifier = Modifier.weight(1f),
+                    cornerRadius = 14.dp,
+                    elevated = active,
+                    borderColor = if (active) c.accentPrimary else null,
+                    onClick = { viewModel.updateSettings { it.copy(language = lang) } },
+                    contentPadding = PaddingValues(vertical = 10.dp),
+                ) {
+                    Text(lang.label, color = if (active) c.accentPrimary else c.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Center))
+                }
+            }
+        }
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            VoiceEngineMode.entries.forEach { mode ->
+                val active = settings.voiceEngineMode == mode
+                GlassCard(
+                    modifier = Modifier.weight(1f),
+                    cornerRadius = 14.dp,
+                    elevated = active,
+                    borderColor = if (active) c.accentPrimary else null,
+                    onClick = { viewModel.updateSettings { it.copy(voiceEngineMode = mode) } },
+                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
+                ) {
+                    Text(mode.label, color = if (active) c.accentPrimary else c.textPrimary, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.align(Alignment.Center))
+                }
+            }
+        }
+
         if (installedVoices.isNotEmpty()) {
-            Text("Device TTS Engine Voices (${installedVoices.size})", color = c.textSecondary, fontSize = 12.5.sp)
+            Text("Device TTS Voices (${installedVoices.size})", color = c.textSecondary, fontSize = 12.sp)
             Row(
                 modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                GlassPill(
-                    text = "Auto Select",
-                    dotColor = if (settings.selectedTtsVoiceName.isBlank()) c.accentPrimary else null,
-                    onClick = { viewModel.updateSettings { it.copy(selectedTtsVoiceName = "") } },
-                )
+                GlassPill("Auto Select", dotColor = if (settings.selectedTtsVoiceName.isBlank()) c.accentPrimary else null) {
+                    viewModel.updateSettings { it.copy(selectedTtsVoiceName = "") }
+                }
                 installedVoices.take(12).forEach { v ->
-                    val label = "${v.localeTag}${if (v.isOffline) " (Offline)" else ""}"
-                    GlassPill(
-                        text = label,
-                        dotColor = if (settings.selectedTtsVoiceName == v.name) c.accentPrimary else null,
-                        onClick = { viewModel.updateSettings { it.copy(selectedTtsVoiceName = v.name) } },
-                    )
+                    GlassPill("${v.localeTag}${if (v.isOffline) " (Offline)" else ""}", dotColor = if (settings.selectedTtsVoiceName == v.name) c.accentPrimary else null) {
+                        viewModel.updateSettings { it.copy(selectedTtsVoiceName = v.name) }
+                    }
                 }
             }
         }
 
-        // Speech Speed, Volume & Pitch Sliders
         GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Speech Speed", color = c.textPrimary, fontWeight = FontWeight.Medium)
-                    Text(String.format(Locale.US, "%.1fx", settings.ttsSpeechRate), color = c.accentPrimary, fontWeight = FontWeight.Bold)
-                }
-                Slider(
-                    value = settings.ttsSpeechRate,
-                    onValueChange = { v -> viewModel.updateSettings { it.copy(ttsSpeechRate = v) } },
-                    valueRange = 0.6f..1.8f,
-                )
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Speech Volume", color = c.textPrimary, fontWeight = FontWeight.Medium)
-                    Text("${(settings.ttsVolume * 100).toInt()}%", color = c.accentPrimary, fontWeight = FontWeight.Bold)
-                }
-                Slider(
-                    value = settings.ttsVolume,
-                    onValueChange = { v -> viewModel.updateSettings { it.copy(ttsVolume = v) } },
-                    valueRange = 0.1f..1.0f,
-                )
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("Voice Pitch", color = c.textPrimary, fontWeight = FontWeight.Medium)
-                    Text(String.format(Locale.US, "%.2fx", settings.ttsPitch), color = c.accentPrimary, fontWeight = FontWeight.Bold)
-                }
-                Slider(
-                    value = settings.ttsPitch,
-                    onValueChange = { v -> viewModel.updateSettings { it.copy(ttsPitch = v) } },
-                    valueRange = 0.7f..1.4f,
-                )
-            }
-        }
-
-        // Auto-Speak & Continuous Mode
-        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Auto-Speak Replies", color = c.textPrimary, fontWeight = FontWeight.Medium)
-                        Text("Speak responses aloud automatically", color = c.textSecondary, fontSize = 12.sp)
+                        Text("Speak answers aloud automatically", color = c.textSecondary, fontSize = 11.5.sp)
                     }
-                    Switch(
-                        checked = settings.autoSpeakReplies,
-                        onCheckedChange = { on -> viewModel.updateSettings { it.copy(autoSpeakReplies = on) } },
-                    )
+                    Switch(checked = settings.autoSpeakReplies, onCheckedChange = { on -> viewModel.updateSettings { it.copy(autoSpeakReplies = on) } })
                 }
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("Continuous Conversation", color = c.textPrimary, fontWeight = FontWeight.Medium)
-                        Text("Automatically listen again after AYSHA finishes speaking", color = c.textSecondary, fontSize = 12.sp)
+                        Text("Keep listening until tapped to stop", color = c.textSecondary, fontSize = 11.5.sp)
                     }
-                    Switch(
-                        checked = settings.continuousConversation,
-                        onCheckedChange = { on -> viewModel.updateSettings { it.copy(continuousConversation = on) } },
-                    )
+                    Switch(checked = settings.continuousConversation, onCheckedChange = { on -> viewModel.updateSettings { it.copy(continuousConversation = on) } })
                 }
             }
         }

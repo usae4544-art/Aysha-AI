@@ -2,7 +2,10 @@ package com.aysha.assistant.ai
 
 import com.aysha.assistant.automation.AyshaAccessibilityService
 import com.aysha.assistant.automation.MacroEngine
+import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.PendingActionConfirmation
+import com.aysha.assistant.core.PendingConfirmationType
+import com.aysha.assistant.core.WhiteboardCard
 import com.aysha.assistant.memory.MemoryRepository
 import com.aysha.assistant.phonecontrol.PhoneActionResult
 import com.aysha.assistant.phonecontrol.PhoneControlExecutor
@@ -21,6 +24,8 @@ class ToolExecutor(
     private val memoryRepo: MemoryRepository,
     private val macroEngine: MacroEngine,
     private val onStartTimer: (seconds: Int, label: String) -> Unit,
+    private val onWhiteboardCard: (WhiteboardCard) -> Unit = {},
+    private val onReadSettings: () -> AppSettings = { AppSettings() },
 ) {
 
     suspend fun execute(name: String, args: JSONObject): ToolOutcome {
@@ -35,6 +40,8 @@ class ToolExecutor(
             "create_reminder" -> phoneControl.createReminder(
                 minutesFromNow = args.optInt("minutes", 5),
                 message = args.optString("message", "Reminder"),
+                clockTime24h = args.optString("clock_time", ""),
+                tomorrow = args.optBoolean("tomorrow", false),
             ).toOutcome()
             "start_timer" -> {
                 val secs = args.optInt("seconds", 60).coerceIn(5, 86_400)
@@ -66,6 +73,23 @@ class ToolExecutor(
                 targetNameOrNumber = args.optString("target"),
                 messageBody = args.optString("message"),
             ).toOutcome()
+            "trigger_sos" -> {
+                val s = onReadSettings()
+                val contact = s.emergencyContact.ifBlank { "112" }
+                val note = args.optString("note").ifBlank { s.emergencySosMessage }
+                ToolOutcome(
+                    ok = true,
+                    output = JSONObject().put("sos_pending", true).put("target", contact),
+                    message = "Emergency SOS confirmation ready for $contact.",
+                    confirmationRequired = PendingActionConfirmation(
+                        type = PendingConfirmationType.EMERGENCY_SOS,
+                        title = "Confirm Emergency SOS",
+                        summary = "Call / SMS $contact?\n$note",
+                        target = contact,
+                        messageBody = note,
+                    ),
+                )
+            }
             "get_weather" -> phoneControl.getWeather(args.optString("city", "Delhi")).toOutcome()
             "web_search" -> phoneControl.webSearch(args.optString("query")).toOutcome()
             "save_memory" -> {
@@ -75,7 +99,7 @@ class ToolExecutor(
                 if (content.isBlank()) {
                     ToolOutcome(false, JSONObject().put("error", "Memory content empty"), "Kya yaad rakhna hai?")
                 } else {
-                    memoryRepo.saveMemory(title, content, tags, approvedByUser = true)
+                    memoryRepo.saveMemory(title, content, tags, approvedByUser = true, source = "aapne bataya")
                     ToolOutcome(
                         ok = true,
                         output = JSONObject().put("saved", true).put("title", title),
@@ -88,7 +112,7 @@ class ToolExecutor(
                 val hits = if (query.isBlank()) memoryRepo.getAllMemories().take(8) else memoryRepo.searchMemories(query, 8)
                 val arr = JSONArray()
                 hits.forEach { m ->
-                    arr.put(JSONObject().put("title", m.title).put("content", m.content))
+                    arr.put(JSONObject().put("title", m.title).put("content", m.content).put("source", m.source))
                 }
                 val text = if (hits.isEmpty()) {
                     "Koi saved memory nahi mili."
@@ -96,6 +120,52 @@ class ToolExecutor(
                     hits.joinToString("\n") { "• ${it.title}: ${it.content}" }
                 }
                 ToolOutcome(true, JSONObject().put("memories", arr), text)
+            }
+            "save_rule" -> {
+                val ruleText = args.optString("rule").trim()
+                if (ruleText.isBlank()) {
+                    ToolOutcome(false, JSONObject().put("error", "Rule empty"), "Kya rule save karna hai?")
+                } else {
+                    memoryRepo.saveRule(ruleText, enabled = true)
+                    ToolOutcome(
+                        ok = true,
+                        output = JSONObject().put("saved", true).put("rule", ruleText),
+                        message = "AYSHA rule save ho gaya: \"$ruleText\"",
+                    )
+                }
+            }
+            "list_rules" -> {
+                val rules = memoryRepo.getAllRules()
+                val arr = JSONArray()
+                rules.forEach { r -> arr.put(JSONObject().put("text", r.text).put("enabled", r.enabled)) }
+                val msg = if (rules.isEmpty()) "Abhi koi custom rule set nahi hai." else rules.joinToString("\n") { "• ${it.text}" }
+                ToolOutcome(true, JSONObject().put("rules", arr), msg)
+            }
+            "search_documents" -> {
+                val query = args.optString("query")
+                val hits = memoryRepo.searchDocumentSnippets(query, 4)
+                val arr = JSONArray(hits)
+                val msg = if (hits.isEmpty()) "Documents me isse milti julti jaankari nahi mili." else hits.joinToString("\n")
+                ToolOutcome(true, JSONObject().put("snippets", arr), msg)
+            }
+            "show_whiteboard" -> {
+                val title = args.optString("title", "Study Note")
+                val stepsRaw = args.optString("steps", "")
+                val code = args.optString("code", "")
+                val steps = stepsRaw.split("\n").map { it.trim() }.filter { it.isNotEmpty() }
+                onWhiteboardCard(
+                    WhiteboardCard(
+                        title = title,
+                        topic = title,
+                        steps = steps.ifEmpty { listOf(stepsRaw.ifBlank { "Concept explained." }) },
+                        codeSnippet = code,
+                    ),
+                )
+                ToolOutcome(
+                    ok = true,
+                    output = JSONObject().put("displayed", true).put("title", title),
+                    message = "Whiteboard par '$title' dikha diya hai.",
+                )
             }
             "run_macro" -> {
                 val macroName = args.optString("name")
@@ -105,6 +175,7 @@ class ToolExecutor(
                 } else {
                     val res = macroEngine.execute(macro)
                     val ok = res.isSuccess
+                    if (ok) memoryRepo.markMacroPlayed(macro.name)
                     val msg = res.getOrElse { it.message ?: "Workflow failed" }
                     ToolOutcome(ok, JSONObject().put(if (ok) "result" else "error", msg), msg)
                 }

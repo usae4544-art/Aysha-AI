@@ -2,8 +2,12 @@ package com.aysha.assistant
 
 import com.aysha.assistant.core.AccentPalette
 import com.aysha.assistant.core.AppSettings
+import com.aysha.assistant.core.AwarenessSensitivity
 import com.aysha.assistant.core.BrainProvider
+import com.aysha.assistant.core.MayaPalette
 import com.aysha.assistant.core.OrbState
+import com.aysha.assistant.core.OrbStyle
+import com.aysha.assistant.core.SurfaceStyle
 import com.aysha.assistant.core.ThemeMode
 import com.aysha.assistant.core.VoicePersonalities
 import org.junit.Assert.assertEquals
@@ -18,6 +22,10 @@ class AyshaAppUnitTest {
         assertEquals("AYSHA", defaults.assistantName)
         assertTrue(defaults.fallbackEnabled)
         assertEquals(ThemeMode.DARK, defaults.themeMode)
+        assertEquals(MayaPalette.OBSIDIAN, defaults.mayaPalette)
+        assertEquals(OrbStyle.AYSHA_2047, defaults.orbStyle)
+        assertEquals(SurfaceStyle.GLASS, defaults.surfaceStyle)
+        assertEquals(AwarenessSensitivity.BALANCED, defaults.awarenessSensitivity)
         assertEquals(AccentPalette.COSMIC_CYAN, defaults.accentPalette)
         assertEquals(BrainProvider.GEMINI, defaults.activeProvider)
     }
@@ -26,6 +34,7 @@ class AyshaAppUnitTest {
     fun `voice personalities include both female and male personas`() {
         val names = VoicePersonalities.all.map { it.name }
         assertTrue(names.contains("Aysha Natural"))
+        assertTrue(names.contains("Aysha Silk"))
         assertTrue(names.contains("Sara Friendly"))
         assertTrue(names.contains("Aarav Confident"))
         assertTrue(names.contains("Kabir Warm"))
@@ -33,8 +42,10 @@ class AyshaAppUnitTest {
     }
 
     @Test
-    fun `orb states include IDLE LISTENING PROCESSING SPEAKING`() {
+    fun `orb states and styles cover full HUD suite`() {
         val states = OrbState.entries.map { it.name }
         assertTrue(states.containsAll(listOf("IDLE", "LISTENING", "PROCESSING", "SPEAKING")))
+        assertTrue(OrbStyle.entries.size >= 11)
+        assertTrue(MayaPalette.entries.size >= 9)
     }
 }

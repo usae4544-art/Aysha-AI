@@ -64,6 +64,7 @@ class VoiceController(context: Context) {
 
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val bargeInDetector = BargeInDetector(appContext)
 
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
@@ -123,6 +124,7 @@ class VoiceController(context: Context) {
                         override fun onDone(utteranceId: String?) {
                             val isFinal = utteranceId?.endsWith("_LAST") != false
                             if (isFinal) {
+                                bargeInDetector.stop()
                                 _isSpeaking.value = false
                                 _rmsLevel.value = 0f
                                 val cb = pendingSpeakDone
@@ -133,12 +135,14 @@ class VoiceController(context: Context) {
 
                         @Deprecated("Deprecated in Java")
                         override fun onError(utteranceId: String?) {
+                            bargeInDetector.stop()
                             _isSpeaking.value = false
                             _rmsLevel.value = 0f
                             pendingSpeakDone = null
                         }
 
                         override fun onError(utteranceId: String?, errorCode: Int) {
+                            bargeInDetector.stop()
                             _isSpeaking.value = false
                             _rmsLevel.value = 0f
                             pendingSpeakDone = null
@@ -316,6 +320,8 @@ class VoiceController(context: Context) {
         volume: Float = 1.0f,
         personalityId: String = "aysha_natural",
         preferredVoiceName: String = "",
+        bargeInEnabled: Boolean = false,
+        onBargeIn: (() -> Unit)? = null,
         onDone: (() -> Unit)? = null,
     ) {
         val chunks = SpeechTextFormatter.splitChunks(text)
@@ -345,6 +351,7 @@ class VoiceController(context: Context) {
         val safeVolume = volume.coerceIn(0.0f, 1.0f)
 
         mainHandler.post {
+            bargeInDetector.stop()
             pendingSpeakDone = onDone
             val locale = Locale.forLanguageTag(localeTag)
             val langRes = engine.setLanguage(locale)
@@ -364,6 +371,14 @@ class VoiceController(context: Context) {
                 val queueMode = if (idx == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
                 val suffix = if (idx == chunks.lastIndex) "_LAST" else "_$idx"
                 engine.speak(chunk, queueMode, params, "$baseId$suffix")
+            }
+            if (bargeInEnabled && onBargeIn != null) {
+                bargeInDetector.start {
+                    mainHandler.post {
+                        stopSpeaking()
+                        onBargeIn()
+                    }
+                }
             }
         }
     }
@@ -409,6 +424,7 @@ class VoiceController(context: Context) {
     fun canReplay(): Boolean = lastSpokenPayload != null
 
     fun stopSpeaking() {
+        bargeInDetector.stop()
         pendingSpeakDone = null
         mainHandler.post {
             _isSpeaking.value = false

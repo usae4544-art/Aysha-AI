@@ -1,6 +1,8 @@
 package com.aysha.assistant.settings
 
 import com.aysha.assistant.core.AppSettings
+import com.aysha.assistant.core.MayaPalette
+import com.aysha.assistant.core.OrbStyle
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -12,6 +14,8 @@ class SettingsUnitTest {
     fun `safe config export never exposes api keys`() {
         val settings = AppSettings(
             assistantName = "AYSHA",
+            mayaPalette = MayaPalette.OBSIDIAN,
+            orbStyle = OrbStyle.AYSHA_2047,
             geminiApiKey = "AIzaSySecretKeyShouldNotLeak12345",
             groqApiKey = "gsk_SecretGroqShouldNotLeak12345",
             openAiApiKey = "sk-SecretOpenAiShouldNotLeak12345",
@@ -23,6 +27,21 @@ class SettingsUnitTest {
         val json = JSONObject(exported)
         assertEquals(false, json.getBoolean("apiKeysIncluded"))
         assertEquals("AYSHA", json.getString("assistantName"))
+        assertEquals("OBSIDIAN", json.getString("mayaPalette"))
+        assertEquals("AYSHA_2047", json.getString("orbStyle"))
+    }
+
+    @Test
+    fun `safe restore updates theme and orb without touching api keys`() {
+        val original = AppSettings(geminiApiKey = "AIzaKeepSecret")
+        val restored = SettingsRepository.applySafeRestoreJson(
+            original,
+            JSONObject("""{"assistantName":"AYSHA Pro","mayaPalette":"EMBER","orbStyle":"JARVIS"}"""),
+        )
+        assertEquals("AYSHA Pro", restored.assistantName)
+        assertEquals(MayaPalette.EMBER, restored.mayaPalette)
+        assertEquals(OrbStyle.JARVIS, restored.orbStyle)
+        assertEquals("AIzaKeepSecret", restored.geminiApiKey)
     }
 
     @Test

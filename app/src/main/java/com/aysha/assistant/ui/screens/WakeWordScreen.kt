@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -25,6 +27,7 @@ import androidx.compose.material.icons.rounded.Security
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -45,6 +48,9 @@ import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
 import com.aysha.assistant.ui.AyshaViewModel
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun WakeWordScreen(
@@ -56,12 +62,15 @@ fun WakeWordScreen(
     val wakeRunning by viewModel.wakeRunning.collectAsState()
     val wakeStatus by viewModel.wakeStatusText.collectAsState()
     val wakeEnergy by viewModel.wakeMicEnergy.collectAsState()
+    val decisionLogs by viewModel.awarenessDecisionLogs.collectAsState()
 
     var wakeInput by remember(settings.wakeWordsCsv) { mutableStateOf(settings.wakeWordsCsv) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -70,10 +79,9 @@ fun WakeWordScreen(
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
             }
-            Text("Wake Word System", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text("Wake Word & Decision Log", color = c.textPrimary, fontSize = 20.5.sp, fontWeight = FontWeight.Bold)
         }
 
-        // Mic Privacy Indicator & Toggle
         GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, elevated = true, contentPadding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Row(
@@ -82,25 +90,17 @@ fun WakeWordScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(
-                            imageVector = Icons.Rounded.Mic,
-                            contentDescription = null,
-                            tint = if (wakeRunning) c.success else c.textSecondary,
-                        )
+                        Icon(Icons.Rounded.Mic, contentDescription = null, tint = if (wakeRunning) c.success else c.textSecondary)
                         Spacer(modifier = Modifier.width(10.dp))
                         Column {
                             Text("On-Device Wake Word", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
                             Text(wakeStatus, color = if (wakeRunning) c.success else c.textSecondary, fontSize = 12.sp)
                         }
                     }
-                    Switch(
-                        checked = settings.wakeWordEnabled,
-                        onCheckedChange = { enable -> viewModel.toggleWakeWord(enable) },
-                    )
+                    Switch(checked = settings.wakeWordEnabled, onCheckedChange = { enable -> viewModel.toggleWakeWord(enable) })
                 }
 
-                // Live Mic Acoustic Level Meter
-                Text("Live Acoustic Energy Gate (VAD)", color = c.textSecondary, fontSize = 11.5.sp)
+                Text("Live Acoustic Energy Gate (${settings.awarenessSensitivity.label})", color = c.textSecondary, fontSize = 11.5.sp)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -119,7 +119,6 @@ fun WakeWordScreen(
             }
         }
 
-        // Configurable Wake Phrases
         GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Wake Phrases (Comma-separated)", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp)
@@ -151,13 +150,36 @@ fun WakeWordScreen(
             }
         }
 
-        // Privacy Guarantee
+        // Maya-style Awareness Decision Log
+        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                    Text("Awareness Decision Log (${decisionLogs.size})", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                    if (decisionLogs.isNotEmpty()) {
+                        OutlinedButton(onClick = { viewModel.clearAwarenessLogs() }) { Text("Clear Log") }
+                    }
+                }
+                if (decisionLogs.isEmpty()) {
+                    Text("Abhi kuch nahi. Wake Word on karo — har audio window ka local decision yahan dikhega.", color = c.textSecondary, fontSize = 12.sp)
+                } else {
+                    val fmt = SimpleDateFormat("HH:mm:ss", Locale.getDefault())
+                    decisionLogs.take(12).forEach { log ->
+                        Text(
+                            text = "${fmt.format(Date(log.timestampMs))} · ${if (log.forwarded) "Jawab diya" else "Chup rahi"} · \"${log.heardText}\" (rms=${String.format(Locale.US, "%.2f", log.energy)})",
+                            color = if (log.forwarded) c.success else c.textSecondary,
+                            fontSize = 11.5.sp,
+                        )
+                    }
+                }
+            }
+        }
+
         GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
             Row(verticalAlignment = Alignment.Top) {
                 Icon(Icons.Rounded.Security, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    "100% On-Device Audio Processing: Audio stays inside your phone's local Vosk acoustic recognizer with an energy VAD gate to save battery. Private conversations are never recorded or uploaded in the background.",
+                    "100% On-Device Audio Processing: Audio stays inside your phone's local Vosk acoustic recognizer with an adjustable energy VAD gate. Nothing is uploaded in the background.",
                     color = c.textSecondary,
                     fontSize = 12.5.sp,
                 )

@@ -1,0 +1,653 @@
+package com.aysha.assistant.ui.screens
+
+import android.annotation.SuppressLint
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.webkit.WebView
+import android.webkit.WebViewClient
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
+import androidx.compose.material.icons.automirrored.rounded.Send
+import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.MusicNote
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.VolumeUp
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.core.content.FileProvider
+import com.aysha.assistant.core.AssistantMood
+import com.aysha.assistant.core.CompanionMode
+import com.aysha.assistant.core.SubAgentRole
+import com.aysha.assistant.core.VibePresets
+import com.aysha.assistant.core.ui.AuroraGradientButton
+import com.aysha.assistant.core.ui.GlassCard
+import com.aysha.assistant.core.ui.GlassPill
+import com.aysha.assistant.core.ui.LocalAyshaColors
+import com.aysha.assistant.ui.AyshaViewModel
+import java.io.ByteArrayOutputStream
+import java.io.File
+
+@Composable
+fun RulesAndAgentsScreen(
+    viewModel: AyshaViewModel,
+    onBack: () -> Unit,
+) {
+    val c = LocalAyshaColors.current
+    val settings by viewModel.settings.collectAsState()
+    val rules by viewModel.rules.collectAsState()
+    val mood by viewModel.assistantMood.collectAsState()
+    val energy by viewModel.assistantEnergy.collectAsState()
+    var showAddRule by remember { mutableStateOf(false) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
+            }
+            Text("Rules, Agents & Mood", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+        }
+
+        // Companion Mood & Energy Card
+        GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text("Live Companion Mood", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                    Text("${mood.label} · Energy $energy%", color = Color(mood.colorHex), fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                }
+                Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    AssistantMood.entries.forEach { m ->
+                        GlassPill(
+                            text = m.label,
+                            dotColor = if (mood == m) Color(m.colorHex) else null,
+                            onClick = { viewModel.setAssistantMood(m) },
+                        )
+                    }
+                }
+            }
+        }
+
+        // Sub-Agent Selector
+        GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Active Sub-Agent Specialist", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(settings.activeSubAgent.specialtyInstruction, color = c.textSecondary, fontSize = 12.sp)
+                Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SubAgentRole.entries.forEach { role ->
+                        val active = settings.activeSubAgent == role
+                        GlassPill(
+                            text = role.label,
+                            dotColor = if (active) c.accentPrimary else null,
+                            onClick = { viewModel.updateSettings { it.copy(activeSubAgent = role) } },
+                        )
+                    }
+                }
+            }
+        }
+
+        // Companion Mode Selector
+        GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Companion Mode", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    CompanionMode.entries.forEach { mode ->
+                        val active = settings.companionMode == mode
+                        GlassPill(
+                            text = mode.label,
+                            dotColor = if (active) c.accentSecondary else null,
+                            onClick = { viewModel.updateSettings { it.copy(companionMode = mode) } },
+                        )
+                    }
+                }
+            }
+        }
+
+        // Vibes Quick Music Moods
+        GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Rounded.MusicNote, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Aaj ka Vibe?", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                }
+                Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    VibePresets.all.forEach { preset ->
+                        GlassPill(
+                            text = "${preset.title} (${preset.subtitle})",
+                            dotColor = Color(preset.colorHex),
+                            onClick = { viewModel.activateVibe(preset) },
+                        )
+                    }
+                }
+            }
+        }
+
+        // AYSHA Rules ("Aysha ke Rules")
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text("AYSHA ke Rules (${rules.size})", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            GlassPill(text = "+ Rule jodo", dotColor = c.accentPrimary, onClick = { showAddRule = true })
+        }
+        Text(
+            "In rules ko AYSHA hamesha follow karti hai (ya voice me bolo: \"Ab se hamesha chhote jawab dena\").",
+            color = c.textSecondary,
+            fontSize = 12.sp,
+        )
+
+        if (rules.isEmpty()) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+                Text("Abhi koi custom rule nahi — + Rule jodo dabao ya chat me bolo 'Ab se hamesha...'", color = c.textSecondary, fontSize = 13.sp)
+            }
+        } else {
+            rules.forEach { rule ->
+                GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(12.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Switch(checked = rule.enabled, onCheckedChange = { viewModel.toggleRule(rule) })
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(rule.text, color = c.textPrimary, fontSize = 13.5.sp, modifier = Modifier.weight(1f))
+                        IconButton(onClick = { viewModel.deleteRule(rule.id) }) {
+                            Icon(Icons.Rounded.DeleteOutline, contentDescription = "Delete", tint = c.error)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if (showAddRule) {
+        var ruleText by remember { mutableStateOf("") }
+        AlertDialog(
+            onDismissRequest = { showAddRule = false },
+            title = { Text("Naya Rule Jodo") },
+            text = {
+                OutlinedTextField(
+                    value = ruleText,
+                    onValueChange = { ruleText = it },
+                    label = { Text("jaise: Hamesha chhote jawab dena") },
+                )
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (ruleText.isNotBlank()) viewModel.saveRule(ruleText)
+                    showAddRule = false
+                }) { Text("Save") }
+            },
+            dismissButton = { TextButton(onClick = { showAddRule = false }) { Text("Cancel") } },
+        )
+    }
+}
+
+@Composable
+fun ScannerScreen(
+    viewModel: AyshaViewModel,
+    onBack: () -> Unit,
+) {
+    val c = LocalAyshaColors.current
+    val context = LocalContext.current
+    val scannerReply by viewModel.scannerReply.collectAsState()
+    val analyzing by viewModel.scannerAnalyzing.collectAsState()
+
+    var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    var imageBytes by remember { mutableStateOf<ByteArray?>(null) }
+    var question by remember { mutableStateOf("Is image me kya dikh raha hai? Detail me batao.") }
+
+    val tempUri = remember {
+        val file = File(context.cacheDir, "aysha_scan_capture.jpg")
+        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+    }
+
+    fun loadUriToBytes(uri: Uri) {
+        runCatching {
+            context.contentResolver.openInputStream(uri)?.use { stream ->
+                val bmp = BitmapFactory.decodeStream(stream)
+                if (bmp != null) {
+                    previewBitmap = bmp
+                    val bos = ByteArrayOutputStream()
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 84, bos)
+                    imageBytes = bos.toByteArray()
+                }
+            }
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        if (ok) loadUriToBytes(tempUri)
+    }
+    val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        if (uri != null) loadUriToBytes(uri)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
+            }
+            Text("Visual Scanner", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+        }
+
+        GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                if (previewBitmap != null) {
+                    Image(
+                        bitmap = previewBitmap!!.asImageBitmap(),
+                        contentDescription = "Captured Scan",
+                        contentScale = ContentScale.Fit,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp)
+                            .clip(RoundedCornerShape(14.dp)),
+                    )
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(c.backgroundDeep),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(36.dp))
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text("STANDBY — Photo capture karo ya gallery se chuno", color = c.textSecondary, fontSize = 12.5.sp)
+                        }
+                    }
+                }
+
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedButton(onClick = { cameraLauncher.launch(tempUri) }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Camera")
+                    }
+                    OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f)) {
+                        Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("Gallery")
+                    }
+                }
+            }
+        }
+
+        OutlinedTextField(
+            value = question,
+            onValueChange = { question = it },
+            label = { Text("AYSHA se kya poochhna hai?") },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp),
+        )
+
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GlassPill("Kya dikh raha hai?") { question = "Kya dikh raha hai? Hinglish me explain karo." }
+            GlassPill("Solve Question") { question = "Isme likha sawaal step-by-step solve karo." }
+            GlassPill("Extract Text") { question = "Is image ka saara text read karke do." }
+        }
+
+        if (analyzing) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text("NEURAL LINK ACTIVE — analyzing image...", color = c.textPrimary)
+                }
+            }
+        } else {
+            AuroraGradientButton(
+                text = "Analyze with AYSHA Vision",
+                icon = Icons.Rounded.AutoAwesome,
+                onClick = {
+                    val bytes = imageBytes
+                    if (bytes == null) {
+                        Toast.makeText(context, "Pehle photo capture ya pick karo", Toast.LENGTH_SHORT).show()
+                    } else {
+                        viewModel.analyzeScannerImage(bytes, question)
+                    }
+                },
+            )
+        }
+
+        scannerReply?.let { reply ->
+            GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("AYSHA Vision Analysis", color = c.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                        IconButton(onClick = { viewModel.speakMessage(reply) }, modifier = Modifier.size(28.dp)) {
+                            Icon(Icons.Rounded.VolumeUp, contentDescription = "Speak", tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+                        }
+                    }
+                    Text(reply, color = c.textPrimary, fontSize = 13.5.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun WhiteboardScreen(
+    viewModel: AyshaViewModel,
+    onBack: () -> Unit,
+) {
+    val c = LocalAyshaColors.current
+    val cards by viewModel.whiteboardCards.collectAsState()
+    var topicDraft by remember { mutableStateOf("") }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding()
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IconButton(onClick = onBack) {
+                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
+                }
+                Text("Study Whiteboard", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            }
+            if (cards.isNotEmpty()) {
+                IconButton(onClick = { viewModel.clearWhiteboard() }) {
+                    Icon(Icons.Rounded.DeleteSweep, contentDescription = "Clear", tint = c.error)
+                }
+            }
+        }
+
+        if (cards.isEmpty()) {
+            GlassCard(modifier = Modifier.weight(1f).fillMaxWidth(), contentPadding = PaddingValues(20.dp)) {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = "AYSHA yahin padhayegi — koi bhi math, science, coding ya exam sawaal poochho!",
+                        color = c.textSecondary,
+                        fontSize = 14.sp,
+                    )
+                }
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f).fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(cards, key = { it.id }) { card ->
+                    GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                                Text(card.title, color = c.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp, modifier = Modifier.weight(1f))
+                                IconButton(onClick = { viewModel.speakMessage(card.steps.joinToString(". ")) }, modifier = Modifier.size(28.dp)) {
+                                    Icon(Icons.Rounded.VolumeUp, contentDescription = "Speak", tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+                                }
+                            }
+                            card.steps.forEachIndexed { idx, step ->
+                                Text("${idx + 1}. $step", color = c.textPrimary, fontSize = 13.5.sp)
+                            }
+                            if (card.codeSnippet.isNotBlank()) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(Color(0xFF05070B))
+                                        .padding(10.dp),
+                                ) {
+                                    Text(card.codeSnippet, color = Color(0xFF22D3EE), fontFamily = FontFamily.Monospace, fontSize = 12.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            OutlinedTextField(
+                value = topicDraft,
+                onValueChange = { topicDraft = it },
+                placeholder = { Text("Explain Ohm's Law, Python loops, Quadratic...") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
+                shape = RoundedCornerShape(18.dp),
+            )
+            Button(
+                onClick = {
+                    if (topicDraft.isNotBlank()) {
+                        viewModel.askWhiteboard(topicDraft)
+                        topicDraft = ""
+                    }
+                },
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "Teach")
+            }
+        }
+    }
+}
+
+@SuppressLint("SetJavaScriptEnabled")
+@Composable
+fun BrowserScreen(
+    viewModel: AyshaViewModel,
+    onBack: () -> Unit,
+) {
+    val c = LocalAyshaColors.current
+    val context = LocalContext.current
+    var urlInput by remember { mutableStateOf("https://duckduckgo.com") }
+    var desktopMode by remember { mutableStateOf(false) }
+    var webViewRef by remember { mutableStateOf<WebView?>(null) }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .padding(horizontal = 10.dp, vertical = 6.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
+            }
+            OutlinedTextField(
+                value = urlInput,
+                onValueChange = { urlInput = it },
+                singleLine = true,
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp),
+            )
+            IconButton(onClick = {
+                val target = if (urlInput.startsWith("http")) urlInput else "https://$urlInput"
+                webViewRef?.loadUrl(target)
+            }) {
+                Icon(Icons.Rounded.Refresh, contentDescription = "Go", tint = c.accentPrimary)
+            }
+        }
+
+        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GlassPill("Back") { webViewRef?.goBack() }
+            GlassPill(if (desktopMode) "Desktop ON" else "Desktop OFF") {
+                desktopMode = !desktopMode
+                webViewRef?.settings?.userAgentString = if (desktopMode) {
+                    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/126.0.0.0 Safari/537.36"
+                } else null
+                webViewRef?.reload()
+            }
+            GlassPill("Copy Link") {
+                val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                cb.setPrimaryClip(ClipData.newPlainText("URL", webViewRef?.url ?: urlInput))
+                Toast.makeText(context, "Link copied", Toast.LENGTH_SHORT).show()
+            }
+            GlassPill("Summarize Page") {
+                webViewRef?.evaluateJavascript("(function(){return document.body.innerText.slice(0,3000);})()") { text ->
+                    val clean = text.trim('"').replace("\\n", "\n").take(2500)
+                    if (clean.isNotBlank()) {
+                        viewModel.sendTextMessage("Is webpage ko Hinglish me short me summarize karo:\n\n$clean", speakReply = true)
+                        Toast.makeText(context, "AYSHA summarizing page...", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+            GlassPill("External") {
+                runCatching {
+                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(webViewRef?.url ?: urlInput)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+            }
+        }
+
+        AndroidView(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp)),
+            factory = { ctx ->
+                WebView(ctx).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    webViewClient = object : WebViewClient() {
+                        override fun onPageFinished(view: WebView?, url: String?) {
+                            if (!url.isNullOrBlank()) urlInput = url
+                        }
+                    }
+                    loadUrl(urlInput)
+                    webViewRef = this
+                }
+            },
+        )
+    }
+}
+
+@Composable
+fun LicensesScreen(
+    onBack: () -> Unit,
+) {
+    val c = LocalAyshaColors.current
+    val items = listOf(
+        "AYSHA – Your Personal AI Assistant (MIT License)" to
+            "Copyright (c) 2026 AYSHA AI Contributors (usae4544-art)\nPermission is hereby granted, free of charge, to any person obtaining a copy of this software, to deal in the Software without restriction including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software.",
+        "Vosk Android Speech Recognition (Apache-2.0)" to
+            "On-device wake-word and offline speech model powered by Alpha Cephei Vosk (`com.alphacephei:vosk-android`) and JNA (`net.java.dev.jna:jna`).",
+        "AndroidX, Jetpack Compose & Room (Apache-2.0)" to
+            "Material 3, Compose UI, DataStore Preferences, Room SQLite, Lifecycle, Navigation.",
+        "OkHttp (Apache-2.0)" to
+            "HTTP & WebSocket networking client by Square.",
+        "Inter, Nunito & JetBrains Mono Fonts (SIL OFL 1.1)" to
+            "Bundled open-source typefaces licensed under the SIL Open Font License v1.1.",
+    )
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
+            }
+            Text("Open-Source Licenses", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+        }
+
+        GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+            Text(
+                "AYSHA is 100% Free & Open Source under the MIT License — zero subscriptions, zero ads, and zero locked features.",
+                color = c.accentPrimary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 13.5.sp,
+            )
+        }
+
+        items.forEach { (title, body) ->
+            GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(title, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                    Text(body, color = c.textSecondary, fontSize = 12.sp)
+                }
+            }
+        }
+    }
+}

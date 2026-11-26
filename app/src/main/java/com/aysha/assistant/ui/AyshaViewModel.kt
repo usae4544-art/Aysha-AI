@@ -17,26 +17,36 @@ import com.aysha.assistant.ai.LiveCallbacks
 import com.aysha.assistant.ai.MultiProviderAiClient
 import com.aysha.assistant.ai.OfflineCommandParser
 import com.aysha.assistant.ai.PromptBuilder
+import com.aysha.assistant.ai.SmartMemoryExtractor
 import com.aysha.assistant.ai.ToolExecutor
 import com.aysha.assistant.automation.AyshaAccessibilityService
 import com.aysha.assistant.automation.MacroEngine
 import com.aysha.assistant.core.AppSettings
+import com.aysha.assistant.core.AssistantMood
+import com.aysha.assistant.core.AwarenessDecisionLog
 import com.aysha.assistant.core.BrainProvider
 import com.aysha.assistant.core.ChatMessage
 import com.aysha.assistant.core.ChatRole
+import com.aysha.assistant.core.KnowledgeDocument
 import com.aysha.assistant.core.MacroDefinition
 import com.aysha.assistant.core.MemoryEntry
 import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.PendingActionConfirmation
 import com.aysha.assistant.core.PendingConfirmationType
 import com.aysha.assistant.core.ToolLogEntry
+import com.aysha.assistant.core.UserRule
+import com.aysha.assistant.core.VibePreset
 import com.aysha.assistant.core.VoiceEngineMode
 import com.aysha.assistant.core.VoicePersonality
+import com.aysha.assistant.core.WhiteboardCard
 import com.aysha.assistant.floatingassistant.AyshaForegroundService
+import com.aysha.assistant.memory.BackupRestoreHelper
 import com.aysha.assistant.memory.ChatExporter
 import com.aysha.assistant.phonecontrol.AyshaNotificationListener
+import com.aysha.assistant.phonecontrol.ReminderEventBus
 import com.aysha.assistant.settings.PermissionAudit
 import com.aysha.assistant.settings.PermissionAuditItem
+import com.aysha.assistant.settings.SettingsRepository
 import com.aysha.assistant.voice.TtsVoiceInfo
 import com.aysha.assistant.wakeword.WakeModelState
 import com.aysha.assistant.wakeword.WakeWordStatusBus
@@ -67,15 +77,22 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         startInAppTimer(secs, label)
     }
 
+    val settings: StateFlow<AppSettings> = settingsRepo.settingsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
+
+    private val _whiteboardCards = MutableStateFlow<List<WhiteboardCard>>(emptyList())
+    val whiteboardCards: StateFlow<List<WhiteboardCard>> = _whiteboardCards.asStateFlow()
+
     private val toolExecutor = ToolExecutor(
         phoneControl = phoneControl,
         memoryRepo = memoryRepo,
         macroEngine = macroEngine,
         onStartTimer = { secs, label -> startInAppTimer(secs, label) },
+        onWhiteboardCard = { card ->
+            _whiteboardCards.value = listOf(card) + _whiteboardCards.value
+        },
+        onReadSettings = { settings.value },
     )
-
-    val settings: StateFlow<AppSettings> = settingsRepo.settingsFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
 
     val discoveredModels: StateFlow<List<String>> = settingsRepo.discoveredModels
     val availableTtsVoices: StateFlow<List<TtsVoiceInfo>> = voice.availableVoices
@@ -86,12 +103,22 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     val wakeModelState: StateFlow<WakeModelState> = WakeWordStatusBus.modelState
     val wakeStatusText: StateFlow<String> = WakeWordStatusBus.statusText
     val wakeMicEnergy: StateFlow<Float> = WakeWordStatusBus.micEnergy
+    val awarenessDecisionLogs: StateFlow<List<AwarenessDecisionLog>> = WakeWordStatusBus.decisionLogs
 
     private val _messages = MutableStateFlow<List<ChatMessage>>(emptyList())
     val messages: StateFlow<List<ChatMessage>> = _messages.asStateFlow()
 
     private val _memories = MutableStateFlow<List<MemoryEntry>>(emptyList())
     val memories: StateFlow<List<MemoryEntry>> = _memories.asStateFlow()
+
+    private val _archivedMemories = MutableStateFlow<List<MemoryEntry>>(emptyList())
+    val archivedMemories: StateFlow<List<MemoryEntry>> = _archivedMemories.asStateFlow()
+
+    private val _rules = MutableStateFlow<List<UserRule>>(emptyList())
+    val rules: StateFlow<List<UserRule>> = _rules.asStateFlow()
+
+    private val _documents = MutableStateFlow<List<KnowledgeDocument>>(emptyList())
+    val documents: StateFlow<List<KnowledgeDocument>> = _documents.asStateFlow()
 
     private val _macros = MutableStateFlow<List<MacroDefinition>>(emptyList())
     val macros: StateFlow<List<MacroDefinition>> = _macros.asStateFlow()
@@ -102,9 +129,15 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     private val _permissionAudit = MutableStateFlow<List<PermissionAuditItem>>(emptyList())
     val permissionAudit: StateFlow<List<PermissionAuditItem>> = _permissionAudit.asStateFlow()
 
+    private val _assistantMood = MutableStateFlow(AssistantMood.KHUSH)
+    val assistantMood: StateFlow<AssistantMood> = _assistantMood.asStateFlow()
+
+    private val _assistantEnergy = MutableStateFlow(88)
+    val assistantEnergy: StateFlow<Int> = _assistantEnergy.asStateFlow()
+
     private val _agentOrbState = MutableStateFlow(OrbState.IDLE)
     private val _agentStatusText = MutableStateFlow("Tap Orb to talk — 100% Free")
-    private val _lastAssistantReply = MutableStateFlow("Hello! I am Aysha. How can I help you today?")
+    private val _lastAssistantReply = MutableStateFlow("Hello! Main Aysha hoon — bolo, aaj kya help karoon?")
     val lastAssistantReply: StateFlow<String> = _lastAssistantReply.asStateFlow()
 
     private val _liveMuted = MutableStateFlow(false)
@@ -134,6 +167,9 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     private val _sessionElapsedSeconds = MutableStateFlow(0L)
     val sessionElapsedSeconds: StateFlow<Long> = _sessionElapsedSeconds.asStateFlow()
 
+    private val _followUpSecondsLeft = MutableStateFlow(0)
+    val followUpSecondsLeft: StateFlow<Int> = _followUpSecondsLeft.asStateFlow()
+
     private val _timerRemainingSeconds = MutableStateFlow(0L)
     val timerRemainingSeconds: StateFlow<Long> = _timerRemainingSeconds.asStateFlow()
 
@@ -143,8 +179,21 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     private val _timerLabel = MutableStateFlow("AYSHA Timer")
     val timerLabel: StateFlow<String> = _timerLabel.asStateFlow()
 
+    private val _pendingAttachmentJpeg = MutableStateFlow<ByteArray?>(null)
+    val pendingAttachmentJpeg: StateFlow<ByteArray?> = _pendingAttachmentJpeg.asStateFlow()
+
+    private val _scannerReply = MutableStateFlow<String?>(null)
+    val scannerReply: StateFlow<String?> = _scannerReply.asStateFlow()
+
+    private val _scannerAnalyzing = MutableStateFlow(false)
+    val scannerAnalyzing: StateFlow<Boolean> = _scannerAnalyzing.asStateFlow()
+
+    private val _backupFeedback = MutableStateFlow<String?>(null)
+    val backupFeedback: StateFlow<String?> = _backupFeedback.asStateFlow()
+
     private var timerJob: Job? = null
     private var sessionTickerJob: Job? = null
+    private var followUpJob: Job? = null
 
     @Volatile
     private var continuousVoiceActive = false
@@ -218,6 +267,18 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         refreshData()
         refreshPermissions()
         startSessionTicker()
+        observeFiredReminders()
+    }
+
+    private fun observeFiredReminders() {
+        viewModelScope.launch {
+            ReminderEventBus.firedReminders.collect { msg ->
+                val text = "🔔 Reminder: $msg"
+                _lastAssistantReply.value = text
+                appendMessage(ChatRole.ASSISTANT, text, "Reminder")
+                speakText("Reminder! $msg", settings.value, null)
+            }
+        }
     }
 
     private fun startSessionTicker() {
@@ -225,7 +286,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         sessionTickerJob = viewModelScope.launch {
             while (isActive) {
                 val active = orbState.value != OrbState.IDLE && orbState.value != OrbState.ERROR
-                if (active || continuousVoiceActive) {
+                if (active || continuousVoiceActive || _followUpSecondsLeft.value > 0) {
                     delay(1000L)
                     _sessionElapsedSeconds.value += 1L
                 } else {
@@ -243,7 +304,10 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             msgs.lastOrNull { it.role == ChatRole.ASSISTANT }?.let {
                 _lastAssistantReply.value = it.text
             }
-            _memories.value = memoryRepo.getAllMemories()
+            _memories.value = memoryRepo.getAllMemories(includeArchived = false)
+            _archivedMemories.value = memoryRepo.getArchivedMemories()
+            _rules.value = memoryRepo.getAllRules()
+            _documents.value = memoryRepo.getAllDocuments()
             _macros.value = memoryRepo.getAllMacros()
             _toolLogs.value = memoryRepo.getRecentToolLogs(50)
         }
@@ -265,9 +329,15 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         _requestedNavTab.value = null
     }
 
-    fun handleLaunchExtras(startVoice: Boolean, targetTab: String?, wakePhrase: String?) {
+    fun handleLaunchExtras(startVoice: Boolean, targetTab: String?, wakePhrase: String?, reminderSpeak: String? = null) {
         if (!targetTab.isNullOrBlank()) {
             _requestedNavTab.value = targetTab
+        }
+        if (!reminderSpeak.isNullOrBlank()) {
+            val text = "🔔 Reminder: $reminderSpeak"
+            _lastAssistantReply.value = text
+            _agentStatusText.value = text
+            speakText("Reminder! $reminderSpeak", settings.value, null)
         }
         if (!wakePhrase.isNullOrBlank()) {
             _agentStatusText.value = "Wake word: $wakePhrase"
@@ -306,6 +376,8 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun onOrbTap() {
+        followUpJob?.cancel()
+        _followUpSecondsLeft.value = 0
         val current = settings.value
         if (liveClient.isActive()) {
             liveClient.stop()
@@ -327,7 +399,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         if (current.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE && current.geminiApiKey.isNotBlank() && !current.offlineOnlyMode) {
             startGeminiLiveSession()
         } else {
-            continuousVoiceActive = current.continuousConversation
+            continuousVoiceActive = current.continuousConversation || current.followUpWindowSeconds > 0
             startStandardVoiceListen()
         }
     }
@@ -340,6 +412,8 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopActiveVoiceOrSpeech() {
         continuousVoiceActive = false
+        followUpJob?.cancel()
+        _followUpSecondsLeft.value = 0
         if (liveClient.isActive()) {
             liveClient.interruptPlayback()
             liveClient.stop()
@@ -365,38 +439,81 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     private fun startGeminiLiveSession() {
         viewModelScope.launch {
             val s = settings.value
-            val mems = withContext(Dispatchers.IO) { memoryRepo.getAllMemories().take(12) }
+            val (mems, activeRules) = withContext(Dispatchers.IO) {
+                memoryRepo.getAllMemories().take(12) to memoryRepo.getAllRules()
+            }
             val sys = PromptBuilder.buildSystemInstruction(
                 settings = s,
                 memories = mems,
                 accessibilityEnabled = accessibilityConnected.value,
                 notificationsEnabled = notificationListenerConnected.value,
+                rules = activeRules,
+                mood = _assistantMood.value,
+                energy = _assistantEnergy.value,
             )
             _liveMuted.value = false
             liveClient.start(s, sys)
         }
     }
 
+    private fun startFollowUpWindowIfConfigured() {
+        val s = settings.value
+        val windowSecs = s.followUpWindowSeconds
+        if (windowSecs <= 0 && !s.continuousConversation) {
+            continuousVoiceActive = false
+            resumeWakeWordIfEnabled()
+            return
+        }
+        if (s.continuousConversation) {
+            startStandardVoiceListen()
+            return
+        }
+        followUpJob?.cancel()
+        followUpJob = viewModelScope.launch {
+            _followUpSecondsLeft.value = windowSecs
+            startStandardVoiceListen()
+            while (isActive && _followUpSecondsLeft.value > 0) {
+                delay(1000L)
+                _followUpSecondsLeft.value = (_followUpSecondsLeft.value - 1).coerceAtLeast(0)
+            }
+            if (_followUpSecondsLeft.value == 0 && !voice.isSpeaking.value && _agentOrbState.value == OrbState.IDLE) {
+                continuousVoiceActive = false
+                voice.stopListening()
+                resumeWakeWordIfEnabled()
+            }
+        }
+    }
+
     private fun startStandardVoiceListen() {
         if (!hasMicPermission()) {
             continuousVoiceActive = false
+            _followUpSecondsLeft.value = 0
             _pendingMicPermission.value = true
             _agentOrbState.value = OrbState.IDLE
             return
         }
         val s = settings.value
-        _agentStatusText.value = if (continuousVoiceActive) "Continuous listening active..." else "Listening..."
+        _agentStatusText.value = if (_followUpSecondsLeft.value > 0) {
+            "Follow-up active (${_followUpSecondsLeft.value}s) — bolo..."
+        } else if (continuousVoiceActive) {
+            "Continuous listening active..."
+        } else {
+            "Listening..."
+        }
+
         voice.startListening(
             localeTag = s.language.sttLocaleTag,
             onPartialResult = { partial ->
                 _agentStatusText.value = partial
             },
             onFinalResult = { spoken ->
+                followUpJob?.cancel()
+                _followUpSecondsLeft.value = 0
                 sendTextMessage(spoken, speakReply = true)
             },
-            onSoftTimeout = if (continuousVoiceActive) {
+            onSoftTimeout = if (continuousVoiceActive || _followUpSecondsLeft.value > 0) {
                 {
-                    if (continuousVoiceActive && settings.value.continuousConversation) {
+                    if ((continuousVoiceActive && settings.value.continuousConversation) || _followUpSecondsLeft.value > 0) {
                         startStandardVoiceListen()
                     } else {
                         continuousVoiceActive = false
@@ -409,6 +526,8 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             },
             onError = { err ->
                 continuousVoiceActive = false
+                followUpJob?.cancel()
+                _followUpSecondsLeft.value = 0
                 _agentOrbState.value = OrbState.ERROR
                 _agentStatusText.value = err
                 resumeWakeWordIfEnabled()
@@ -422,40 +541,68 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         liveClient.setMuted(next)
     }
 
+    fun attachPendingImage(jpegBytes: ByteArray?) {
+        _pendingAttachmentJpeg.value = jpegBytes
+    }
+
     fun sendTextMessage(text: String, speakReply: Boolean? = null) {
         val clean = text.trim()
-        if (clean.isEmpty()) return
+        val imgBytes = _pendingAttachmentJpeg.value
+        if (clean.isEmpty() && imgBytes == null) return
+        _pendingAttachmentJpeg.value = null
 
+        val promptText = clean.ifBlank { "Is image me kya dikh raha hai? Explain karo." }
         if (liveClient.isActive()) {
-            liveClient.sendText(clean)
-            appendMessage(ChatRole.USER, clean, "Gemini Live")
+            liveClient.sendText(promptText)
+            appendMessage(ChatRole.USER, promptText, "Gemini Live")
             return
         }
 
-        appendMessage(ChatRole.USER, clean, "")
+        appendMessage(ChatRole.USER, if (imgBytes != null) "📷 $promptText" else promptText, "")
+
+        // Update mood & energy naturally
+        val (nextMood, nextEnergy) = SmartMemoryExtractor.analyzeMoodShift(promptText, _assistantMood.value, _assistantEnergy.value)
+        _assistantMood.value = nextMood
+        _assistantEnergy.value = nextEnergy
 
         viewModelScope.launch {
             val s = settings.value
             _agentOrbState.value = OrbState.PROCESSING
             _agentStatusText.value = "${s.assistantName} is thinking..."
 
-            val (mems, history) = withContext(Dispatchers.IO) {
-                val ranked = (memoryRepo.searchMemories(clean, 6) + memoryRepo.getAllMemories().take(4)).distinctBy { it.id }
+            val (mems, history, activeRules, docSnippets) = withContext(Dispatchers.IO) {
+                if (s.autoMemoryEnabled) {
+                    SmartMemoryExtractor.extractAutoFacts(promptText).forEach { f ->
+                        memoryRepo.saveMemory(f.title, f.content, f.tags, approvedByUser = true, source = "baaton se samjha")
+                    }
+                    SmartMemoryExtractor.extractAutoRule(promptText)?.let { autoRule ->
+                        memoryRepo.saveRule(autoRule, enabled = true)
+                    }
+                }
+                val ranked = (memoryRepo.searchMemories(promptText, 6) + memoryRepo.getAllMemories().take(4)).distinctBy { it.id }
                 val hist = memoryRepo.getRecentMessages(20)
-                ranked to hist
+                val allRules = memoryRepo.getAllRules()
+                val snippets = memoryRepo.searchDocumentSnippets(promptText, 3)
+                Quadruple(ranked, hist, allRules, snippets)
             }
+
             val sys = PromptBuilder.buildSystemInstruction(
                 settings = s,
                 memories = mems,
                 accessibilityEnabled = accessibilityConnected.value,
                 notificationsEnabled = notificationListenerConnected.value,
+                rules = activeRules,
+                mood = _assistantMood.value,
+                energy = _assistantEnergy.value,
+                documentSnippets = docSnippets,
             )
 
             val turn = aiClient.runTurnWithFallback(
                 settings = s,
                 systemInstruction = sys,
                 history = history,
-                userText = clean,
+                userText = promptText,
+                attachedImageJpeg = imgBytes,
                 toolExecutor = toolExecutor,
                 onToolEvent = { status ->
                     _agentOrbState.value = OrbState.AUTOMATING
@@ -483,19 +630,21 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             val shouldSpeak = speakReply ?: (s.autoSpeakReplies && s.voiceEngineMode != VoiceEngineMode.TEXT_ONLY)
             if (shouldSpeak) {
                 speakText(turn.text, s) {
-                    if (continuousVoiceActive && settings.value.continuousConversation) {
-                        startStandardVoiceListen()
+                    if (continuousVoiceActive) {
+                        startFollowUpWindowIfConfigured()
                     } else {
                         resumeWakeWordIfEnabled()
                     }
                 }
-            } else if (continuousVoiceActive && s.continuousConversation) {
-                startStandardVoiceListen()
+            } else if (continuousVoiceActive) {
+                startFollowUpWindowIfConfigured()
             } else {
                 resumeWakeWordIfEnabled()
             }
         }
     }
+
+    private data class Quadruple<A, B, C, D>(val first: A, val second: B, val third: C, val fourth: D)
 
     private fun speakText(text: String, s: AppSettings, onDone: (() -> Unit)?) {
         voice.speak(
@@ -506,6 +655,11 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             volume = s.ttsVolume,
             personalityId = s.voicePersonalityId,
             preferredVoiceName = s.selectedTtsVoiceName,
+            bargeInEnabled = s.bargeInEnabled && hasMicPermission(),
+            onBargeIn = {
+                continuousVoiceActive = true
+                startStandardVoiceListen()
+            },
             onDone = onDone,
         )
     }
@@ -516,6 +670,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         val outcome = when (pending.type) {
             PendingConfirmationType.PHONE_CALL -> phoneControl.executeConfirmedCall(pending.target)
             PendingConfirmationType.SEND_SMS -> phoneControl.executeConfirmedSms(pending.target, pending.messageBody)
+            PendingConfirmationType.EMERGENCY_SOS -> phoneControl.executeEmergencySos(pending.target, pending.messageBody)
         }
         appendMessage(
             role = if (outcome.ok) ChatRole.ASSISTANT else ChatRole.SYSTEM,
@@ -529,6 +684,18 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         val pending = _pendingConfirmation.value ?: return
         _pendingConfirmation.value = null
         appendMessage(ChatRole.SYSTEM, "${pending.title} cancelled by user.", "Safety")
+    }
+
+    fun triggerSosConfirmation() {
+        val s = settings.value
+        val target = s.emergencyContact.ifBlank { "112" }
+        _pendingConfirmation.value = PendingActionConfirmation(
+            type = PendingConfirmationType.EMERGENCY_SOS,
+            title = "Confirm Emergency SOS",
+            summary = "Emergency alert/call to $target?\n\"${s.emergencySosMessage}\"",
+            target = target,
+            messageBody = s.emergencySosMessage,
+        )
     }
 
     fun startInAppTimer(totalSeconds: Int, label: String = "AYSHA Timer") {
@@ -591,6 +758,85 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         updateSettings { it.copy(onboardingCompleted = true) }
     }
 
+    fun setAssistantMood(mood: AssistantMood) {
+        _assistantMood.value = mood
+        _assistantEnergy.value = when (mood) {
+            AssistantMood.KHUSH -> 90
+            AssistantMood.PYAAR_BHARI -> 95
+            AssistantMood.ROOTHI -> 65
+            AssistantMood.NARAZ -> 45
+        }
+    }
+
+    fun activateVibe(preset: VibePreset) {
+        updateSettings { it.copy(selectedVibeId = preset.id) }
+        viewModelScope.launch(Dispatchers.IO) {
+            val res = phoneControl.launchVibe(preset.query, preset.title)
+            _agentStatusText.value = res.message
+            appendMessage(ChatRole.ASSISTANT, res.message, "Vibes")
+        }
+    }
+
+    // ---- Camera Scanner Vision ----
+
+    fun analyzeScannerImage(jpegBytes: ByteArray, question: String) {
+        val prompt = question.trim().ifBlank { "Is photo me kya dikh raha hai? Hinglish me detail se samjhao." }
+        viewModelScope.launch {
+            _scannerAnalyzing.value = true
+            _scannerReply.value = null
+            val s = settings.value
+            val turn = aiClient.runTurnWithFallback(
+                settings = s,
+                systemInstruction = "You are ${s.assistantName}'s Visual Scanner. Describe what you see accurately in ${s.language.label}, solve any question or read text clearly.",
+                history = emptyList(),
+                userText = prompt,
+                attachedImageJpeg = jpegBytes,
+                toolExecutor = toolExecutor,
+            )
+            _scannerAnalyzing.value = false
+            _scannerReply.value = turn.text
+            appendMessage(ChatRole.USER, "📷 Scanner: $prompt", "")
+            appendMessage(ChatRole.ASSISTANT, turn.text, turn.providerTag)
+            if (s.autoSpeakReplies) speakText(turn.text, s, null)
+        }
+    }
+
+    // ---- Study Whiteboard ----
+
+    fun askWhiteboard(topicPrompt: String) {
+        val clean = topicPrompt.trim()
+        if (clean.isEmpty()) return
+        viewModelScope.launch {
+            _agentOrbState.value = OrbState.PROCESSING
+            val s = settings.value
+            val turn = aiClient.runTurnWithFallback(
+                settings = s,
+                systemInstruction = "You are ${s.assistantName}'s Study Whiteboard Tutor. Always explain step-by-step with numbered lines and call show_whiteboard with title, steps (newline-separated), and optional code/formula.",
+                history = emptyList(),
+                userText = clean,
+                toolExecutor = toolExecutor,
+            )
+            _agentOrbState.value = OrbState.IDLE
+            if (_whiteboardCards.value.none { it.title.equals(clean, ignoreCase = true) }) {
+                val lines = turn.text.lines().map { it.trim() }.filter { it.isNotEmpty() }
+                _whiteboardCards.value = listOf(
+                    WhiteboardCard(
+                        title = clean.take(60),
+                        topic = clean,
+                        steps = lines.ifEmpty { listOf(turn.text) },
+                    ),
+                ) + _whiteboardCards.value
+            }
+            if (s.autoSpeakReplies) speakText(turn.text, s, null)
+        }
+    }
+
+    fun clearWhiteboard() {
+        _whiteboardCards.value = emptyList()
+    }
+
+    // ---- Provider Tests & Voice Previews ----
+
     fun testProviderConnection(provider: BrainProvider, apiKey: String, baseUrl: String, model: String) {
         viewModelScope.launch {
             _connectivityTesting.value = true
@@ -616,6 +862,8 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    // ---- Chats, Memories, Rules, Documents, Macros ----
+
     fun deleteMessage(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             memoryRepo.deleteMessage(id)
@@ -633,22 +881,66 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     fun saveMemory(title: String, content: String, tags: String) {
         if (title.isBlank() || content.isBlank()) return
         viewModelScope.launch(Dispatchers.IO) {
-            memoryRepo.saveMemory(title, content, tags, approvedByUser = true)
-            _memories.value = memoryRepo.getAllMemories()
+            memoryRepo.saveMemory(title, content, tags, approvedByUser = true, source = "aapne bataya")
+            refreshData()
         }
     }
 
     fun updateMemory(entry: MemoryEntry) {
         viewModelScope.launch(Dispatchers.IO) {
             memoryRepo.updateMemory(entry)
-            _memories.value = memoryRepo.getAllMemories()
+            refreshData()
+        }
+    }
+
+    fun archiveMemory(id: Long, archived: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoryRepo.setMemoryArchived(id, archived)
+            refreshData()
         }
     }
 
     fun deleteMemory(id: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             memoryRepo.deleteMemory(id)
-            _memories.value = memoryRepo.getAllMemories()
+            refreshData()
+        }
+    }
+
+    fun saveRule(text: String) {
+        if (text.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            memoryRepo.saveRule(text, enabled = true)
+            _rules.value = memoryRepo.getAllRules()
+        }
+    }
+
+    fun toggleRule(rule: UserRule) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoryRepo.updateRule(rule.copy(enabled = !rule.enabled))
+            _rules.value = memoryRepo.getAllRules()
+        }
+    }
+
+    fun deleteRule(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoryRepo.deleteRule(id)
+            _rules.value = memoryRepo.getAllRules()
+        }
+    }
+
+    fun saveDocument(title: String, content: String) {
+        if (content.isBlank()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            memoryRepo.saveDocument(title, content)
+            _documents.value = memoryRepo.getAllDocuments()
+        }
+    }
+
+    fun deleteDocument(id: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            memoryRepo.deleteDocument(id)
+            _documents.value = memoryRepo.getAllDocuments()
         }
     }
 
@@ -672,11 +964,16 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             _agentStatusText.value = "Running '${macro.name}'..."
             val res = macroEngine.execute(macro, params)
             val msg = res.getOrElse { it.message ?: "Workflow failed" }
+            if (res.isSuccess) memoryRepo.markMacroPlayed(macro.name)
             memoryRepo.logTool("macro:${macro.name}", msg, res.isSuccess)
             _agentOrbState.value = if (res.isSuccess) OrbState.IDLE else OrbState.ERROR
             _agentStatusText.value = msg
             refreshData()
         }
+    }
+
+    fun clearAwarenessLogs() {
+        WakeWordStatusBus.clearLogs()
     }
 
     fun inspectCurrentScreen() {
@@ -775,7 +1072,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     fun exportAndShareChats(asJson: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
             val msgs = memoryRepo.getRecentMessages(500)
-            val mems = memoryRepo.getAllMemories()
+            val mems = memoryRepo.getAllMemories(includeArchived = true)
             val content = if (asJson) ChatExporter.toJson(msgs, mems) else ChatExporter.toMarkdown(msgs, settings.value.assistantName)
             val ext = if (asJson) "json" else "md"
             val file = File(app.cacheDir, "aysha_export_${System.currentTimeMillis()}.$ext")
@@ -789,6 +1086,50 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             runCatching {
                 app.startActivity(Intent.createChooser(shareIntent, "Export AYSHA Chats").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             }
+        }
+    }
+
+    fun exportFullBackupAndShare() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val backupJson = BackupRestoreHelper.buildBackupJson(
+                settingsJson = settingsRepo.exportSafeConfigJson(),
+                memories = memoryRepo.getAllMemories(includeArchived = true),
+                rules = memoryRepo.getAllRules(),
+                documents = memoryRepo.getAllDocuments(),
+                macros = memoryRepo.getAllMacros(),
+            )
+            val file = File(app.cacheDir, "aysha_backup_v2_${System.currentTimeMillis()}.json")
+            file.writeText(backupJson)
+            val uri: Uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", file)
+            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                type = "application/json"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            _backupFeedback.value = "Full safe backup ready (API keys excluded)."
+            runCatching {
+                app.startActivity(Intent.createChooser(shareIntent, "Save AYSHA Full Backup").addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+        }
+    }
+
+    fun restoreFullBackup(rawJson: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val parsed = BackupRestoreHelper.parseBackupJson(rawJson)
+            if (parsed.isFailure) {
+                _backupFeedback.value = "Invalid backup JSON: ${parsed.exceptionOrNull()?.message}"
+                return@launch
+            }
+            val payload = parsed.getOrThrow()
+            payload.settingsJson?.let { settingsRepo.restoreSafeSettings(it) }
+            payload.memories.forEach { m ->
+                memoryRepo.saveMemory(m.title, m.content, m.tags, m.approvedByUser, m.source)
+            }
+            payload.rules.forEach { r -> memoryRepo.saveRule(r.text, r.enabled) }
+            payload.documents.forEach { d -> memoryRepo.saveDocument(d.title, d.content) }
+            payload.customMacros.forEach { macro -> memoryRepo.upsertMacro(macro) }
+            refreshData()
+            _backupFeedback.value = "Restored ${payload.memories.size} memories, ${payload.rules.size} rules, ${payload.documents.size} docs!"
         }
     }
 
@@ -817,6 +1158,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
 
     override fun onCleared() {
         continuousVoiceActive = false
+        followUpJob?.cancel()
         liveClient.destroy()
         super.onCleared()
     }

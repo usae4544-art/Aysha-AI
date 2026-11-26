@@ -1,16 +1,29 @@
 # AYSHA – Your Personal AI Assistant (`com.aysha.assistant`)
 
-Free-first, privacy-focused, modular native Android AI Assistant built with Kotlin, Jetpack Compose, Material 3 Liquid Glass UI, Room Database, Android Keystore AES-256-GCM encryption, and on-device Vosk wake-word detection.
+[![MIT License](https://img.shields.io/badge/License-MIT-22D3EE.svg)](LICENSE)
+
+Free-first, open-source, privacy-focused native Android AI Assistant built with Kotlin, Jetpack Compose, Material 3, Room Database, Android Keystore AES-256-GCM encryption, and on-device Vosk wake-word detection.
+
+- **Website:** [https://usae4544-art.github.io/Aysha-AI/](https://usae4544-art.github.io/Aysha-AI/)
+- **Releases (APK Downloads):** [GitHub Releases](https://github.com/usae4544-art/Aysha-AI/releases/latest)
+- **License:** [MIT License](LICENSE)
+
+## What's Inside (v2.0.0)
+- **11 Signature Animated HUD & 3D Orbs:** `AYSHA 2047`, `Aysha Nova`, `Aysha Nova 3D`, `Liquid Core`, `J.A.R.V.I.S.`, `J.A.R.V.I.S. 3D`, `F.R.I.D.A.Y.`, `Red HUD`, `Particle Swarm`, `Pulse Reactor`, `Ultron` + 9 HUD accent colors.
+- **Maya-Grade Theme & Typography Engine:** 9 palettes (`Obsidian`, `Midnight`, `Abyss`, `Ember`, `Nocturne`, `Rosewood`, `Clay Navy`, `Clay Day`, `Daylight`), 4 surface styles (`Glass`, `Clay`, `Flat`, `Soft`), 4 corner styles, UI scale, and bundled SIL OFL fonts (`Inter`, `Nunito`, `JetBrains Mono`).
+- **Voice, Barge-In & Awareness Engine:** Speaker-mode barge-in with `AcousticEchoCanceler` + `NoiseSuppressor`, configurable Follow-Up listening window, Awareness sensitivity gate (`Reserved`, `Balanced`, `Alert`), media mute guard, and Awareness Decision Log.
+- **Semantic Memory, Rules & Documents:** Hinglish/English synonym-aware TF-IDF retrieval, `"Mere baare me"` profile card, `"Purani"` memory archive/restore, pasted Documents chunking, and `"AYSHA ke Rules"` (`ab se hamesha...`).
+- **Tools & Companion:** Live Mood & Energy, Sub-Agent specialist roles, Visual Camera Scanner, Study Whiteboard, In-App Mini Browser with AI summary, Vibes, Accessibility Macros, Full Safe Backup/Restore, and confirmation-gated Calls, SMS & Emergency SOS.
 
 ## Architecture (10 Modules)
-- `:app` — Main shell, Liquid Glass UI screens, ViewModel, adaptive launcher icon
-- `:core` — Domain models, `AyshaTheme` Dark/Light Liquid Glass design tokens, `SafeLogger`
+- `:app` — Main shell, Orbs, Theme Studio, Scanner, Whiteboard, Browser, Rules & Hub UI
+- `:core` — Domain models, `AyshaTheme` palettes/surfaces/OFL typography, `SafeLogger`
 - `:settings` — `KeystoreCrypto` (AES-256-GCM), DataStore preferences, `PermissionAudit`
-- `:memory` — Room database (`AyshaDatabase`), DAOs, search, `ChatExporter`, `MemoryMatcher`
-- `:voice` — `SpeechRecognizer` + multi-personality `TextToSpeech` (Hindi/English/Hinglish)
-- `:wakeword` — `AudioRecord` VAD gate + on-device Vosk (`Hey Aysha`, `Hello Aysha`, `Wake up Aysha`)
-- `:phonecontrol` — Official intents, confirmation-gated Call/SMS, Notification Listener, Weather & Search
-- `:automation` — `AyshaAccessibilityService`, screen inspector, `MacroEngine` & Study Mode workflow
+- `:memory` — Room v2 (`AyshaDatabase`), TF-IDF `MemoryMatcher`, Rules, Docs, `BackupRestoreHelper`
+- `:voice` — `SpeechRecognizer`, `BargeInDetector` (AEC/NS), multi-personality `TextToSpeech`
+- `:wakeword` — `AudioRecord` VAD Awareness gate + on-device Vosk (`Hey Aysha`, `Hello Aysha`, `Wake up Aysha`)
+- `:phonecontrol` — Confirmation-gated Call/SMS/SOS, Notification Listener, Weather & Web Search
+- `:automation` — `AyshaAccessibilityService`, screen inspector, `MacroEngine`
 - `:ai` — `OfflineCommandParser`, `MultiProviderAiClient` (Gemini, Groq, OpenAI/Local Ollama + Fallback), `GeminiLiveClient`
 - `:floatingassistant` — `AyshaForegroundService` + draggable floating glass orb & quick menu
 

@@ -5,11 +5,14 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.pm.PackageManager
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.NoiseSuppressor
 import androidx.core.content.ContextCompat
+import com.aysha.assistant.core.AwarenessDecisionLog
+import com.aysha.assistant.core.AwarenessSensitivity
 import com.aysha.assistant.core.SafeLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,15 +43,17 @@ enum class WakeModelState {
 }
 
 /**
- * Battery-efficient on-device wake-word detector:
- * 1) Lightweight PCM RMS VAD pre-gate drops CPU load during ambient silence.
- * 2) Local Vosk speech recognizer processes active voice windows offline.
- * 3) WakePhraseMatcher fires on "Hey Aysha", "Hello Aysha", "Wake up Aysha", or custom assistant names.
+ * Battery-efficient on-device wake-word detector with Maya-style Awareness Gate:
+ * 1) Adjustable RMS VAD sensitivity gate (Reserved / Balanced / Alert).
+ * 2) Optional Mute-During-Media guard to avoid false wakes from TV or music.
+ * 3) Local Vosk speech recognizer processes active voice windows offline.
+ * 4) Logs wake decisions locally into WakeWordStatusBus for user inspection.
  */
 class WakeWordEngine(private val context: Context) {
 
     private val appContext = context.applicationContext
     private val modelManager = VoskModelManager(appContext)
+    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private val _isRunning = MutableStateFlow(false)
@@ -80,18 +85,45 @@ class WakeWordEngine(private val context: Context) {
     private var assistantName = "AYSHA"
 
     @Volatile
+    private var awarenessEnabled = true
+
+    @Volatile
+    private var sensitivity = AwarenessSensitivity.BALANCED
+
+    @Volatile
+    private var muteDuringMedia = false
+
+    @Volatile
     private var pausedForActiveSpeech = false
 
     @Volatile
     private var lastTriggerMs = 0L
 
-    fun updateConfig(wakeWordsCsv: String, name: String) {
+    @Volatile
+    private var lastLoggedTranscript = ""
+
+    fun updateConfig(
+        wakeWordsCsv: String,
+        name: String,
+        awareness: Boolean = awarenessEnabled,
+        sens: AwarenessSensitivity = sensitivity,
+        muteMedia: Boolean = muteDuringMedia,
+    ) {
         configuredCsv = wakeWordsCsv
         assistantName = name
+        awarenessEnabled = awareness
+        sensitivity = sens
+        muteDuringMedia = muteMedia
     }
 
-    fun start(wakeWordsCsv: String, assistantName: String) {
-        updateConfig(wakeWordsCsv, assistantName)
+    fun start(
+        wakeWordsCsv: String,
+        assistantName: String,
+        awareness: Boolean = true,
+        sens: AwarenessSensitivity = AwarenessSensitivity.BALANCED,
+        muteMedia: Boolean = false,
+    ) {
+        updateConfig(wakeWordsCsv, assistantName, awareness, sens, muteMedia)
         if (ContextCompat.checkSelfPermission(appContext, Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             _modelState.value = WakeModelState.ERROR
             _statusText.value = "Microphone permission needed for wake word"
@@ -141,7 +173,7 @@ class WakeWordEngine(private val context: Context) {
 
             _modelState.value = WakeModelState.READY
             _isRunning.value = true
-            _statusText.value = "Listening for Hey Aysha (On-Device)"
+            _statusText.value = "Listening for Hey Aysha (${sensitivity.label})"
             WakeWordStatusBus.publish(running = true, state = WakeModelState.READY, status = _statusText.value)
             runCaptureLoop()
         }
@@ -161,7 +193,7 @@ class WakeWordEngine(private val context: Context) {
         pausedForActiveSpeech = false
         if (listenJob?.isActive != true && model != null) {
             listenJob = scope.launch {
-                _statusText.value = "Listening for Hey Aysha (On-Device)"
+                _statusText.value = "Listening for Hey Aysha (${sensitivity.label})"
                 runCaptureLoop()
             }
         }
@@ -229,12 +261,19 @@ class WakeWordEngine(private val context: Context) {
                 continue
             }
 
+            if (muteDuringMedia && audioManager.isMusicActive) {
+                _micEnergy.value = 0f
+                WakeWordStatusBus.publish(energy = 0f, status = "Muted while music/TV playing")
+                delay(250L)
+                continue
+            }
+
             val energy = computeNormalizedRms(buf, read)
             _micEnergy.value = energy
             WakeWordStatusBus.publish(energy = energy)
 
-            // Battery-saving VAD gate: only run Vosk decoder when voice energy crosses threshold or during 1.2s hangover
-            if (energy > 0.035f) {
+            val threshold = if (awarenessEnabled) sensitivity.rmsThreshold else 0.035f
+            if (energy > threshold) {
                 activeHangoverFrames = 12
             } else if (activeHangoverFrames > 0) {
                 activeHangoverFrames--
@@ -264,7 +303,27 @@ class WakeWordEngine(private val context: Context) {
                     rec.reset()
                     activeHangoverFrames = 0
                     SafeLogger.d(TAG, "Wake word detected: $matched")
+                    WakeWordStatusBus.logDecision(
+                        AwarenessDecisionLog(
+                            heardText = transcript,
+                            energy = energy,
+                            threshold = threshold,
+                            forwarded = true,
+                            reason = "Matched '$matched'",
+                        ),
+                    )
                     _wakeEvents.tryEmit(matched)
+                } else if (isFinal && transcript != lastLoggedTranscript) {
+                    lastLoggedTranscript = transcript
+                    WakeWordStatusBus.logDecision(
+                        AwarenessDecisionLog(
+                            heardText = transcript,
+                            energy = energy,
+                            threshold = threshold,
+                            forwarded = false,
+                            reason = "Chup rahi (no wake phrase)",
+                        ),
+                    )
                 }
             }
         }

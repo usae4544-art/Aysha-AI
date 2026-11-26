@@ -1,5 +1,6 @@
 package com.aysha.assistant.wakeword
 
+import com.aysha.assistant.core.AwarenessDecisionLog
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -17,6 +18,9 @@ object WakeWordStatusBus {
     private val _micEnergy = MutableStateFlow(0f)
     val micEnergy: StateFlow<Float> = _micEnergy.asStateFlow()
 
+    private val _decisionLogs = MutableStateFlow<List<AwarenessDecisionLog>>(emptyList())
+    val decisionLogs: StateFlow<List<AwarenessDecisionLog>> = _decisionLogs.asStateFlow()
+
     fun publish(
         running: Boolean? = null,
         state: WakeModelState? = null,
@@ -27,5 +31,14 @@ object WakeWordStatusBus {
         if (state != null) _modelState.value = state
         if (status != null) _statusText.value = status
         if (energy != null) _micEnergy.value = energy
+    }
+
+    fun logDecision(entry: AwarenessDecisionLog) {
+        val current = _decisionLogs.value
+        _decisionLogs.value = (listOf(entry) + current).take(60)
+    }
+
+    fun clearLogs() {
+        _decisionLogs.value = emptyList()
     }
 }

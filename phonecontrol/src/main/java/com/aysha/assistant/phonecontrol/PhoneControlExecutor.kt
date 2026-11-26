@@ -133,8 +133,12 @@ class PhoneControlExecutor(private val context: Context) {
         }
     }
 
-    fun createReminder(minutesFromNow: Int, message: String): PhoneActionResult {
-        val mins = minutesFromNow.coerceIn(1, 1440)
+    fun createReminder(
+        minutesFromNow: Int,
+        message: String,
+        clockTime24h: String = "",
+        tomorrow: Boolean = false,
+    ): PhoneActionResult {
         val cleanMsg = message.ifBlank { "AYSHA Reminder" }
         val am = appContext.getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(appContext, ReminderReceiver::class.java).apply {
@@ -146,17 +150,56 @@ class PhoneControlExecutor(private val context: Context) {
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val triggerAt = SystemClock.elapsedRealtime() + mins * 60_000L
+
+        val nowWall = System.currentTimeMillis()
+        val parsedClock = parseClockMillis(clockTime24h, tomorrow, nowWall)
+        val delayMs = if (parsedClock != null) {
+            (parsedClock - nowWall).coerceAtLeast(60_000L)
+        } else {
+            minutesFromNow.coerceIn(1, 10_080) * 60_000L
+        }
+        val triggerElapsed = SystemClock.elapsedRealtime() + delayMs
+
         runCatching {
-            am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pi)
+            am.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerElapsed, pi)
         }.onFailure { err ->
             return PhoneActionResult(false, "Reminder schedule failed: ${err.message}")
         }
+
+        val minsDisplay = ((delayMs + 30_000L) / 60_000L).toInt().coerceAtLeast(1)
+        val whenLabel = if (parsedClock != null) {
+            val fmt = java.text.SimpleDateFormat("EEE, hh:mm a", java.util.Locale.getDefault())
+            fmt.format(java.util.Date(nowWall + delayMs))
+        } else {
+            "$minsDisplay minute baad"
+        }
         return PhoneActionResult(
             true,
-            "$mins minute baad ka reminder set kar diya: \"$cleanMsg\"",
-            JSONObject().put("minutes", mins).put("message", cleanMsg),
+            "Reminder set ($whenLabel): \"$cleanMsg\"",
+            JSONObject()
+                .put("minutes", minsDisplay)
+                .put("when", whenLabel)
+                .put("message", cleanMsg),
         )
+    }
+
+    private fun parseClockMillis(clockTime24h: String, tomorrow: Boolean, nowMillis: Long): Long? {
+        val clean = clockTime24h.trim()
+        if (clean.isEmpty()) return null
+        val m = Regex("^(\\d{1,2}):(\\d{2})$").find(clean) ?: return null
+        val hour = m.groupValues[1].toIntOrNull()?.coerceIn(0, 23) ?: return null
+        val min = m.groupValues[2].toIntOrNull()?.coerceIn(0, 59) ?: return null
+        val cal = java.util.Calendar.getInstance().apply {
+            timeInMillis = nowMillis
+            set(java.util.Calendar.HOUR_OF_DAY, hour)
+            set(java.util.Calendar.MINUTE, min)
+            set(java.util.Calendar.SECOND, 0)
+            set(java.util.Calendar.MILLISECOND, 0)
+            if (tomorrow || timeInMillis <= nowMillis) {
+                add(java.util.Calendar.DAY_OF_YEAR, 1)
+            }
+        }
+        return cal.timeInMillis
     }
 
     fun setVolume(streamName: String, percent: Int): PhoneActionResult {
@@ -425,6 +468,27 @@ class PhoneControlExecutor(private val context: Context) {
             PhoneActionResult(true, "SMS composer $number ke liye open kar diya.")
         }.getOrElse { err ->
             PhoneActionResult(false, "SMS open failed: ${err.message}")
+        }
+    }
+
+    fun executeEmergencySos(contact: String, message: String): PhoneActionResult {
+        val target = contact.trim().ifBlank { "112" }
+        val smsRes = if (target != "112" && target.length >= 6) {
+            executeConfirmedSms(target, message.ifBlank { "Emergency! Please help me." })
+        } else {
+            null
+        }
+        val callRes = executeConfirmedCall(target)
+        val combinedMsg = listOfNotNull(callRes.message, smsRes?.message).joinToString(" · ")
+        return PhoneActionResult(callRes.ok, "SOS Triggered: $combinedMsg")
+    }
+
+    fun launchVibe(vibeQuery: String, vibeTitle: String): PhoneActionResult {
+        val res = playYouTube(vibeQuery)
+        return if (res.ok) {
+            PhoneActionResult(true, "$vibeTitle vibe shuru kar diya!")
+        } else {
+            res
         }
     }
 

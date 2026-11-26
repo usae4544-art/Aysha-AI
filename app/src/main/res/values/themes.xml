@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="aysha_launcher_bg">#070B1A</color>
+    <color name="aysha_launcher_bg">#000000</color>
     <style name="Theme.AyshaAI" parent="Theme.Material3.DayNight.NoActionBar">
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
-        <item name="android:windowBackground">#060918</item>
+        <item name="android:windowBackground">#000000</item>
     </style>
 </resources>
