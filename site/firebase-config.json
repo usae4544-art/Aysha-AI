@@ -1,0 +1,26 @@
+{
+  "configured": false,
+  "useCloudFunctions": false,
+  "apiKey": "",
+  "authDomain": "",
+  "projectId": "",
+  "storageBucket": "",
+  "messagingSenderId": "",
+  "appId": "",
+  "adminEmail": "usae4544@gmail.com",
+  "siteBaseUrl": "https://usae4544-art.github.io/Aysha-AI",
+  "latestReleaseUrl": "https://github.com/usae4544-art/Aysha-AI/releases/latest",
+  "latestApkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk",
+  "defaultStore": {
+    "upiId": "aysha.ai@upi",
+    "upiName": "AYSHA AI",
+    "currency": "INR",
+    "prices": {
+      "ONE_MONTH": 149,
+      "TWO_MONTHS": 249,
+      "ONE_YEAR": 999,
+      "TWO_YEARS": 1599,
+      "LIFETIME": 2999
+    }
+  }
+}

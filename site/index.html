@@ -1,245 +1,557 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AYSHA — Your Personal Android AI Assistant</title>
-  <meta name="description" content="Free & Open-Source (MIT) native Android AI assistant with 11 interactive HUD voice orbs, speaker barge-in, semantic local memory, rules, camera scanner, study whiteboard, and AES-256 keystore privacy." />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AYSHA AI — Android Voice Assistant & License Portal</title>
+  <meta name="description" content="AYSHA AI native Android voice assistant with 11 interactive HUD orbs, offline Vosk wake word, semantic memory, phone automation, and Google-linked licensing." />
   <meta name="theme-color" content="#000000" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="nav-wrap">
-    <div class="container nav">
-      <a class="brand" href="index.html">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span>AYSHA</span>
-        <span class="version-tag mono" id="nav-version">v2.0.0</span>
+  <header class="topbar">
+    <div class="container topbar-inner">
+      <a class="brand" href="#top">
+        <span class="brand-mark" aria-hidden="true">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="12" cy="12" r="4" />
+          </svg>
+        </span>
+        <span class="brand-name">AYSHA</span>
+        <span class="brand-version mono" id="nav-version">v2.1.0</span>
       </a>
-      <nav class="nav-links" aria-label="Main Navigation">
-        <a href="#features">Architecture</a>
-        <a href="#orbs">Orbs &amp; Themes</a>
-        <a href="#security">Privacy</a>
-        <a href="license.html">MIT License</a>
-        <a href="https://github.com/usae4544-art/Aysha-AI" target="_blank" rel="noopener">GitHub</a>
+
+      <nav class="nav-links" aria-label="Primary">
+        <a href="#features">Features</a>
+        <a href="#licensing">Plans &amp; Coupon</a>
+        <a href="#download">Download APK</a>
+        <a href="#admin-console" id="nav-admin-link" class="hidden">Admin</a>
       </nav>
-      <a class="btn btn-primary btn-sm" id="nav-download" href="https://github.com/usae4544-art/Aysha-AI/releases/latest" target="_blank" rel="noopener">
-        Download APK
-      </a>
+
+      <div class="topbar-actions">
+        <button type="button" id="btn-auth-action" class="btn btn-primary btn-sm">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4" />
+            <polyline points="10 17 15 12 10 7" />
+            <line x1="15" y1="12" x2="3" y2="12" />
+          </svg>
+          <span>Sign in with Google</span>
+        </button>
+      </div>
     </div>
   </header>
 
-  <main>
-    <section class="hero container">
-      <div class="hero-copy">
-        <div class="status-line mono">
-          <span class="live-dot" aria-hidden="true"></span>
-          <span>100% Free &amp; Open Source · MIT Licensed · Android 8.0–15</span>
-        </div>
-        <h1>A personal AI assistant built for your Android phone</h1>
-        <p class="lead">
-          AYSHA runs real voice conversations, speaker barge-in, on-device wake words, semantic memory, user rules, camera vision scanning, and accessibility automation — with zero subscriptions, zero ads, and hardware-encrypted keys.
-        </p>
-
-        <div class="hero-actions">
-          <a class="btn btn-primary" id="hero-download-btn" href="https://github.com/usae4544-art/Aysha-AI/releases/latest" target="_blank" rel="noopener">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>
-            <span id="hero-download-label">Download Latest APK</span>
-          </a>
-          <a class="btn btn-ghost" href="https://github.com/usae4544-art/Aysha-AI" target="_blank" rel="noopener">
-            Source on GitHub
-          </a>
-        </div>
-
-        <div class="release-meta mono" id="release-meta">
-          <span>Package: <strong class="text-hi">com.aysha.assistant</strong></span>
-          <span>Build: <strong class="text-hi" id="release-tag-text">v2.0.0</strong></span>
-          <span id="release-size-text">Signed Release + Debug APKs</span>
-        </div>
-      </div>
-
-      <div class="hero-stage" id="orbs">
-        <div class="device-frame">
-          <div class="device-topbar">
-            <span class="pill-chip mono"><span class="live-dot"></span><span id="orb-stage-status">Ready · Obsidian</span></span>
-            <span class="pill-chip mono" id="orb-stage-name">AYSHA 2047</span>
-          </div>
-
-          <div class="orb-canvas-wrap">
-            <canvas id="orb-canvas" width="360" height="360" aria-label="Interactive AYSHA Voice Orb Preview"></canvas>
-          </div>
-
-          <div class="device-reply-box">
-            <div class="mono reply-kicker">Follow-up Window · 12s · Barge-In Active</div>
-            <p id="orb-demo-line">Namaste! Main Aysha hoon — bolo, aaj phone pe kya kaam karoon?</p>
-          </div>
-
-          <div class="orb-switcher" role="tablist" aria-label="Orb Style Switcher">
-            <button class="orb-tab active" data-orb="aysha2047" type="button">AYSHA 2047</button>
-            <button class="orb-tab" data-orb="liquid" type="button">Liquid Core</button>
-            <button class="orb-tab" data-orb="jarvis" type="button">J.A.R.V.I.S.</button>
-            <button class="orb-tab" data-orb="reactor" type="button">Pulse Reactor</button>
-            <button class="orb-tab" data-orb="ultron" type="button">Ultron</button>
-          </div>
-
-          <div class="orb-controls">
-            <button class="btn-sim" id="sim-voice-btn" type="button">Simulate Voice Pulse</button>
-            <span class="mono hint-text">Move cursor or tap orb</span>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="metrics-band">
-      <div class="container metrics-grid">
-        <div class="metric-item">
-          <div class="metric-num mono">10</div>
-          <div class="metric-label">Modular Kotlin Gradle Libraries</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-num mono">11</div>
-          <div class="metric-label">Interactive HUD &amp; Plasma Orbs</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-num mono">9</div>
-          <div class="metric-label">Obsidian, Clay &amp; Glass Themes</div>
-        </div>
-        <div class="metric-item">
-          <div class="metric-num mono">0</div>
-          <div class="metric-label">Paywalls, Ads or Daily Limits</div>
-        </div>
-      </div>
-    </section>
-
-    <section class="section container" id="features">
-      <div class="section-head">
-        <span class="kicker mono">Core Architecture</span>
-        <h2>Built end-to-end for real phone control and natural Hinglish voice</h2>
-        <p>Every layer runs cleanly in native Kotlin and Jetpack Compose with offline-first fallbacks and explicit user control.</p>
-      </div>
-
-      <div class="bento-grid">
-        <article class="card card-wide">
-          <div class="card-meta mono">Voice &amp; Awareness Engine</div>
-          <h3>Speaker Barge-In, Follow-Up Window &amp; On-Device Wake Word</h3>
-          <p>
-            Talk naturally without repeating "Hey Aysha" on every turn. AYSHA monitors speaker barge-in using Android hardware AcousticEchoCanceler &amp; NoiseSuppressor, respects media/TV mute preferences, and processes wake phrases locally via Vosk with Reserved, Balanced, and Alert sensitivity profiles.
-          </p>
-          <div class="tag-row mono">
-            <span>Gemini Live Audio</span>
-            <span>Vosk KWS</span>
-            <span>AEC3 / NS Barge-In</span>
-            <span>Decision Log</span>
-          </div>
-        </article>
-
-        <article class="card">
-          <div class="card-meta mono">Semantic Memory &amp; Rules</div>
-          <h3>Hinglish TF-IDF Recall + AYSHA Rules</h3>
-          <p>
-            Stores memories in Room SQLite with source tags, archive/restore, document chunking, and user-defined behavior rules (e.g. "Ab se hamesha chhote jawab dena") prioritized directly in the system prompt.
-          </p>
-        </article>
-
-        <article class="card">
-          <div class="card-meta mono">Theme &amp; Surface Engine</div>
-          <h3>Obsidian, Midnight, Clay &amp; Inter/Mono</h3>
-          <p>
-            Switch seamlessly across 9 palettes, 4 card surfaces (Glass, Clay, Flat, Soft), 4 corner radii, UI scaling, and bundled SIL OFL Inter, Nunito, and JetBrains Mono typefaces.
-          </p>
-        </article>
-
-        <article class="card">
-          <div class="card-meta mono">Vision, Tutor &amp; Browser</div>
-          <h3>Scanner, Study Whiteboard &amp; Mini Browser</h3>
-          <p>
-            Capture or pick photos to solve questions visually, learn step-by-step on the dark Study Whiteboard with code blocks, or summarize any webpage from the built-in browser.
-          </p>
-        </article>
-
-        <article class="card">
-          <div class="card-meta mono">Phone &amp; Accessibility</div>
-          <h3>Smart Macros &amp; Confirmation Safety</h3>
-          <p>
-            Open apps, toggle flashlight, set reminders, inspect screens, and run multi-step macros. Sensitive actions like Calls, SMS, and Emergency SOS always require explicit confirmation.
-          </p>
-        </article>
-      </div>
-    </section>
-
-    <section class="section container" id="security">
-      <div class="split-panel">
+  <main id="top">
+    <!-- Backend status notice shown only when firebase-config.json is unconfigured -->
+    <section id="setup-notice" class="notice-strip hidden">
+      <div class="container notice-inner">
         <div>
-          <span class="kicker mono">Privacy &amp; BYOK</span>
-          <h2>Your keys, your data, encrypted on your phone</h2>
-          <p>
-            Bring your own free Google Gemini, Groq, OpenAI-compatible, or local Ollama endpoint—or run 100% offline with zero keys. All secrets are encrypted inside hardware-backed AndroidKeyStore AES-256-GCM and redacted from logs and JSON backups.
-          </p>
-          <div class="check-list">
-            <div><span class="check-dot"></span>Hardware-backed AES-256-GCM Keystore vault</div>
-            <div><span class="check-dot"></span>Full JSON Backup &amp; Restore (API keys never exported)</div>
-            <div><span class="check-dot"></span>Optional Device PIN / Biometric launch guard</div>
-            <div><span class="check-dot"></span>100% MIT Open-Source code auditable on GitHub</div>
-          </div>
+          <strong>Firebase backend not configured yet.</strong>
+          <span>Update <code>site/firebase-config.json</code> with your Firebase Web config and push to enable Google login, coupon validation, and APK sync.</span>
         </div>
-        <div class="code-panel mono">
-          <div class="code-panel-head">
-            <span>aysha-modules.gradle.kts</span>
-            <span>Kotlin 2.1 · API 35</span>
+        <button type="button" id="btn-toggle-setup-guide" class="btn btn-ghost btn-sm">Setup instructions</button>
+      </div>
+      <div id="setup-guide-panel" class="container setup-guide hidden">
+        <ol>
+          <li>Create a project in Firebase Console, enable <strong>Google</strong> under Authentication, and add <code>usae4544-art.github.io</code> to Authorized Domains.</li>
+          <li>Create a Firestore database and deploy rules from <code>firebase/firestore.rules</code> (Spark free plan works without a card).</li>
+          <li>Paste your <code>apiKey</code>, <code>authDomain</code>, <code>projectId</code>, <code>storageBucket</code>, <code>messagingSenderId</code>, <code>appId</code> into <code>site/firebase-config.json</code> with <code>"configured": true</code>.</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- Hero: concise statement + live system preview -->
+    <section class="hero">
+      <div class="container hero-grid">
+        <div class="hero-copy">
+          <h1>Voice assistant engineered for Android control.</h1>
+          <p class="hero-sub">
+            Native Kotlin modular architecture with 11 interactive HUD orbs, offline Vosk wake-word detection, Hinglish voice pipeline, semantic memory, and Google-synced app licensing.
+          </p>
+          <div class="hero-cta">
+            <a href="#download" class="btn btn-primary">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>
+              <span>Download Android APK</span>
+            </a>
+            <a href="#licensing" class="btn btn-secondary">Plans &amp; redeem coupon</a>
           </div>
-<pre><code>include(
-  ":app",
-  ":core",              // Palettes, Surfaces, OFL Fonts
-  ":settings",          // AndroidKeyStore AES-256-GCM
-  ":memory",            // Room v2, TF-IDF, Rules, Docs
-  ":voice",             // STT/TTS + BargeInDetector
-  ":wakeword",          // Vosk VAD + Awareness Gate
-  ":phonecontrol",      // Calls, SMS, SOS, Weather
-  ":automation",        // Accessibility + MacroEngine
-  ":ai",                // Gemini Live + Multi-Provider
-  ":floatingassistant"  // Draggable Overlay Orb
-)</code></pre>
+          <dl class="hero-metrics">
+            <div>
+              <dt>Architecture</dt>
+              <dd class="mono">9 Kotlin modules</dd>
+            </div>
+            <div>
+              <dt>Android target</dt>
+              <dd class="mono">SDK 26 – 35</dd>
+            </div>
+            <div>
+              <dt>Security vault</dt>
+              <dd class="mono">AES-256-GCM</dd>
+            </div>
+          </dl>
+        </div>
+
+        <div class="hero-device" aria-label="Account and License Status Summary">
+          <div class="device-frame">
+            <div class="device-head">
+              <span class="device-title">Account &amp; license status</span>
+              <span id="status-badge" class="status-pill status-neutral">Signed out</span>
+            </div>
+
+            <div class="orb-stage">
+              <canvas id="orb-canvas" width="220" height="220" aria-label="Interactive AYSHA HUD Orb"></canvas>
+              <span id="orb-mode-label" class="mono muted-text">AYSHA 2047 · Idle</span>
+            </div>
+
+            <div id="account-summary-box" class="account-summary">
+              <div class="kv-row">
+                <span class="kv-k">Google account</span>
+                <span class="kv-v mono" id="acc-email">Not signed in</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-k">Active plan</span>
+                <span class="kv-v mono" id="acc-plan">—</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-k">Time remaining</span>
+                <span class="kv-v mono" id="acc-timer">—</span>
+              </div>
+              <div class="kv-row">
+                <span class="kv-k">App sync</span>
+                <span class="kv-v mono" id="acc-sync">Browser OAuth</span>
+              </div>
+            </div>
+
+            <div class="device-actions">
+              <button type="button" id="btn-hero-signin" class="btn btn-primary btn-full">Sign in with Google</button>
+              <a href="app-auth.html" id="btn-open-app-auth" class="btn btn-ghost btn-full hidden">Sync license to Android APK</a>
+            </div>
+          </div>
         </div>
       </div>
     </section>
 
-    <section class="section container cta-section">
-      <div class="cta-box">
-        <div>
-          <span class="kicker mono">Get Started</span>
-          <h2>Install AYSHA v2.0.0 on Android</h2>
-          <p>Free forever. Download the signed Release APK directly from GitHub Releases or inspect and compile the source yourself.</p>
+    <!-- Core Capabilities -->
+    <section id="features" class="section border-top">
+      <div class="container">
+        <div class="section-head">
+          <h2>System capabilities</h2>
+          <p>Every subsystem built natively on Android without wrapper runtimes.</p>
         </div>
-        <div class="cta-actions">
-          <a class="btn btn-primary" id="footer-download-btn" href="https://github.com/usae4544-art/Aysha-AI/releases/latest" target="_blank" rel="noopener">
-            Download APK
-          </a>
-          <a class="btn btn-ghost" href="license.html">Read MIT License</a>
+
+        <div class="features-grid">
+          <article class="card">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+            </div>
+            <h3>Offline wake word &amp; barge-in</h3>
+            <p>Bundled Vosk <code>en-in</code> acoustic detector listens locally for custom wake phrases, paired with RMS voice barge-in and hands-free follow-up windows.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg>
+            </div>
+            <h3>11 HUD &amp; glass orbs</h3>
+            <p>Custom Canvas and shader-like 60fps HUD rings (AYSHA 2047, IronHUD, Plasma, Hologram, Liquid, Ember) across 9 calibrated Obsidian to Daylight palettes.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 9h6v6H9z"/></svg>
+            </div>
+            <h3>Semantic memory &amp; rules</h3>
+            <p>Room database with Hinglish synonym matching, TF-IDF recall scoring, document indexing, persistent AYSHA behavioral rules, and safe JSON backups.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
+            </div>
+            <h3>Device automation &amp; SOS</h3>
+            <p>Accessibility gestures, floating assistant overlay, macro execution, notification summarization, and Emergency SOS confirmation dialogs.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            </div>
+            <h3>Scanner, whiteboard &amp; browser</h3>
+            <p>Camera visual Q&amp;A scanner, multi-card study whiteboard with voice explanation, and lightweight in-app browser with instant page summarization.</p>
+          </article>
+
+          <article class="card">
+            <div class="card-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h3>Keystore vault &amp; browser login</h3>
+            <p>Provider keys encrypted with AndroidKeyStore AES-256-GCM. Google Sign-In executes cleanly via browser OAuth redirect and syncs licenses in real time.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- User Licensing + Coupon Redeem + Plans -->
+    <section id="licensing" class="section border-top">
+      <div class="container">
+        <div class="section-head">
+          <h2>Plans &amp; coupon activation</h2>
+          <p>Sign in with your Google account to activate a coupon or request a plan license for the Android app.</p>
+        </div>
+
+        <!-- Coupon Redeem Card (visible to all users) -->
+        <div class="card redeem-panel">
+          <div class="redeem-copy">
+            <h3>Redeem a coupon code</h3>
+            <p>Enter an active coupon code provided by the administrator. Codes enforce exact expiration timers and per-coupon user limits on the server.</p>
+          </div>
+          <form id="coupon-form" class="redeem-form" novalidate>
+            <input type="text" id="coupon-input" placeholder="Enter coupon code (e.g. AYSHA100)" autocomplete="off" spellcheck="false" />
+            <button type="submit" id="btn-check-coupon" class="btn btn-secondary">Apply code</button>
+            <button type="button" id="btn-redeem-free" class="btn btn-primary hidden">Activate free license</button>
+          </form>
+          <div id="coupon-feedback" class="coupon-feedback hidden"></div>
+        </div>
+
+        <!-- Pricing / Plan Grid -->
+        <div class="plans-grid" id="plans-grid">
+          <!-- Populated & kept interactive via app.js -->
+        </div>
+
+        <!-- User Pending / Past Payment Requests -->
+        <div id="my-requests-panel" class="card table-card hidden">
+          <div class="table-head">
+            <h3>Your payment &amp; redemption history</h3>
+            <button type="button" id="btn-refresh-user-data" class="btn btn-ghost btn-sm">Refresh</button>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Plan</th>
+                  <th>Amount / Coupon</th>
+                  <th>UTR / Code</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody id="my-requests-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Mobile APK Download -->
+    <section id="download" class="section border-top">
+      <div class="container download-grid">
+        <div>
+          <h2>Android APK downloads</h2>
+          <p class="section-sub">
+            Signed release and debug APKs built transparently from source by GitHub Actions. Install on Android 8.0+ (ARM64 / ARMv7) and sign in via browser to unlock with your license.
+          </p>
+          <ol class="steps-list">
+            <li>Download and install the signed release APK on your Android device.</li>
+            <li>Tap <strong>Sign in with Google (Browser)</strong> inside the app launch screen.</li>
+            <li>Once Google Sign-In completes in your browser, you return straight to AYSHA unlocked.</li>
+          </ol>
+        </div>
+
+        <div class="card download-box">
+          <div class="kv-row">
+            <span class="kv-k">Latest build</span>
+            <span class="kv-v mono" id="dl-version">AYSHA v2.1.0</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-k">Minimum Android</span>
+            <span class="kv-v mono">Android 8.0 (API 26)</span>
+          </div>
+          <div class="kv-row">
+            <span class="kv-k">Source license</span>
+            <span class="kv-v mono">MIT Open Source</span>
+          </div>
+          <div class="download-buttons">
+            <a id="btn-download-release" href="https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk" class="btn btn-primary btn-full">
+              Download Release APK
+            </a>
+            <a id="btn-view-releases" href="https://github.com/usae4544-art/Aysha-AI/releases/latest" target="_blank" rel="noopener" class="btn btn-secondary btn-full">
+              View All Release Assets &amp; SHA-256
+            </a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Admin Console (Rendered strictly for verified usae4544@gmail.com ONLY) -->
+    <section id="admin-console" class="section border-top hidden" aria-label="Administrator Console">
+      <div class="container">
+        <div class="admin-header">
+          <div>
+            <h2>Administrator console</h2>
+            <p>Signed in as verified owner <span class="mono" id="admin-email-badge">usae4544@gmail.com</span>. Manage users, coupon timers &amp; limits, UPI approvals, and pricing.</p>
+          </div>
+          <button type="button" id="btn-admin-refresh" class="btn btn-secondary btn-sm">Sync all records</button>
+        </div>
+
+        <div class="admin-stats" id="admin-stats-grid">
+          <div class="stat-box">
+            <span class="stat-label">Registered users</span>
+            <strong class="stat-val mono" id="stat-users">0</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Active licenses</span>
+            <strong class="stat-val mono" id="stat-active">0</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Live coupons</span>
+            <strong class="stat-val mono" id="stat-coupons">0</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Pending UPI UTRs</span>
+            <strong class="stat-val mono" id="stat-pending">0</strong>
+          </div>
+        </div>
+
+        <div class="tabs" role="tablist">
+          <button type="button" class="tab-btn active" data-tab="tab-coupons">Coupons &amp; Timers</button>
+          <button type="button" class="tab-btn" data-tab="tab-users">Users &amp; Licenses</button>
+          <button type="button" class="tab-btn" data-tab="tab-payments">UPI Approvals</button>
+          <button type="button" class="tab-btn" data-tab="tab-store">Pricing &amp; UPI Config</button>
+        </div>
+
+        <!-- Tab 1: Coupons -->
+        <div id="tab-coupons" class="tab-pane active">
+          <form id="admin-coupon-form" class="card form-grid">
+            <h3 class="full-span">Create coupon code</h3>
+            <label>
+              <span>Coupon code</span>
+              <div class="inline-field">
+                <input type="text" id="c-code" required placeholder="e.g. AYSHAVIP" />
+                <button type="button" id="btn-gen-code" class="btn btn-ghost btn-sm">Generate</button>
+              </div>
+            </label>
+            <label>
+              <span>Reward type</span>
+              <select id="c-type">
+                <option value="free_license">Free License Activation (100% Off)</option>
+                <option value="percent_off">Percentage Discount (% Off)</option>
+              </select>
+            </label>
+            <label>
+              <span>Target plan</span>
+              <select id="c-plan">
+                <option value="ONE_MONTH">1 Month</option>
+                <option value="TWO_MONTHS">2 Months</option>
+                <option value="ONE_YEAR">1 Year</option>
+                <option value="TWO_YEARS">2 Years</option>
+                <option value="LIFETIME">Lifetime (All-Time)</option>
+                <option value="ANY">Any Plan (Discount Only)</option>
+              </select>
+            </label>
+            <label id="c-discount-wrap">
+              <span>Discount percent (1–100)</span>
+              <input type="number" id="c-discount" min="1" max="100" value="100" />
+            </label>
+            <label>
+              <span>Max user redemptions</span>
+              <input type="number" id="c-max-uses" min="1" max="100000" value="10" required />
+            </label>
+            <label>
+              <span>Valid until (exact timer expiry)</span>
+              <input type="datetime-local" id="c-expires-at" required />
+            </label>
+            <div class="full-span quick-timers">
+              <span>Quick timer:</span>
+              <button type="button" class="btn btn-ghost btn-sm" data-minutes="15">15 min</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-minutes="60">1 hour</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-minutes="1440">24 hours</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-minutes="10080">7 days</button>
+              <button type="button" class="btn btn-ghost btn-sm" data-minutes="43200">30 days</button>
+            </div>
+            <div class="full-span form-actions">
+              <button type="submit" class="btn btn-primary">Create &amp; publish coupon</button>
+            </div>
+          </form>
+
+          <div class="card table-card">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Code</th>
+                    <th>Reward</th>
+                    <th>Uses</th>
+                    <th>Timer remaining</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-coupons-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 2: Users -->
+        <div id="tab-users" class="tab-pane">
+          <div class="card table-card">
+            <div class="table-head">
+              <h3>Manage users &amp; licenses</h3>
+              <input type="search" id="admin-user-search" placeholder="Filter by email or UID..." />
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Current plan</th>
+                    <th>Time left / Expiry</th>
+                    <th>Status</th>
+                    <th>Grant or Revoke</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-users-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Payment Requests -->
+        <div id="tab-payments" class="tab-pane">
+          <div class="card table-card">
+            <div class="table-head">
+              <h3>UPI UTR payment requests</h3>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>User</th>
+                    <th>Plan</th>
+                    <th>INR</th>
+                    <th>Coupon</th>
+                    <th>UTR reference</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-payments-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 4: Store Config -->
+        <div id="tab-store" class="tab-pane">
+          <form id="admin-store-form" class="card form-grid">
+            <h3 class="full-span">Pricing &amp; UPI configuration</h3>
+            <label>
+              <span>UPI ID (VPA)</span>
+              <input type="text" id="s-upi-id" required placeholder="name@upi" />
+            </label>
+            <label>
+              <span>UPI payee display name</span>
+              <input type="text" id="s-upi-name" required placeholder="AYSHA AI" />
+            </label>
+            <label>
+              <span>1 Month price (INR)</span>
+              <input type="number" id="s-p-1m" min="0" required />
+            </label>
+            <label>
+              <span>2 Months price (INR)</span>
+              <input type="number" id="s-p-2m" min="0" required />
+            </label>
+            <label>
+              <span>1 Year price (INR)</span>
+              <input type="number" id="s-p-1y" min="0" required />
+            </label>
+            <label>
+              <span>2 Years price (INR)</span>
+              <input type="number" id="s-p-2y" min="0" required />
+            </label>
+            <label>
+              <span>Lifetime price (INR)</span>
+              <input type="number" id="s-p-life" min="0" required />
+            </label>
+            <div class="full-span form-actions">
+              <button type="submit" class="btn btn-primary">Save store configuration</button>
+            </div>
+          </form>
         </div>
       </div>
     </section>
   </main>
 
-  <footer class="footer container">
-    <div class="footer-left">
-      <span class="brand-name">AYSHA AI</span>
-      <span class="muted">MIT Open Source · Built with Kotlin &amp; Jetpack Compose</span>
+  <!-- UPI Checkout Modal -->
+  <div id="checkout-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="checkout-title">
+    <div class="modal-card">
+      <div class="modal-head">
+        <h3 id="checkout-title">Activate plan via UPI</h3>
+        <button type="button" id="btn-close-modal" class="btn btn-ghost btn-sm" aria-label="Close">Close</button>
+      </div>
+      <div class="modal-body">
+        <div class="kv-row">
+          <span class="kv-k">Selected plan</span>
+          <span class="kv-v mono" id="co-plan-name">—</span>
+        </div>
+        <div class="kv-row">
+          <span class="kv-k">Base price</span>
+          <span class="kv-v mono" id="co-base-price">—</span>
+        </div>
+        <div class="kv-row" id="co-discount-row">
+          <span class="kv-k">Applied coupon</span>
+          <span class="kv-v mono" id="co-coupon-label">None</span>
+        </div>
+        <div class="kv-row total-row">
+          <span class="kv-k">Payable total</span>
+          <span class="kv-v mono" id="co-final-price">—</span>
+        </div>
+
+        <div class="upi-box">
+          <canvas id="upi-qr-canvas" width="180" height="180" class="hidden"></canvas>
+          <div class="upi-details">
+            <span class="muted-text">UPI ID</span>
+            <div class="inline-field">
+              <code id="co-upi-id" class="mono">aysha.ai@upi</code>
+              <button type="button" id="btn-copy-upi" class="btn btn-ghost btn-sm">Copy</button>
+            </div>
+            <a id="co-upi-deep-link" href="#" class="btn btn-secondary btn-sm btn-full">Pay with installed UPI app</a>
+          </div>
+        </div>
+
+        <form id="utr-form" class="utr-form">
+          <label>
+            <span>Enter 12-digit UPI UTR / Transaction Reference after payment</span>
+            <input type="text" id="co-utr-input" required minlength="6" maxlength="40" placeholder="e.g. 432198765432" />
+          </label>
+          <button type="submit" id="btn-submit-utr" class="btn btn-primary btn-full">Submit UTR for activation</button>
+          <p id="co-feedback" class="muted-text hidden"></p>
+        </form>
+      </div>
     </div>
-    <div class="footer-links">
-      <a href="privacy.html">Privacy Policy</a>
-      <a href="license.html">MIT License</a>
-      <a href="https://github.com/usae4544-art/Aysha-AI" target="_blank" rel="noopener">GitHub Repo</a>
-      <a href="https://github.com/usae4544-art/Aysha-AI/releases" target="_blank" rel="noopener">Releases</a>
+  </div>
+
+  <footer class="footer">
+    <div class="container footer-inner">
+      <p class="muted-text">AYSHA AI · Open-source Android assistant (MIT License)</p>
+      <div class="footer-links">
+        <a href="privacy.html">Privacy</a>
+        <a href="license.html">License</a>
+        <a href="https://github.com/usae4544-art/Aysha-AI" target="_blank" rel="noopener">GitHub</a>
+      </div>
     </div>
   </footer>
 
-  <script src="app.js"></script>
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+  <script type="module" src="app.js"></script>
 </body>
 </html>

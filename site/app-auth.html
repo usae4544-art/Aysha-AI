@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AYSHA AI — Google Sign-In for Android App</title>
+  <meta name="theme-color" content="#000000" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="styles.css" />
+  <style>
+    .auth-shell {
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 20px;
+    }
+    .auth-box {
+      width: 100%;
+      max-width: 440px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .token-area {
+      width: 100%;
+      min-height: 72px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 10px;
+      color: var(--text-2);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 11.5px;
+      resize: none;
+    }
+  </style>
+</head>
+<body>
+  <main class="auth-shell">
+    <div class="auth-box">
+      <div class="device-head">
+        <span class="brand-name">AYSHA Android Auth</span>
+        <span id="bridge-status" class="status-pill status-neutral">Ready</span>
+      </div>
+      <p class="muted-text" id="bridge-message">
+        Sign in with Google to link your account and active license to the AYSHA Android app.
+      </p>
+
+      <button type="button" id="btn-google-bridge" class="btn btn-primary btn-full">Continue with Google</button>
+      <a id="btn-return-apk" href="#" class="btn btn-secondary btn-full hidden">Open AYSHA Android App</a>
+
+      <div id="fallback-box" class="hidden" style="display:flex;flex-direction:column;gap:8px;">
+        <span class="muted-text">If your browser blocks the automatic app redirect, copy this verification token and paste it in the AYSHA app:</span>
+        <textarea id="fallback-token" class="token-area" readonly></textarea>
+        <button type="button" id="btn-copy-token" class="btn btn-ghost btn-sm btn-full">Copy verification token</button>
+      </div>
+
+      <div class="footer-links" style="justify-content:space-between;padding-top:8px;border-top:1px solid var(--border);">
+        <a href="index.html">Back to Portal</a>
+        <a href="index.html#licensing">Redeem Coupon / Plans</a>
+      </div>
+    </div>
+  </main>
+
+  <script type="module" src="app-auth.js"></script>
+</body>
+</html>

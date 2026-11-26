@@ -69,7 +69,7 @@ fun AboutAyshaScreen(
             Spacer(modifier = Modifier.height(12.dp))
             Text("Version : ${BuildConfig.VERSION_NAME}", color = c.textSecondary, fontSize = 13.5.sp)
             Spacer(modifier = Modifier.height(4.dp))
-            Text("Open Source (MIT License) · 100% Free", color = c.textSecondary, fontSize = 13.sp)
+            Text("Open Source (MIT License) · Google License Sync", color = c.textSecondary, fontSize = 13.sp)
 
             Spacer(modifier = Modifier.height(20.dp))
 

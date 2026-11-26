@@ -1,0 +1,170 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() {
+      return request.auth != null && request.auth.uid != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn()
+        && request.auth.token.email_verified == true
+        && request.auth.token.email.lower() == 'usae4544@gmail.com';
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isValidPlan(planId) {
+      return planId in ['ONE_MONTH', 'TWO_MONTHS', 'ONE_YEAR', 'TWO_YEARS', 'LIFETIME'];
+    }
+
+    function planDuration(planId) {
+      return planId == 'ONE_MONTH' ? duration.value(31, 'd')
+        : planId == 'TWO_MONTHS' ? duration.value(62, 'd')
+        : planId == 'ONE_YEAR' ? duration.value(366, 'd')
+        : planId == 'TWO_YEARS' ? duration.value(732, 'd')
+        : duration.value(0, 's');
+    }
+
+    function couponExists(code) {
+      return code is string
+        && code.size() >= 3
+        && exists(/databases/$(database)/documents/coupons/$(code));
+    }
+
+    function couponData(code) {
+      return get(/databases/$(database)/documents/coupons/$(code)).data;
+    }
+
+    function couponValidForUser(code, uid) {
+      return couponData(code).active == true
+        && couponData(code).expiresAt is timestamp
+        && request.time < couponData(code).expiresAt
+        && couponData(code).maxUses is int
+        && couponData(code).usedCount is int
+        && couponData(code).usedCount < couponData(code).maxUses
+        && !exists(/databases/$(database)/documents/redemptions/$(code + '_' + uid))
+        && existsAfter(/databases/$(database)/documents/redemptions/$(code + '_' + uid))
+        && getAfter(/databases/$(database)/documents/coupons/$(code)).data.usedCount == couponData(code).usedCount + 1;
+    }
+
+    function isFreeCoupon(code) {
+      return couponData(code).rewardType == 'free_license'
+        || (couponData(code).rewardType == 'percent_off' && couponData(code).discountPercent == 100);
+    }
+
+    function licenseMatchesFreeCoupon(d, uid, baseTime) {
+      let code = d.couponCode;
+      let c = couponData(code);
+      return isOwner(uid)
+        && d.uid == uid
+        && d.source == 'coupon'
+        && d.status == 'active'
+        && couponExists(code)
+        && couponValidForUser(code, uid)
+        && isFreeCoupon(code)
+        && isValidPlan(d.planId)
+        && (c.rewardPlanId == 'ANY' || d.planId == c.rewardPlanId)
+        && d.isLifetime == (d.planId == 'LIFETIME')
+        && (
+          d.planId == 'LIFETIME'
+          || (d.expiresAt is timestamp
+              && d.expiresAt > request.time
+              && d.expiresAt <= baseTime + planDuration(d.planId) + duration.value(2, 'm'))
+        );
+    }
+
+    // Public catalog pricing & UPI config
+    match /config/{docId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    // User profile directory
+    match /users/{uid} {
+      allow read: if isOwner(uid) || isAdmin();
+      allow create, update: if isAdmin() || (
+        isOwner(uid)
+        && request.resource.data.uid == request.auth.uid
+        && (!('email' in request.resource.data)
+            || request.resource.data.email.lower() == request.auth.token.email.lower())
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Authoritative license document per user UID
+    match /licenses/{uid} {
+      allow get: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() || licenseMatchesFreeCoupon(request.resource.data, uid, request.time);
+      allow update: if isAdmin() || licenseMatchesFreeCoupon(
+        request.resource.data,
+        uid,
+        (resource.data.status == 'active'
+          && resource.data.expiresAt is timestamp
+          && resource.data.expiresAt > request.time)
+          ? resource.data.expiresAt
+          : request.time
+      );
+      allow delete: if isAdmin();
+    }
+
+    // Coupons: single-doc lookup by exact code only for signed-in users; listing & writing strictly Admin
+    match /coupons/{code} {
+      allow get: if isSignedIn();
+      allow list, create, delete: if isAdmin();
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedCount'])
+        && request.resource.data.usedCount == resource.data.usedCount + 1
+        && resource.data.active == true
+        && resource.data.expiresAt is timestamp
+        && request.time < resource.data.expiresAt
+        && resource.data.usedCount < resource.data.maxUses
+        && !exists(/databases/$(database)/documents/redemptions/$(code + '_' + request.auth.uid))
+        && existsAfter(/databases/$(database)/documents/redemptions/$(code + '_' + request.auth.uid))
+      );
+    }
+
+    // Redemption records: document ID must equal {CODE}_{UID}
+    match /redemptions/{redemptionId} {
+      allow get: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isAdmin() || validUserRedemptionCreate(redemptionId);
+      allow update, delete: if isAdmin();
+    }
+
+    function validUserRedemptionCreate(redemptionId) {
+      let r = request.resource.data;
+      return isSignedIn()
+        && r.uid == request.auth.uid
+        && r.code is string
+        && redemptionId == (r.code + '_' + request.auth.uid)
+        && couponExists(r.code)
+        && couponValidForUser(r.code, request.auth.uid)
+        && r.redeemedAt == request.time
+        && (
+          isFreeCoupon(r.code)
+            ? getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data.couponCode == r.code
+            : (r.paymentRequestId is string
+               && existsAfter(/databases/$(database)/documents/payment_requests/$(r.paymentRequestId)))
+        );
+    }
+
+    // UPI UTR manual payment submissions
+    match /payment_requests/{reqId} {
+      allow get: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow create: if isSignedIn()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && isValidPlan(request.resource.data.planId)
+        && request.resource.data.utr is string
+        && request.resource.data.utr.size() >= 6
+        && request.resource.data.utr.size() <= 40;
+      allow update, delete: if isAdmin();
+    }
+  }
+}

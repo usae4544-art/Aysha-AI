@@ -11,7 +11,7 @@ import org.junit.Test
 class SettingsUnitTest {
 
     @Test
-    fun `safe config export never exposes api keys`() {
+    fun `safe config export never exposes api keys or firebase tokens`() {
         val settings = AppSettings(
             assistantName = "AYSHA",
             mayaPalette = MayaPalette.OBSIDIAN,
@@ -19,11 +19,13 @@ class SettingsUnitTest {
             geminiApiKey = "AIzaSySecretKeyShouldNotLeak12345",
             groqApiKey = "gsk_SecretGroqShouldNotLeak12345",
             openAiApiKey = "sk-SecretOpenAiShouldNotLeak12345",
+            firebaseRefreshToken = "AEu49SecretRefreshTokenXYZ",
         )
         val exported = SettingsRepository.buildSafeExportJson(settings)
         assertFalse(exported.contains("AIzaSy"))
         assertFalse(exported.contains("gsk_"))
         assertFalse(exported.contains("sk-Secret"))
+        assertFalse(exported.contains("AEu49SecretRefreshToken"))
         val json = JSONObject(exported)
         assertEquals(false, json.getBoolean("apiKeysIncluded"))
         assertEquals("AYSHA", json.getString("assistantName"))

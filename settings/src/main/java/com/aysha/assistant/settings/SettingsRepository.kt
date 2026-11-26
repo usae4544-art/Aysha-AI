@@ -8,6 +8,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.aysha.assistant.core.AccentPalette
@@ -18,6 +19,8 @@ import com.aysha.assistant.core.BrainProvider
 import com.aysha.assistant.core.CompanionMode
 import com.aysha.assistant.core.CornerStyle
 import com.aysha.assistant.core.HudColorOption
+import com.aysha.assistant.core.LicensePlan
+import com.aysha.assistant.core.LicenseStatus
 import com.aysha.assistant.core.MayaPalette
 import com.aysha.assistant.core.OrbStyle
 import com.aysha.assistant.core.PersonalityStyle
@@ -98,6 +101,19 @@ class SettingsRepository(private val context: Context) {
         val encGroqKey = stringPreferencesKey("enc_groq_key")
         val encOpenAiKey = stringPreferencesKey("enc_openai_key")
         val encLocalKey = stringPreferencesKey("enc_local_key")
+        val encFirebaseRefreshToken = stringPreferencesKey("enc_firebase_refresh_token")
+
+        // Google auth & cached server-verified license
+        val authUid = stringPreferencesKey("auth_uid")
+        val authEmail = stringPreferencesKey("auth_email")
+        val authDisplayName = stringPreferencesKey("auth_display_name")
+        val cachedLicensePlan = stringPreferencesKey("cached_license_plan")
+        val cachedLicenseStatus = stringPreferencesKey("cached_license_status")
+        val cachedLicenseLifetime = booleanPreferencesKey("cached_license_lifetime")
+        val cachedLicenseExpiresAtMs = longPreferencesKey("cached_license_expires_at_ms")
+        val cachedLicenseServerNowMs = longPreferencesKey("cached_license_server_now_ms")
+        val cachedLicenseVerifiedDeviceMs = longPreferencesKey("cached_license_verified_device_ms")
+        val cachedLicenseCouponCode = stringPreferencesKey("cached_license_coupon_code")
     }
 
     private val _discoveredModels = MutableStateFlow<List<String>>(emptyList())
@@ -170,6 +186,17 @@ class SettingsRepository(private val context: Context) {
                 groqApiKey = KeystoreCrypto.decrypt(p[Keys.encGroqKey].orEmpty()),
                 openAiApiKey = KeystoreCrypto.decrypt(p[Keys.encOpenAiKey].orEmpty()),
                 localApiKey = KeystoreCrypto.decrypt(p[Keys.encLocalKey].orEmpty()),
+                firebaseRefreshToken = KeystoreCrypto.decrypt(p[Keys.encFirebaseRefreshToken].orEmpty()),
+                authUid = p[Keys.authUid].orEmpty(),
+                authEmail = p[Keys.authEmail].orEmpty(),
+                authDisplayName = p[Keys.authDisplayName].orEmpty(),
+                cachedLicensePlan = LicensePlan.fromId(p[Keys.cachedLicensePlan]),
+                cachedLicenseStatus = p[Keys.cachedLicenseStatus] ?: LicenseStatus.SIGNED_OUT.name,
+                cachedLicenseLifetime = p[Keys.cachedLicenseLifetime] ?: false,
+                cachedLicenseExpiresAtMs = p[Keys.cachedLicenseExpiresAtMs] ?: 0L,
+                cachedLicenseServerNowMs = p[Keys.cachedLicenseServerNowMs] ?: 0L,
+                cachedLicenseVerifiedDeviceMs = p[Keys.cachedLicenseVerifiedDeviceMs] ?: 0L,
+                cachedLicenseCouponCode = p[Keys.cachedLicenseCouponCode].orEmpty(),
             )
         }
 
@@ -240,6 +267,37 @@ class SettingsRepository(private val context: Context) {
             if (next.localApiKey != current.localApiKey) {
                 prefs[Keys.encLocalKey] = KeystoreCrypto.encrypt(next.localApiKey)
             }
+            if (next.firebaseRefreshToken != current.firebaseRefreshToken) {
+                prefs[Keys.encFirebaseRefreshToken] = KeystoreCrypto.encrypt(next.firebaseRefreshToken)
+            }
+            prefs[Keys.authUid] = next.authUid
+            prefs[Keys.authEmail] = next.authEmail
+            prefs[Keys.authDisplayName] = next.authDisplayName
+            prefs[Keys.cachedLicensePlan] = next.cachedLicensePlan.id
+            prefs[Keys.cachedLicenseStatus] = next.cachedLicenseStatus
+            prefs[Keys.cachedLicenseLifetime] = next.cachedLicenseLifetime
+            prefs[Keys.cachedLicenseExpiresAtMs] = next.cachedLicenseExpiresAtMs
+            prefs[Keys.cachedLicenseServerNowMs] = next.cachedLicenseServerNowMs
+            prefs[Keys.cachedLicenseVerifiedDeviceMs] = next.cachedLicenseVerifiedDeviceMs
+            prefs[Keys.cachedLicenseCouponCode] = next.cachedLicenseCouponCode
+        }
+    }
+
+    suspend fun clearAuthAndLicense() {
+        update {
+            it.copy(
+                firebaseRefreshToken = "",
+                authUid = "",
+                authEmail = "",
+                authDisplayName = "",
+                cachedLicensePlan = LicensePlan.NONE,
+                cachedLicenseStatus = LicenseStatus.SIGNED_OUT.name,
+                cachedLicenseLifetime = false,
+                cachedLicenseExpiresAtMs = 0L,
+                cachedLicenseServerNowMs = 0L,
+                cachedLicenseVerifiedDeviceMs = 0L,
+                cachedLicenseCouponCode = "",
+            )
         }
     }
 

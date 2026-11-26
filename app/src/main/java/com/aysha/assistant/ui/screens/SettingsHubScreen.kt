@@ -66,9 +66,11 @@ import androidx.compose.ui.unit.sp
 import com.aysha.assistant.BuildConfig
 import com.aysha.assistant.R
 import com.aysha.assistant.core.CompanionMode
+import com.aysha.assistant.core.LicenseStatus
 import com.aysha.assistant.core.PersonalityStyle
 import com.aysha.assistant.core.ui.ColoredIconBadge
 import com.aysha.assistant.core.ui.GlassCard
+import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
 import com.aysha.assistant.ui.AyshaViewModel
 
@@ -107,6 +109,7 @@ fun SettingsHubScreen(
 ) {
     val c = LocalAyshaColors.current
     val settings by viewModel.settings.collectAsState()
+    val license by viewModel.licenseInfo.collectAsState()
     val mood by viewModel.assistantMood.collectAsState()
     var showSearch by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
@@ -128,7 +131,7 @@ fun SettingsHubScreen(
         SettingsMenuEntry("System & Safety", SettingsSubRoute.PHONE_CONTROL, "Phone Control & Floating Orb", "Apps, Calls, SMS & Overlay", Icons.Rounded.PhoneAndroid, Color(0xFF14B8A6)),
         SettingsMenuEntry("System & Safety", SettingsSubRoute.PRIVACY_SECURITY, "Privacy, Backup & SOS", "AES-256 Vault, Restore & Emergency", Icons.Rounded.Lock, Color(0xFF8B5CF6)),
         SettingsMenuEntry("System & Safety", SettingsSubRoute.LICENSES, "Open-Source Licenses", "MIT License & Third-Party Credits", Icons.Rounded.Description, Color(0xFF64748B)),
-        SettingsMenuEntry("System & Safety", SettingsSubRoute.ABOUT, "About AYSHA", "Version ${BuildConfig.VERSION_NAME} · 100% Free", Icons.Rounded.Info, Color(0xFF2563EB)),
+        SettingsMenuEntry("System & Safety", SettingsSubRoute.ABOUT, "About AYSHA", "Version ${BuildConfig.VERSION_NAME} · MIT Licensed", Icons.Rounded.Info, Color(0xFF2563EB)),
     )
 
     val filtered = items.filter {
@@ -194,6 +197,50 @@ fun SettingsHubScreen(
                     Text("${settings.companionMode.label} · ${settings.personalityStyle.label}", color = c.textSecondary, fontSize = 12.sp)
                 }
                 Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
+            }
+        }
+
+        GlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            cornerRadius = 18.dp,
+            contentPadding = PaddingValues(14.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                val licStatusText = when {
+                    license.status == LicenseStatus.ADMIN_ACTIVE -> "Owner Admin · All-Time"
+                    license.isLifetime -> "${license.plan.label} · Active"
+                    else -> {
+                        val remDays = (license.remainingMs() / 86_400_000L).coerceAtLeast(0L)
+                        val remHours = ((license.remainingMs() % 86_400_000L) / 3_600_000L).coerceAtLeast(0L)
+                        "${license.plan.label} · ${remDays}d ${remHours}h left"
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = license.email.ifBlank { "Google Account" },
+                            color = c.textPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 13.5.sp,
+                        )
+                        Text(licStatusText, color = c.success, fontSize = 12.sp)
+                    }
+                    GlassPill(text = "Refresh", dotColor = c.accentPrimary) {
+                        viewModel.refreshLicenseStatus(silent = false)
+                    }
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    GlassPill(text = "Plans / Coupon", dotColor = c.accentSecondary) {
+                        viewModel.openLicensePortalInBrowser()
+                    }
+                    GlassPill(text = "Sign Out", dotColor = c.error) {
+                        viewModel.signOutGoogle()
+                    }
+                }
             }
         }
 

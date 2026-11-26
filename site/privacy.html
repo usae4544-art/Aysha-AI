@@ -1,49 +1,38 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Privacy Policy — AYSHA AI</title>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AYSHA AI — Privacy Policy</title>
+  <meta name="theme-color" content="#000000" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
-  <header class="nav-wrap">
-    <div class="container nav">
+  <header class="topbar">
+    <div class="container topbar-inner">
       <a class="brand" href="index.html">
-        <span class="brand-mark" aria-hidden="true"></span>
-        <span>AYSHA</span>
+        <span class="brand-name">AYSHA</span>
+        <span class="brand-version mono">Privacy</span>
       </a>
-      <a class="btn btn-ghost btn-sm" href="index.html">Back to Home</a>
+      <a href="index.html" class="btn btn-secondary btn-sm">Back to portal</a>
     </div>
   </header>
 
-  <main class="doc-page">
-    <span class="kicker mono">Privacy Architecture</span>
-    <h1>AYSHA Privacy Policy</h1>
-    <p>Last updated: November 26, 2026</p>
+  <main class="container section" style="max-width:760px;">
+    <h1>Privacy policy</h1>
+    <p class="hero-sub">How AYSHA AI handles authentication, licensing records, and local device intelligence.</p>
 
-    <h2>1. Local-First Storage &amp; Hardware Encryption</h2>
-    <p>
-      AYSHA stores your chats, memories, personal documents, custom rules, and workflows locally on your Android device inside a private Room SQLite database. Your BYOK (Bring Your Own Key) API keys for Google Gemini, Groq, OpenAI-compatible providers, or local Ollama are encrypted using AndroidKeyStore AES-256-GCM and are never sent to any AYSHA developer server.
-    </p>
+    <div class="card" style="display:flex;flex-direction:column;gap:14px;">
+      <h3>1. Local-first voice &amp; memory storage</h3>
+      <p class="muted-text">All conversational chat history, rules, documents, and Room database memories live on your device. Provider API keys and your Firebase refresh token are encrypted with AndroidKeyStore AES-256-GCM before storage.</p>
 
-    <h2>2. Microphone, Wake Word &amp; Awareness Gate</h2>
-    <p>
-      Optional on-device wake-word detection runs locally via the bundled Vosk acoustic recognizer. Audio is only sent to your chosen cloud speech or AI provider when you explicitly trigger voice input or wake AYSHA. When Mute During Media is enabled, wake detection pauses automatically while music or video plays.
-    </p>
+      <h3>2. Google Sign-In &amp; license verification</h3>
+      <p class="muted-text">When you sign in with Google via browser OAuth, AYSHA stores only your Firebase UID, verified email address, display name, license tier, coupon redemption record, and any submitted UPI UTR payment references in Firestore strictly to enforce active app licensing.</p>
 
-    <h2>3. Explicit Consent for Sensitive Actions</h2>
-    <ul>
-      <li><strong>Calls, SMS &amp; Emergency SOS:</strong> Always prompt an explicit confirmation dialog before dialing or sending SMS.</li>
-      <li><strong>Accessibility &amp; Notifications:</strong> Remain completely disabled until you explicitly toggle them in Android System Settings.</li>
-      <li><strong>Camera &amp; Photos:</strong> Used solely when you capture or select an image in the Visual Scanner or Chat composer.</li>
-    </ul>
-
-    <h2>4. Full Control &amp; Data Wipe</h2>
-    <p>
-      You can export chats, restore safe JSON backups (API keys are never included in exports), delete stored API keys, or wipe all local data at any time from Privacy, Backup &amp; SOS inside the app.
-    </p>
+      <h3>3. Direct AI provider traffic</h3>
+      <p class="muted-text">Requests to Gemini, Groq, OpenAI, or local Ollama endpoints go directly from your Android device using the keys you configure. Safe JSON backups exclude all API keys and authentication tokens.</p>
+    </div>
   </main>
 </body>
 </html>

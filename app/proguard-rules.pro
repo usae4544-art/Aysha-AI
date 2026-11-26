@@ -12,3 +12,10 @@
 -dontwarn org.codehaus.mojo.animal_sniffer.IgnoreJRERequirement
 -dontwarn okhttp3.**
 -dontwarn okio.**
+
+# Keep persisted settings and license enum constants intact in R8 release builds
+-keepclassmembers enum com.aysha.assistant.core.** {
+    public static **[] values();
+    public static ** valueOf(java.lang.String);
+}
+-keep enum com.aysha.assistant.core.** { *; }

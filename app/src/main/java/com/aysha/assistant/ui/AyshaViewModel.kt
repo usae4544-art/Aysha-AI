@@ -11,6 +11,7 @@ import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aysha.assistant.AyshaApplication
+import com.aysha.assistant.ai.AyshaLicenseManager
 import com.aysha.assistant.ai.ConnectivityCheckResult
 import com.aysha.assistant.ai.GeminiLiveClient
 import com.aysha.assistant.ai.LiveCallbacks
@@ -28,6 +29,9 @@ import com.aysha.assistant.core.BrainProvider
 import com.aysha.assistant.core.ChatMessage
 import com.aysha.assistant.core.ChatRole
 import com.aysha.assistant.core.KnowledgeDocument
+import com.aysha.assistant.core.LicenseInfo
+import com.aysha.assistant.core.LicensePlan
+import com.aysha.assistant.core.LicenseStatus
 import com.aysha.assistant.core.MacroDefinition
 import com.aysha.assistant.core.MemoryEntry
 import com.aysha.assistant.core.OrbState
@@ -58,6 +62,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -191,6 +197,22 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     private val _backupFeedback = MutableStateFlow<String?>(null)
     val backupFeedback: StateFlow<String?> = _backupFeedback.asStateFlow()
 
+    private val licenseManager = AyshaLicenseManager()
+    private val _liveLicenseOverride = MutableStateFlow<LicenseInfo?>(null)
+    private val _licenseChecking = MutableStateFlow(false)
+    val licenseChecking: StateFlow<Boolean> = _licenseChecking.asStateFlow()
+
+    val settingsLoaded: StateFlow<Boolean> = settingsRepo.settingsFlow
+        .map { true }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val licenseInfo: StateFlow<LicenseInfo> = combine(
+        _liveLicenseOverride,
+        settings,
+    ) { liveOverride, currentSettings ->
+        liveOverride ?: currentSettings.currentLicenseInfo()
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, LicenseInfo())
+
     private var timerJob: Job? = null
     private var sessionTickerJob: Job? = null
     private var followUpJob: Job? = null
@@ -268,6 +290,101 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         refreshPermissions()
         startSessionTicker()
         observeFiredReminders()
+        viewModelScope.launch {
+            val initial = settingsRepo.settingsFlow.first()
+            if (initial.firebaseRefreshToken.isNotBlank()) {
+                refreshLicenseStatus(silent = true)
+            }
+        }
+    }
+
+    fun openBrowserGoogleLogin() {
+        runCatching {
+            app.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(AyshaLicenseManager.SITE_AUTH_URL))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
+    fun openLicensePortalInBrowser() {
+        runCatching {
+            app.startActivity(
+                Intent(Intent.ACTION_VIEW, Uri.parse(AyshaLicenseManager.SITE_PORTAL_URL))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
+        }
+    }
+
+    fun handleAuthDeepLink(uriString: String?) {
+        val parsed = AyshaLicenseManager.parseDeepLinkCallback(uriString) ?: return
+        verifyManualToken(parsed.refreshToken)
+    }
+
+    fun verifyManualToken(token: String) {
+        val clean = token.trim()
+        if (clean.isBlank()) return
+        viewModelScope.launch {
+            _licenseChecking.value = true
+            try {
+                val cur = settingsRepo.settingsFlow.first()
+                val outcome = licenseManager.verifyWithRefreshToken(clean, cur)
+                applyLicenseOutcome(outcome, clean)
+            } finally {
+                _licenseChecking.value = false
+            }
+        }
+    }
+
+    fun refreshLicenseStatus(silent: Boolean = false) {
+        viewModelScope.launch {
+            if (!silent) _licenseChecking.value = true
+            try {
+                val cur = settingsRepo.settingsFlow.first()
+                val outcome = licenseManager.verifyWithSettings(cur)
+                applyLicenseOutcome(outcome, cur.firebaseRefreshToken)
+            } finally {
+                _licenseChecking.value = false
+            }
+        }
+    }
+
+    private suspend fun applyLicenseOutcome(
+        outcome: com.aysha.assistant.ai.LicenseVerificationOutcome,
+        tokenFallback: String,
+    ) {
+        val lic = outcome.license
+        _liveLicenseOverride.value = lic
+        if (outcome.shouldClearSession) {
+            settingsRepo.clearAuthAndLicense()
+            return
+        }
+        val finalToken = outcome.updatedRefreshToken ?: tokenFallback
+        if (lic.uid.isNotBlank() && finalToken.isNotBlank()) {
+            settingsRepo.update { s ->
+                s.copy(
+                    firebaseRefreshToken = finalToken,
+                    authUid = lic.uid,
+                    authEmail = lic.email,
+                    authDisplayName = lic.displayName,
+                    userName = if (s.userName == "Friend" && lic.displayName.isNotBlank()) lic.displayName else s.userName,
+                    cachedLicensePlan = lic.plan,
+                    cachedLicenseStatus = lic.status.name,
+                    cachedLicenseLifetime = lic.isLifetime,
+                    cachedLicenseExpiresAtMs = lic.expiresAtMs,
+                    cachedLicenseServerNowMs = lic.lastServerNowMs,
+                    cachedLicenseVerifiedDeviceMs = lic.lastVerifiedDeviceMs,
+                    cachedLicenseCouponCode = lic.couponCode,
+                )
+            }
+        }
+    }
+
+    fun signOutGoogle() {
+        viewModelScope.launch {
+            _liveLicenseOverride.value = LicenseInfo(status = LicenseStatus.SIGNED_OUT)
+            settingsRepo.clearAuthAndLicense()
+        }
     }
 
     private fun observeFiredReminders() {

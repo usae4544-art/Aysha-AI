@@ -4,6 +4,9 @@ import com.aysha.assistant.core.AccentPalette
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AwarenessSensitivity
 import com.aysha.assistant.core.BrainProvider
+import com.aysha.assistant.core.LicenseInfo
+import com.aysha.assistant.core.LicensePlan
+import com.aysha.assistant.core.LicenseStatus
 import com.aysha.assistant.core.MayaPalette
 import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.OrbStyle
@@ -11,6 +14,7 @@ import com.aysha.assistant.core.SurfaceStyle
 import com.aysha.assistant.core.ThemeMode
 import com.aysha.assistant.core.VoicePersonalities
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -47,5 +51,33 @@ class AyshaAppUnitTest {
         assertTrue(states.containsAll(listOf("IDLE", "LISTENING", "PROCESSING", "SPEAKING")))
         assertTrue(OrbStyle.entries.size >= 11)
         assertTrue(MayaPalette.entries.size >= 9)
+    }
+
+    @Test
+    fun `license clock rollback defense prevents expired bypass`() {
+        val tServer = 1_800_000_000_000L
+        val tDevice = 1_800_000_000_000L
+        val expiredLic = LicenseInfo(
+            uid = "u1",
+            email = "user@example.com",
+            plan = LicensePlan.ONE_MONTH,
+            isLifetime = false,
+            expiresAtMs = tServer - 10_000L,
+            lastServerNowMs = tServer,
+            lastVerifiedDeviceMs = tDevice,
+            status = LicenseStatus.ACTIVE,
+        )
+        assertFalse(expiredLic.isUnlocked(tDevice))
+        // Even if device clock is rolled back 10 years, server time floor holds
+        assertFalse(expiredLic.isUnlocked(tDevice - 300_000_000_000L))
+
+        val adminLic = LicenseInfo(
+            uid = "admin1",
+            email = "usae4544@gmail.com",
+            plan = LicensePlan.LIFETIME,
+            isLifetime = true,
+            status = LicenseStatus.ADMIN_ACTIVE,
+        )
+        assertTrue(adminLic.isUnlocked(tDevice))
     }
 }

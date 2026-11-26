@@ -589,6 +589,93 @@ data class PendingActionConfirmation(
     val messageBody: String = "",
 )
 
+enum class LicensePlan(
+    val id: String,
+    val label: String,
+    val durationDays: Int,
+) {
+    NONE("NONE", "No Active Plan", 0),
+    ONE_MONTH("ONE_MONTH", "1 Month", 30),
+    TWO_MONTHS("TWO_MONTHS", "2 Months", 60),
+    ONE_YEAR("ONE_YEAR", "1 Year", 365),
+    TWO_YEARS("TWO_YEARS", "2 Years", 730),
+    LIFETIME("LIFETIME", "Lifetime (All-Time)", 0);
+
+    companion object {
+        fun fromId(raw: String?): LicensePlan {
+            val clean = raw.orEmpty().trim().uppercase()
+            return entries.firstOrNull { it.id == clean } ?: NONE
+        }
+    }
+}
+
+enum class LicenseStatus {
+    SIGNED_OUT,
+    CHECKING,
+    ACTIVE,
+    ADMIN_ACTIVE,
+    EXPIRED,
+    REVOKED,
+    UNCONFIGURED,
+    NETWORK_ERROR,
+}
+
+data class LicenseInfo(
+    val uid: String = "",
+    val email: String = "",
+    val displayName: String = "",
+    val plan: LicensePlan = LicensePlan.NONE,
+    val isLifetime: Boolean = false,
+    val expiresAtMs: Long = 0L,
+    val lastServerNowMs: Long = 0L,
+    val lastVerifiedDeviceMs: Long = 0L,
+    val status: LicenseStatus = LicenseStatus.SIGNED_OUT,
+    val couponCode: String = "",
+    val message: String = "",
+    val firebaseConfigured: Boolean = false,
+) {
+    fun estimatedServerNowMs(nowDeviceMs: Long = System.currentTimeMillis()): Long {
+        return if (lastServerNowMs > 0L && lastVerifiedDeviceMs > 0L) {
+            lastServerNowMs + (nowDeviceMs - lastVerifiedDeviceMs).coerceAtLeast(0L)
+        } else {
+            nowDeviceMs
+        }
+    }
+
+    fun remainingMs(nowDeviceMs: Long = System.currentTimeMillis()): Long {
+        if (status == LicenseStatus.ADMIN_ACTIVE || (status == LicenseStatus.ACTIVE && isLifetime)) {
+            return Long.MAX_VALUE
+        }
+        if (expiresAtMs <= 0L) return 0L
+        return (expiresAtMs - estimatedServerNowMs(nowDeviceMs)).coerceAtLeast(0L)
+    }
+
+    fun isUnlocked(nowDeviceMs: Long = System.currentTimeMillis()): Boolean {
+        if (uid.isBlank() || email.isBlank()) return false
+        return when (status) {
+            LicenseStatus.ADMIN_ACTIVE -> true
+            LicenseStatus.ACTIVE -> {
+                if (isLifetime || plan == LicensePlan.LIFETIME) {
+                    true
+                } else {
+                    val rem = remainingMs(nowDeviceMs)
+                    val offlineElapsed = if (lastVerifiedDeviceMs > 0L) {
+                        (nowDeviceMs - lastVerifiedDeviceMs).coerceAtLeast(0L)
+                    } else {
+                        0L
+                    }
+                    rem > 0L && offlineElapsed <= MAX_OFFLINE_GRACE_MS
+                }
+            }
+            else -> false
+        }
+    }
+
+    companion object {
+        const val MAX_OFFLINE_GRACE_MS = 7L * 24L * 60L * 60L * 1000L
+    }
+}
+
 data class AppSettings(
     val assistantName: String = "AYSHA",
     val userName: String = "Friend",
@@ -644,7 +731,30 @@ data class AppSettings(
     val groqApiKey: String = "",
     val openAiApiKey: String = "",
     val localApiKey: String = "",
+    val firebaseRefreshToken: String = "",
+    val authUid: String = "",
+    val authEmail: String = "",
+    val authDisplayName: String = "",
+    val cachedLicensePlan: LicensePlan = LicensePlan.NONE,
+    val cachedLicenseStatus: String = LicenseStatus.SIGNED_OUT.name,
+    val cachedLicenseLifetime: Boolean = false,
+    val cachedLicenseExpiresAtMs: Long = 0L,
+    val cachedLicenseServerNowMs: Long = 0L,
+    val cachedLicenseVerifiedDeviceMs: Long = 0L,
+    val cachedLicenseCouponCode: String = "",
 ) {
+    fun currentLicenseInfo(): LicenseInfo = LicenseInfo(
+        uid = authUid,
+        email = authEmail,
+        displayName = authDisplayName,
+        plan = cachedLicensePlan,
+        isLifetime = cachedLicenseLifetime,
+        expiresAtMs = cachedLicenseExpiresAtMs,
+        lastServerNowMs = cachedLicenseServerNowMs,
+        lastVerifiedDeviceMs = cachedLicenseVerifiedDeviceMs,
+        status = runCatching { LicenseStatus.valueOf(cachedLicenseStatus) }.getOrDefault(LicenseStatus.SIGNED_OUT),
+        couponCode = cachedLicenseCouponCode,
+    )
     fun currentKeyFor(provider: BrainProvider): String = when (provider) {
         BrainProvider.GEMINI -> geminiApiKey
         BrainProvider.GROQ -> groqApiKey

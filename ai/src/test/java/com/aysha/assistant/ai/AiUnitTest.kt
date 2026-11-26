@@ -4,6 +4,8 @@ import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AssistantLanguage
 import com.aysha.assistant.core.AssistantMood
 import com.aysha.assistant.core.BrainProvider
+import com.aysha.assistant.core.LicensePlan
+import com.aysha.assistant.core.LicenseStatus
 import com.aysha.assistant.core.MemoryEntry
 import com.aysha.assistant.core.SubAgentRole
 import com.aysha.assistant.core.UserRule
@@ -120,5 +122,67 @@ class AiUnitTest {
         val relRem = SmartMemoryExtractor.extractNaturalReminder("15 minute baad pani peene ka reminder lagao")!!
         assertEquals(15, relRem.minutesFromNow)
         assertEquals("", relRem.clockTime24h)
+    }
+
+    @Test
+    fun `license manager parses oauth callback deep link and firestore license documents`() {
+        val parsed = AyshaLicenseManager.parseDeepLinkCallback(
+            "aysha://auth/callback?refreshToken=AEu49TestToken&uid=uid123&email=user%40gmail.com",
+        )
+        assertNotNull(parsed)
+        assertEquals("AEu49TestToken", parsed!!.refreshToken)
+        assertEquals("uid123", parsed.uid)
+        assertEquals("user@gmail.com", parsed.email)
+
+        assertEquals(null, AyshaLicenseManager.parseDeepLinkCallback("https://example.com/?refreshToken=abc"))
+        assertEquals(null, AyshaLicenseManager.parseDeepLinkCallback("aysha://auth/callback?uid=only"))
+
+        val serverNow = 1_800_000_000_000L
+        val futureJson = """
+            {
+              "fields": {
+                "planId": { "stringValue": "TWO_MONTHS" },
+                "status": { "stringValue": "active" },
+                "isLifetime": { "booleanValue": false },
+                "expiresAtMs": { "integerValue": "${serverNow + 86_400_000L}" },
+                "couponCode": { "stringValue": "FESTIVE" }
+              }
+            }
+        """.trimIndent()
+        val activeLic = AyshaLicenseManager.parseFirestoreLicenseDocument(
+            jsonStr = futureJson,
+            uid = "uid123",
+            email = "user@gmail.com",
+            displayName = "Test User",
+            serverNowMs = serverNow,
+            deviceNowMs = serverNow,
+        )
+        assertEquals(LicenseStatus.ACTIVE, activeLic.status)
+        assertEquals(LicensePlan.TWO_MONTHS, activeLic.plan)
+        assertEquals("FESTIVE", activeLic.couponCode)
+        assertTrue(activeLic.isUnlocked(serverNow))
+
+        val revokedJson = """
+            {
+              "fields": {
+                "planId": { "stringValue": "LIFETIME" },
+                "status": { "stringValue": "revoked" },
+                "isLifetime": { "booleanValue": true }
+              }
+            }
+        """.trimIndent()
+        val revokedLic = AyshaLicenseManager.parseFirestoreLicenseDocument(
+            jsonStr = revokedJson,
+            uid = "uid123",
+            email = "user@gmail.com",
+            displayName = "Test User",
+            serverNowMs = serverNow,
+            deviceNowMs = serverNow,
+        )
+        assertEquals(LicenseStatus.REVOKED, revokedLic.status)
+        assertFalse(revokedLic.isUnlocked(serverNow))
+
+        val dateMs = AyshaLicenseManager.parseHttpServerDateMs("Thu, 26 Nov 2026 17:37:49 GMT")
+        assertTrue(dateMs > 1_700_000_000_000L)
     }
 }

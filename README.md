@@ -8,7 +8,8 @@ Free-first, open-source, privacy-focused native Android AI Assistant built with 
 - **Releases (APK Downloads):** [GitHub Releases](https://github.com/usae4544-art/Aysha-AI/releases/latest)
 - **License:** [MIT License](LICENSE)
 
-## What's Inside (v2.0.0)
+## What's Inside (v2.1.0)
+- **Browser Google Login & Synchronized Licensing:** Opens browser Google OAuth (`site/app-auth.html` -> `aysha://auth/callback`) with AES-256-GCM encrypted refresh token storage, Firestore license tiers (`1 Month`, `2 Months`, `1 Year`, `2 Years`, `Lifetime`), time-limited & quota-limited coupon redemption, UPI UTR manual checkout, and owner admin console (`usae4544@gmail.com`). See [`firebase/README.md`](firebase/README.md) for Firebase setup.
 - **11 Signature Animated HUD & 3D Orbs:** `AYSHA 2047`, `Aysha Nova`, `Aysha Nova 3D`, `Liquid Core`, `J.A.R.V.I.S.`, `J.A.R.V.I.S. 3D`, `F.R.I.D.A.Y.`, `Red HUD`, `Particle Swarm`, `Pulse Reactor`, `Ultron` + 9 HUD accent colors.
 - **Maya-Grade Theme & Typography Engine:** 9 palettes (`Obsidian`, `Midnight`, `Abyss`, `Ember`, `Nocturne`, `Rosewood`, `Clay Navy`, `Clay Day`, `Daylight`), 4 surface styles (`Glass`, `Clay`, `Flat`, `Soft`), 4 corner styles, UI scale, and bundled SIL OFL fonts (`Inter`, `Nunito`, `JetBrains Mono`).
 - **Voice, Barge-In & Awareness Engine:** Speaker-mode barge-in with `AcousticEchoCanceler` + `NoiseSuppressor`, configurable Follow-Up listening window, Awareness sensitivity gate (`Reserved`, `Balanced`, `Alert`), media mute guard, and Awareness Decision Log.

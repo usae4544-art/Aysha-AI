@@ -77,6 +77,7 @@ import com.aysha.assistant.ui.screens.AutomationScreen
 import com.aysha.assistant.ui.screens.BrowserScreen
 import com.aysha.assistant.ui.screens.ChatScreen
 import com.aysha.assistant.ui.screens.HomeOrbScreen
+import com.aysha.assistant.ui.screens.LicenseGateScreen
 import com.aysha.assistant.ui.screens.LicensesScreen
 import com.aysha.assistant.ui.screens.MemoryHistoryScreen
 import com.aysha.assistant.ui.screens.PhoneControlScreen
@@ -162,6 +163,9 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val settings by viewModel.settings.collectAsState()
+            val settingsLoaded by viewModel.settingsLoaded.collectAsState()
+            val license by viewModel.licenseInfo.collectAsState()
+            val licenseChecking by viewModel.licenseChecking.collectAsState()
             val unlocked by appUnlockedState
 
             AyshaTheme(settings = settings) {
@@ -185,6 +189,18 @@ class MainActivity : ComponentActivity() {
                             )
                         }
                     }
+                } else if (!settingsLoaded) {
+                    LiquidAuroraBackground {}
+                } else if (!license.isUnlocked()) {
+                    LicenseGateScreen(
+                        license = license,
+                        isChecking = licenseChecking,
+                        onBrowserGoogleSignIn = { viewModel.openBrowserGoogleLogin() },
+                        onOpenPlansOrCouponWebsite = { viewModel.openLicensePortalInBrowser() },
+                        onRefreshLicense = { viewModel.refreshLicenseStatus(silent = false) },
+                        onVerifyManualToken = { tok -> viewModel.verifyManualToken(tok) },
+                        onSignOut = { viewModel.signOutGoogle() },
+                    )
                 } else if (!settings.onboardingCompleted) {
                     SplashOnboardingScreen(
                         onGetStarted = { viewModel.completeOnboarding() },
@@ -203,6 +219,9 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshPermissions()
+        if (viewModel.settings.value.firebaseRefreshToken.isNotBlank()) {
+            viewModel.refreshLicenseStatus(silent = true)
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -214,6 +233,10 @@ class MainActivity : ComponentActivity() {
     private fun handleIncomingIntent(intent: Intent?) {
         intent ?: return
         runCatching {
+            if (intent.action == Intent.ACTION_VIEW && intent.data?.scheme == "aysha") {
+                viewModel.handleAuthDeepLink(intent.dataString)
+            }
+
             val startVoice = intent.getBooleanExtra(AyshaForegroundService.EXTRA_START_VOICE, false)
             val targetTab = intent.getStringExtra(AyshaForegroundService.EXTRA_TARGET_TAB)
             val wakePhrase = intent.getStringExtra(AyshaForegroundService.EXTRA_WAKE_PHRASE)
