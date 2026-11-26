@@ -2,6 +2,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import {
   getAuth,
   GoogleAuthProvider,
+  browserLocalPersistence,
+  setPersistence,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
@@ -25,26 +27,25 @@ function buildCallbackUrl(user) {
   return `aysha://auth/callback?${params.toString()}`;
 }
 
-async function handleSignedInUser(db, user) {
+function handleSignedInUser(db, user) {
   const pill = $("bridge-status");
   pill.className = "status-pill status-ok";
   pill.textContent = "Verified";
 
   $("bridge-message").textContent = `Signed in as ${user.email}. Syncing profile and opening AYSHA...`;
 
-  try {
-    await setDoc(doc(db, "users", user.uid), {
-      uid: user.uid,
-      email: String(user.email || "").toLowerCase(),
-      emailVerified: Boolean(user.emailVerified),
-      displayName: user.displayName || "",
-      photoUrl: user.photoURL || "",
-      lastLoginAt: serverTimestamp(),
-      lastLoginSource: "android",
-    }, { merge: true });
-  } catch (err) {
+  // Sync user directory in background so missing Firestore never blocks app return
+  setDoc(doc(db, "users", user.uid), {
+    uid: user.uid,
+    email: String(user.email || "").toLowerCase(),
+    emailVerified: Boolean(user.emailVerified),
+    displayName: user.displayName || "",
+    photoUrl: user.photoURL || "",
+    lastLoginAt: serverTimestamp(),
+    lastLoginSource: "android",
+  }, { merge: true }).catch((err) => {
     console.warn("User upsert error:", err);
-  }
+  });
 
   const deepLink = buildCallbackUrl(user);
   const retBtn = $("btn-return-apk");
@@ -66,8 +67,17 @@ async function main() {
     $("btn-copy-token").textContent = "Copied verification token";
   });
 
-  const resp = await fetch("firebase-config.json", { cache: "no-store" });
-  const cfg = await resp.json();
+  let cfg;
+  try {
+    const resp = await fetch(`firebase-config.json?v=${Date.now()}`, { cache: "no-store" });
+    cfg = await resp.json();
+  } catch (err) {
+    $("bridge-status").className = "status-pill status-err";
+    $("bridge-status").textContent = "Config Error";
+    $("bridge-message").textContent = `Failed to load firebase-config.json: ${err.message}`;
+    return;
+  }
+
   if (!cfg.configured || !cfg.apiKey || !cfg.projectId) {
     $("bridge-status").className = "status-pill status-warn";
     $("bridge-status").textContent = "Setup needed";
@@ -86,28 +96,43 @@ async function main() {
   });
   const auth = getAuth(fbApp);
   const db = getFirestore(fbApp);
+  setPersistence(auth, browserLocalPersistence).catch(() => {});
 
-  getRedirectResult(auth).catch(() => {});
+  onAuthStateChanged(auth, (user) => {
+    if (user) {
+      handleSignedInUser(db, user);
+    }
+  });
+
+  getRedirectResult(auth).catch((err) => {
+    if (!err) return;
+    $("bridge-status").className = "status-pill status-err";
+    $("bridge-status").textContent = "Auth Error";
+    $("bridge-message").textContent = `${err.code || "auth/error"}: ${err.message}`;
+  });
 
   $("btn-google-bridge").addEventListener("click", async () => {
+    const btn = $("btn-google-bridge");
+    btn.disabled = true;
+    btn.textContent = "Opening Google Sign-In...";
     const provider = new GoogleAuthProvider();
     provider.setCustomParameters({ prompt: "select_account" });
     try {
       await signInWithPopup(auth, provider);
     } catch (err) {
       if (err.code === "auth/popup-blocked" || err.code === "auth/operation-not-supported-in-this-environment") {
+        $("bridge-message").textContent = "Redirecting to Google Sign-In...";
         await signInWithRedirect(auth, provider);
       } else {
         $("bridge-status").className = "status-pill status-err";
         $("bridge-status").textContent = "Error";
-        $("bridge-message").textContent = err.message;
+        $("bridge-message").textContent = `${err.code || "auth/error"}: ${err.message}`;
       }
-    }
-  });
-
-  onAuthStateChanged(auth, (user) => {
-    if (user) {
-      handleSignedInUser(db, user);
+    } finally {
+      btn.disabled = false;
+      if (!auth.currentUser) {
+        btn.textContent = "Continue with Google";
+      }
     }
   });
 }

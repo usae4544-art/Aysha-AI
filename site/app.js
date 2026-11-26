@@ -2,6 +2,8 @@ import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebas
 import {
   getAuth,
   GoogleAuthProvider,
+  browserLocalPersistence,
+  setPersistence,
   signInWithPopup,
   signInWithRedirect,
   getRedirectResult,
@@ -55,6 +57,7 @@ const DEFAULT_STORE = {
 const state = {
   config: null,
   firebaseReady: false,
+  authBusy: false,
   auth: null,
   db: null,
   functions: null,
@@ -88,7 +91,48 @@ function showToast(msg) {
   el.textContent = msg;
   el.classList.remove("hidden");
   clearTimeout(showToast._t);
-  showToast._t = setTimeout(() => el.classList.add("hidden"), 3400);
+  showToast._t = setTimeout(() => el.classList.add("hidden"), 4500);
+}
+
+function showAuthError(msg) {
+  const box = $("auth-error-box");
+  if (!box) return;
+  box.textContent = msg;
+  box.classList.remove("hidden");
+}
+
+function clearAuthError() {
+  const box = $("auth-error-box");
+  if (!box) return;
+  box.textContent = "";
+  box.classList.add("hidden");
+}
+
+function friendlyAuthError(err) {
+  const code = err?.code || "";
+  if (code === "auth/unauthorized-domain") {
+    return "Add usae4544-art.github.io in Firebase Console -> Authentication -> Settings -> Authorized domains.";
+  }
+  if (code === "auth/operation-not-allowed") {
+    return "Enable Google provider in Firebase Console -> Authentication -> Sign-in method.";
+  }
+  if (code === "auth/popup-closed-by-user" || code === "auth/cancelled-popup-request") {
+    return "Google sign-in popup was closed before completing. Tap Sign in with Google again.";
+  }
+  if (code === "auth/popup-blocked") {
+    return "Browser blocked the popup. Redirecting to Google Sign-In...";
+  }
+  if (code === "auth/web-storage-unsupported" || code === "auth/operation-not-supported-in-this-environment") {
+    return "In-app browser blocked storage. Open https://usae4544-art.github.io/Aysha-AI/ in Chrome.";
+  }
+  return `${code ? code + ": " : ""}${err?.message || "Google sign-in failed."}`;
+}
+
+function withTimeout(promise, ms = 4000) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error("timeout")), ms)),
+  ]);
 }
 
 function planById(planId) {
@@ -514,7 +558,7 @@ function renderAdminTables() {
 async function loadStoreConfig() {
   if (!state.db) return;
   try {
-    const snap = await getDoc(doc(state.db, "config", "store"));
+    const snap = await withTimeout(getDoc(doc(state.db, "config", "store")), 4000);
     if (snap.exists()) {
       const data = snap.data();
       state.store = {
@@ -544,47 +588,55 @@ function syncStoreFormInputs() {
 
 async function syncUserRecords(user) {
   if (!state.db || !user) return;
-  try {
-    await setDoc(doc(state.db, "users", user.uid), {
-      uid: user.uid,
-      email: String(user.email || "").toLowerCase(),
-      emailVerified: Boolean(user.emailVerified),
-      displayName: user.displayName || "",
-      photoUrl: user.photoURL || "",
-      lastLoginAt: serverTimestamp(),
-      lastLoginSource: "web",
-    }, { merge: true });
-  } catch (err) {
-    console.warn("User profile upsert error:", err);
-  }
+  let firestoreIssue = null;
 
-  try {
-    const licSnap = await getDoc(doc(state.db, "licenses", user.uid));
-    state.license = licSnap.exists() ? licSnap.data() : null;
-  } catch {
+  const userWrite = setDoc(doc(state.db, "users", user.uid), {
+    uid: user.uid,
+    email: String(user.email || "").toLowerCase(),
+    emailVerified: Boolean(user.emailVerified),
+    displayName: user.displayName || "",
+    photoUrl: user.photoURL || "",
+    lastLoginAt: serverTimestamp(),
+    lastLoginSource: "web",
+  }, { merge: true });
+
+  const [writeRes, licRes, payRes, redRes] = await Promise.allSettled([
+    withTimeout(userWrite, 4500),
+    withTimeout(getDoc(doc(state.db, "licenses", user.uid)), 4500),
+    withTimeout(getDocs(query(collection(state.db, "payment_requests"), where("uid", "==", user.uid))), 4500),
+    withTimeout(getDocs(query(collection(state.db, "redemptions"), where("uid", "==", user.uid))), 4500),
+  ]);
+
+  if (writeRes.status === "rejected") {
+    firestoreIssue = writeRes.reason;
+  }
+  if (licRes.status === "fulfilled" && licRes.value.exists()) {
+    state.license = licRes.value.data();
+  } else {
     state.license = null;
   }
+  state.myPayments = payRes.status === "fulfilled"
+    ? payRes.value.docs.map((d) => ({ id: d.id, ...d.data() }))
+    : [];
+  state.myRedemptions = redRes.status === "fulfilled"
+    ? redRes.value.docs.map((d) => ({ id: d.id, ...d.data() }))
+    : [];
 
-  try {
-    const payQ = query(collection(state.db, "payment_requests"), where("uid", "==", user.uid));
-    const paySnaps = await getDocs(payQ);
-    state.myPayments = paySnaps.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch {
-    state.myPayments = [];
-  }
-
-  try {
-    const redQ = query(collection(state.db, "redemptions"), where("uid", "==", user.uid));
-    const redSnaps = await getDocs(redQ);
-    state.myRedemptions = redSnaps.docs.map((d) => ({ id: d.id, ...d.data() }));
-  } catch {
-    state.myRedemptions = [];
+  if (firestoreIssue) {
+    const msg = String(firestoreIssue?.message || firestoreIssue || "");
+    if (msg.includes("does not exist") || msg.includes("not-found") || msg.includes("timeout") || msg.includes("offline")) {
+      showAuthError("Signed in, but Cloud Firestore DB is not ready yet. Create Firestore Database + publish firebase/firestore.rules in Firebase Console.");
+    } else if (msg.includes("permission-denied")) {
+      showAuthError("Firestore rules denied access. Publish firebase/firestore.rules in Firebase Console -> Firestore -> Rules.");
+    }
+  } else {
+    clearAuthError();
   }
 
   renderAccountPanel();
   renderMyHistory();
 
-  if (state.isAdmin) {
+  if (state.isAdmin && !firestoreIssue) {
     await loadAdminAll();
   }
 }
@@ -592,12 +644,12 @@ async function syncUserRecords(user) {
 async function loadAdminAll() {
   if (!state.db || !state.isAdmin) return;
   try {
-    const [uSnaps, lSnaps, cSnaps, pSnaps] = await Promise.all([
+    const [uSnaps, lSnaps, cSnaps, pSnaps] = await withTimeout(Promise.all([
       getDocs(collection(state.db, "users")),
       getDocs(collection(state.db, "licenses")),
       getDocs(collection(state.db, "coupons")),
       getDocs(collection(state.db, "payment_requests")),
-    ]);
+    ]), 7000);
 
     state.adminUsers = uSnaps.docs.map((d) => d.data())
       .sort((a, b) => toMs(b.lastLoginAt) - toMs(a.lastLoginAt));
@@ -610,32 +662,55 @@ async function loadAdminAll() {
 
     renderAdminTables();
   } catch (err) {
-    showToast(`Admin load failed: ${err.message}`);
+    showAuthError(`Admin load failed: ${err.message}`);
   }
 }
 
 /* --- Auth Actions --- */
 async function triggerGoogleAuth() {
   if (!state.firebaseReady) {
-    showToast("Configure site/firebase-config.json before signing in.");
+    showAuthError("Still loading Firebase config or config is invalid.");
     $("setup-guide-panel").classList.remove("hidden");
     return;
   }
+  if (state.authBusy) return;
+  clearAuthError();
+
   if (state.user) {
     await signOut(state.auth);
     state.appliedCoupon = null;
     showToast("Signed out.");
     return;
   }
+
+  state.authBusy = true;
+  const heroBtn = $("btn-hero-signin");
+  const prevHeroText = heroBtn.textContent;
+  heroBtn.disabled = true;
+  heroBtn.textContent = "Opening Google Sign-In...";
+
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: "select_account" });
   try {
     await signInWithPopup(state.auth, provider);
   } catch (err) {
-    if (err.code === "auth/popup-blocked" || err.code === "auth/operation-not-supported-in-this-environment") {
-      await signInWithRedirect(state.auth, provider);
+    const msg = friendlyAuthError(err);
+    if (err.code === "auth/popup-blocked") {
+      showAuthError(msg);
+      try {
+        await signInWithRedirect(state.auth, provider);
+      } catch (redirErr) {
+        showAuthError(friendlyAuthError(redirErr));
+      }
     } else {
-      showToast(`Sign-in error: ${err.message}`);
+      showAuthError(msg);
+      showToast(msg);
+    }
+  } finally {
+    state.authBusy = false;
+    heroBtn.disabled = false;
+    if (!state.user) {
+      heroBtn.textContent = prevHeroText;
     }
   }
 }
@@ -1173,7 +1248,7 @@ async function init() {
   });
 
   try {
-    const resp = await fetch("firebase-config.json", { cache: "no-store" });
+    const resp = await fetch(`firebase-config.json?v=${Date.now()}`, { cache: "no-store" });
     const cfg = await resp.json();
     state.config = cfg;
     if (cfg.defaultStore) {
@@ -1207,14 +1282,15 @@ async function init() {
     state.functions = getFunctions(fbApp);
     state.firebaseReady = true;
 
-    await loadStoreConfig();
-    getRedirectResult(state.auth).catch(() => {});
+    setPersistence(state.auth, browserLocalPersistence).catch(() => {});
 
-    onAuthStateChanged(state.auth, async (user) => {
+    onAuthStateChanged(state.auth, (user) => {
       state.user = user;
       state.isAdmin = isUserAdmin(user);
       if (user) {
-        await syncUserRecords(user);
+        clearAuthError();
+        renderAccountPanel();
+        void syncUserRecords(user);
       } else {
         state.license = null;
         state.myPayments = [];
@@ -1223,8 +1299,15 @@ async function init() {
         renderMyHistory();
       }
     });
+
+    getRedirectResult(state.auth).catch((err) => {
+      if (err) showAuthError(friendlyAuthError(err));
+    });
+
+    void loadStoreConfig();
   } catch (err) {
     console.error("Initialization error:", err);
+    showAuthError(`Init error: ${err.message}`);
     $("setup-notice").classList.remove("hidden");
   }
 }
