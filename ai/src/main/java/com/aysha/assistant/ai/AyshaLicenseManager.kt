@@ -37,12 +37,11 @@ data class LicenseVerificationOutcome(
     val shouldClearSession: Boolean = false,
 )
 
-class AyshaLicenseManager(
+class AyshaLicenseManager {
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
         .readTimeout(20, TimeUnit.SECONDS)
-        .build(),
-) {
+        .build()
 
     suspend fun verifyWithSettings(settings: AppSettings): LicenseVerificationOutcome =
         verifyWithRefreshToken(settings.firebaseRefreshToken, settings)
