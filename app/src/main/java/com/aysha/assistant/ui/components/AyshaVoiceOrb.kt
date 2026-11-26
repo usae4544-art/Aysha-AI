@@ -158,7 +158,7 @@ fun AyshaVoiceOrb(
     }
     val stateSecondary = when (orbState) {
         OrbState.LISTENING -> Color(0xFF8B5CF6)
-        OrbState.PROCESSING -> Color(0xFFEC4899)
+        OrbState.PROCESSING, OrbState.CONNECTING -> Color(0xFFEC4899)
         OrbState.SPEAKING -> c.accentSecondary
         OrbState.AUTOMATING -> c.accentPrimary
         OrbState.ERROR -> Color(0xFFFB7185)
