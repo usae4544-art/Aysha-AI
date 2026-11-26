@@ -36,7 +36,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20261127" />
+  <link rel="stylesheet" href="styles.css?v=20261127b" />
 </head>
 <body>
   <header class="topbar">
@@ -49,7 +49,7 @@
           </svg>
         </span>
         <span class="brand-name">AYSHA</span>
-        <span class="brand-version mono" id="nav-version">v2.1.0</span>
+        <span class="brand-version mono" id="nav-version">v2.2.0</span>
       </a>
 
       <nav class="nav-links" aria-label="Primary">
@@ -151,6 +151,10 @@
                 <span class="kv-k">Time remaining</span>
                 <span class="kv-v mono" id="acc-timer">—</span>
               </div>
+              <div class="kv-row hidden" id="acc-key-row">
+                <span class="kv-k">License key</span>
+                <span class="kv-v mono" id="acc-key">—</span>
+              </div>
               <div class="kv-row">
                 <span class="kv-k">App sync</span>
                 <span class="kv-v mono" id="acc-sync">Browser OAuth</span>
@@ -159,6 +163,7 @@
 
             <div class="device-actions">
               <button type="button" id="btn-hero-signin" class="btn btn-primary btn-full">Sign in with Google</button>
+              <button type="button" id="btn-copy-my-key" class="btn btn-secondary btn-full hidden">Copy my license key</button>
               <a href="app-auth.html" id="btn-open-app-auth" class="btn btn-ghost btn-full hidden">Sync license to Android APK</a>
               <div id="auth-error-box" class="coupon-feedback err hidden"></div>
             </div>
@@ -235,16 +240,16 @@
           <p>Sign in with your Google account to activate a coupon or request a plan license for the Android app.</p>
         </div>
 
-        <!-- Coupon Redeem Card (visible to all users) -->
+        <!-- Coupon / License Key Redeem Card (visible to all users) -->
         <div class="card redeem-panel">
           <div class="redeem-copy">
-            <h3>Redeem a coupon code</h3>
-            <p>Enter an active coupon code provided by the administrator. Codes enforce exact expiration timers and per-coupon user limits on the server.</p>
+            <h3>Redeem a coupon code or license key</h3>
+            <p>Enter an active coupon code or unique long license key provided by the administrator. Coupons enforce exact server timers and redemption quotas.</p>
           </div>
           <form id="coupon-form" class="redeem-form" novalidate>
-            <input type="text" id="coupon-input" placeholder="Enter coupon code (e.g. AYSHA100)" autocomplete="off" spellcheck="false" />
-            <button type="submit" id="btn-check-coupon" class="btn btn-secondary">Apply code</button>
-            <button type="button" id="btn-redeem-free" class="btn btn-primary hidden">Activate free license</button>
+            <input type="text" id="coupon-input" placeholder="Enter coupon code or AYSHA-... license key" autocomplete="off" spellcheck="false" />
+            <button type="submit" id="btn-check-coupon" class="btn btn-secondary">Verify code / key</button>
+            <button type="button" id="btn-redeem-free" class="btn btn-primary hidden">Activate license</button>
           </form>
           <div id="coupon-feedback" class="coupon-feedback hidden"></div>
         </div>
@@ -296,7 +301,7 @@
         <div class="card download-box">
           <div class="kv-row">
             <span class="kv-k">Latest build</span>
-            <span class="kv-v mono" id="dl-version">AYSHA v2.1.0</span>
+            <span class="kv-v mono" id="dl-version">AYSHA v2.2.0</span>
           </div>
           <div class="kv-row">
             <span class="kv-k">Minimum Android</span>
@@ -350,6 +355,7 @@
 
         <div class="tabs" role="tablist">
           <button type="button" class="tab-btn active" data-tab="tab-coupons">Coupons &amp; Timers</button>
+          <button type="button" class="tab-btn" data-tab="tab-keys">License Keys</button>
           <button type="button" class="tab-btn" data-tab="tab-users">Users &amp; Licenses</button>
           <button type="button" class="tab-btn" data-tab="tab-payments">UPI Approvals</button>
           <button type="button" class="tab-btn" data-tab="tab-store">Pricing &amp; UPI Config</button>
@@ -428,7 +434,48 @@
           </div>
         </div>
 
-        <!-- Tab 2: Users -->
+        <!-- Tab 2: Standalone License Keys -->
+        <div id="tab-keys" class="tab-pane">
+          <form id="admin-key-form" class="card form-grid">
+            <h3 class="full-span">Generate unique long license key</h3>
+            <label>
+              <span>Plan duration</span>
+              <select id="k-plan">
+                <option value="ONE_MONTH">1 Month</option>
+                <option value="TWO_MONTHS">2 Months</option>
+                <option value="ONE_YEAR">1 Year</option>
+                <option value="TWO_YEARS">2 Years</option>
+                <option value="LIFETIME">Lifetime (All-Time)</option>
+              </select>
+            </label>
+            <label>
+              <span>Note (optional)</span>
+              <input type="text" id="k-note" placeholder="e.g. Buyer name or referral" />
+            </label>
+            <div class="full-span form-actions">
+              <button type="submit" class="btn btn-primary">Generate unique license key</button>
+            </div>
+          </form>
+
+          <div class="card table-card">
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>License key</th>
+                    <th>Plan</th>
+                    <th>Assigned / Claimed by</th>
+                    <th>Status</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="admin-keys-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Users -->
         <div id="tab-users" class="tab-pane">
           <div class="card table-card">
             <div class="table-head">
@@ -441,6 +488,7 @@
                   <tr>
                     <th>User</th>
                     <th>Current plan</th>
+                    <th>License key</th>
                     <th>Time left / Expiry</th>
                     <th>Status</th>
                     <th>Grant or Revoke</th>
@@ -546,12 +594,15 @@
         <div class="upi-box">
           <canvas id="upi-qr-canvas" width="180" height="180" class="hidden"></canvas>
           <div class="upi-details">
+            <span class="muted-text">Payee: <strong id="co-upi-name">Shivansh Pandit</strong></span>
             <span class="muted-text">UPI ID</span>
             <div class="inline-field">
-              <code id="co-upi-id" class="mono">aysha.ai@upi</code>
+              <code id="co-upi-id" class="mono">shivansh7dubey91@okhdfcbank</code>
               <button type="button" id="btn-copy-upi" class="btn btn-ghost btn-sm">Copy</button>
             </div>
-            <a id="co-upi-deep-link" href="#" class="btn btn-secondary btn-sm btn-full">Pay with installed UPI app</a>
+            <span class="muted-text">Exact amount is locked in this QR. Do not pay less or more.</span>
+            <a id="co-upi-deep-link" href="#" class="btn btn-secondary btn-sm btn-full">Pay exact amount in UPI app</a>
+            <button type="button" id="btn-save-qr" class="btn btn-ghost btn-sm btn-full hidden">Save UPI QR image (PNG)</button>
           </div>
         </div>
 
@@ -580,6 +631,6 @@
 
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-  <script type="module" src="app.js?v=20261127"></script>
+  <script type="module" src="app.js?v=20261127b"></script>
 </body>
 </html>

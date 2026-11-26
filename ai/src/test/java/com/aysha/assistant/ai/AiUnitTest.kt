@@ -145,7 +145,8 @@ class AiUnitTest {
                 "status": { "stringValue": "active" },
                 "isLifetime": { "booleanValue": false },
                 "expiresAtMs": { "integerValue": "${serverNow + 86_400_000L}" },
-                "couponCode": { "stringValue": "FESTIVE" }
+                "couponCode": { "stringValue": "FESTIVE" },
+                "licenseKey": { "stringValue": "AYSHA-9F4K-7M2P-8X3Q-W5R9-V2D6-K8T4" }
               }
             }
         """.trimIndent()
@@ -160,6 +161,7 @@ class AiUnitTest {
         assertEquals(LicenseStatus.ACTIVE, activeLic.status)
         assertEquals(LicensePlan.TWO_MONTHS, activeLic.plan)
         assertEquals("FESTIVE", activeLic.couponCode)
+        assertEquals("AYSHA-9F4K-7M2P-8X3Q-W5R9-V2D6-K8T4", activeLic.licenseKey)
         assertTrue(activeLic.isUnlocked(serverNow))
 
         val revokedJson = """

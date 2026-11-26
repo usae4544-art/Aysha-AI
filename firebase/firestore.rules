@@ -76,6 +76,68 @@ service cloud.firestore {
         );
     }
 
+    function keyExists(keyId) {
+      return keyId is string
+        && keyId.size() >= 12
+        && exists(/databases/$(database)/documents/license_keys/$(keyId));
+    }
+
+    function keyData(keyId) {
+      return get(/databases/$(database)/documents/license_keys/$(keyId)).data;
+    }
+
+    function licenseMatchesKeyClaim(d, uid, baseTime) {
+      let kId = d.licenseKey;
+      let k = keyData(kId);
+      return isOwner(uid)
+        && d.uid == uid
+        && d.source == 'license_key'
+        && d.status == 'active'
+        && keyExists(kId)
+        && k.active == true
+        && k.status == 'available'
+        && getAfter(/databases/$(database)/documents/license_keys/$(kId)).data.status == 'claimed'
+        && getAfter(/databases/$(database)/documents/license_keys/$(kId)).data.claimedByUid == uid
+        && isValidPlan(d.planId)
+        && d.planId == k.planId
+        && d.isLifetime == (d.planId == 'LIFETIME')
+        && (
+          d.planId == 'LIFETIME'
+          || (d.expiresAt is timestamp
+              && d.expiresAt > request.time
+              && d.expiresAt <= baseTime + planDuration(d.planId) + duration.value(2, 'm'))
+        );
+    }
+
+    function storeConfigExists() {
+      return exists(/databases/$(database)/documents/config/store);
+    }
+
+    function storePriceFor(planId) {
+      return get(/databases/$(database)/documents/config/store).data.prices[planId];
+    }
+
+    function paymentAmountMatchesStore(d) {
+      let base = storePriceFor(d.planId);
+      let hasCoupon = ('couponCode' in d) && d.couponCode is string && d.couponCode.size() >= 3;
+      let c = hasCoupon ? couponData(d.couponCode) : {'discountPercent': 0, 'rewardPlanId': 'ANY', 'rewardType': 'percent_off'};
+      let pct = hasCoupon ? c.discountPercent : 0;
+      let minFinal = (base * (100 - pct)) / 100;
+      return storeConfigExists()
+        && isValidPlan(d.planId)
+        && d.basePriceInr == base
+        && d.discountPercent == pct
+        && d.finalPriceInr >= minFinal
+        && d.finalPriceInr <= base
+        && (
+          !hasCoupon || (
+            couponExists(d.couponCode)
+            && couponValidForUser(d.couponCode, request.auth.uid)
+            && (c.rewardPlanId == 'ANY' || c.rewardPlanId == d.planId)
+          )
+        );
+    }
+
     // Public catalog pricing & UPI config
     match /config/{docId} {
       allow read: if true;
@@ -98,17 +160,51 @@ service cloud.firestore {
     match /licenses/{uid} {
       allow get: if isOwner(uid) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isAdmin() || licenseMatchesFreeCoupon(request.resource.data, uid, request.time);
-      allow update: if isAdmin() || licenseMatchesFreeCoupon(
-        request.resource.data,
-        uid,
-        (resource.data.status == 'active'
-          && resource.data.expiresAt is timestamp
-          && resource.data.expiresAt > request.time)
-          ? resource.data.expiresAt
-          : request.time
-      );
+      allow create: if isAdmin()
+        || licenseMatchesFreeCoupon(request.resource.data, uid, request.time)
+        || licenseMatchesKeyClaim(request.resource.data, uid, request.time);
+      allow update: if isAdmin()
+        || licenseMatchesFreeCoupon(
+          request.resource.data,
+          uid,
+          (resource.data.status == 'active'
+            && resource.data.expiresAt is timestamp
+            && resource.data.expiresAt > request.time)
+            ? resource.data.expiresAt
+            : request.time
+        )
+        || licenseMatchesKeyClaim(
+          request.resource.data,
+          uid,
+          (resource.data.status == 'active'
+            && resource.data.expiresAt is timestamp
+            && resource.data.expiresAt > request.time)
+            ? resource.data.expiresAt
+            : request.time
+        );
       allow delete: if isAdmin();
+    }
+
+    // Unique long license keys (individual activation codes)
+    match /license_keys/{keyId} {
+      allow get: if isSignedIn();
+      allow list, delete: if isAdmin();
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && request.resource.data.key == keyId
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.status == 'active'
+        && getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data.licenseKey == keyId
+      );
+      allow update: if isAdmin() || (
+        isSignedIn()
+        && resource.data.active == true
+        && resource.data.status == 'available'
+        && request.resource.data.status == 'claimed'
+        && request.resource.data.claimedByUid == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedByUid', 'claimedByEmail', 'claimedAt'])
+        && getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data.licenseKey == keyId
+      );
     }
 
     // Coupons: single-doc lookup by exact code only for signed-in users; listing & writing strictly Admin
@@ -153,17 +249,17 @@ service cloud.firestore {
         );
     }
 
-    // UPI UTR manual payment submissions
+    // UPI UTR manual payment submissions (server-validated price against /config/store + coupon)
     match /payment_requests/{reqId} {
       allow get: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow create: if isSignedIn()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.status == 'pending'
-        && isValidPlan(request.resource.data.planId)
         && request.resource.data.utr is string
         && request.resource.data.utr.size() >= 6
-        && request.resource.data.utr.size() <= 40;
+        && request.resource.data.utr.size() <= 40
+        && paymentAmountMatchesStore(request.resource.data);
       allow update, delete: if isAdmin();
     }
   }

@@ -349,6 +349,21 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun claimLicenseKey(rawKey: String) {
+        val clean = rawKey.trim().uppercase()
+        if (clean.isBlank()) return
+        viewModelScope.launch {
+            _licenseChecking.value = true
+            try {
+                val cur = settingsRepo.settingsFlow.first()
+                val outcome = licenseManager.claimLicenseKey(clean, cur)
+                applyLicenseOutcome(outcome, cur.firebaseRefreshToken)
+            } finally {
+                _licenseChecking.value = false
+            }
+        }
+    }
+
     private suspend fun applyLicenseOutcome(
         outcome: com.aysha.assistant.ai.LicenseVerificationOutcome,
         tokenFallback: String,
@@ -375,6 +390,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                     cachedLicenseServerNowMs = lic.lastServerNowMs,
                     cachedLicenseVerifiedDeviceMs = lic.lastVerifiedDeviceMs,
                     cachedLicenseCouponCode = lic.couponCode,
+                    cachedLicenseKey = lic.licenseKey,
                 )
             }
         }

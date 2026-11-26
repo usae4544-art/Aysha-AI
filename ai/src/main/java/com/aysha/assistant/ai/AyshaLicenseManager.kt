@@ -11,6 +11,7 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
@@ -206,6 +207,279 @@ class AyshaLicenseManager {
         )
     }
 
+    suspend fun claimLicenseKey(
+        rawLicenseKey: String,
+        fallbackSettings: AppSettings,
+    ): LicenseVerificationOutcome = withContext(Dispatchers.IO) {
+        val cleanKey = rawLicenseKey.trim().uppercase()
+        if (cleanKey.length < 12) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    firebaseConfigured = true,
+                    message = "Enter a valid full License Key (e.g. AYSHA-XXXX-...).",
+                ),
+            )
+        }
+
+        val refreshToken = fallbackSettings.firebaseRefreshToken.trim()
+        val configRes = fetchPinnedFirebaseConfig()
+        if (configRes.isFailure) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    message = "Unable to reach server config: ${configRes.exceptionOrNull()?.message}",
+                ),
+            )
+        }
+        val cfg = configRes.getOrThrow()
+        if (!cfg.configured || cfg.apiKey.isBlank() || cfg.projectId.isBlank()) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    status = LicenseStatus.UNCONFIGURED,
+                    message = "Firebase backend is not configured.",
+                ),
+            )
+        }
+        if (refreshToken.isBlank()) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    status = LicenseStatus.SIGNED_OUT,
+                    firebaseConfigured = true,
+                    message = "First tap Sign in with Google (Browser), then enter your License Key.",
+                ),
+            )
+        }
+
+        val tokenExchange = exchangeRefreshToken(cfg.apiKey, refreshToken)
+        if (tokenExchange.isFailure) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    firebaseConfigured = true,
+                    message = "Auth session check failed: ${tokenExchange.exceptionOrNull()?.message}",
+                ),
+            )
+        }
+        val tokenResult = tokenExchange.getOrThrow()
+        val accountRes = lookupGoogleAccount(cfg.apiKey, tokenResult.idToken)
+        if (accountRes.isFailure) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    firebaseConfigured = true,
+                    message = "Account verification failed: ${accountRes.exceptionOrNull()?.message}",
+                ),
+                updatedRefreshToken = tokenResult.refreshToken,
+            )
+        }
+        val account = accountRes.getOrThrow()
+        val deviceNow = System.currentTimeMillis()
+        val serverNow = tokenResult.serverNowMs.takeIf { it > 0L } ?: deviceNow
+
+        val keyDocRes = fetchFirestoreDoc(cfg.projectId, "license_keys/$cleanKey", tokenResult.idToken)
+        if (keyDocRes.isFailure) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    uid = account.uid,
+                    email = account.email,
+                    displayName = account.displayName,
+                    firebaseConfigured = true,
+                    message = "Key lookup failed: ${keyDocRes.exceptionOrNull()?.message}",
+                ),
+                updatedRefreshToken = tokenResult.refreshToken,
+            )
+        }
+        val keyFetched = keyDocRes.getOrThrow()
+        if (keyFetched.rawJson == null) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    uid = account.uid,
+                    email = account.email,
+                    displayName = account.displayName,
+                    firebaseConfigured = true,
+                    message = "Invalid License Key: $cleanKey not found.",
+                ),
+                updatedRefreshToken = tokenResult.refreshToken,
+            )
+        }
+
+        val fields = JSONObject(keyFetched.rawJson).optJSONObject("fields") ?: JSONObject()
+        val kActive = fields.optJSONObject("active")?.optBoolean("booleanValue", false) == true
+        val kStatus = fields.optJSONObject("status")?.optString("stringValue", "").orEmpty().lowercase()
+        val kUid = fields.optJSONObject("uid")?.optString("stringValue", "").orEmpty()
+        val kPlan = LicensePlan.fromId(fields.optJSONObject("planId")?.optString("stringValue", ""))
+
+        if (kUid == account.uid && kStatus == "active") {
+            return@withContext verifyWithRefreshToken(tokenResult.refreshToken, fallbackSettings)
+        }
+        if (!kActive || kStatus == "revoked") {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    uid = account.uid,
+                    email = account.email,
+                    displayName = account.displayName,
+                    firebaseConfigured = true,
+                    message = "This License Key has been deactivated by the administrator.",
+                ),
+                updatedRefreshToken = tokenResult.refreshToken,
+            )
+        }
+        if (kStatus != "available" || kPlan == LicensePlan.NONE) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    uid = account.uid,
+                    email = account.email,
+                    displayName = account.displayName,
+                    firebaseConfigured = true,
+                    message = "This License Key was already claimed or is not valid for activation.",
+                ),
+                updatedRefreshToken = tokenResult.refreshToken,
+            )
+        }
+
+        val commitServerNow = keyFetched.serverNowMs.takeIf { it > 0L } ?: serverNow
+        val isLifetime = kPlan == LicensePlan.LIFETIME
+        val expiresAtMs = if (isLifetime) 0L else commitServerNow + kPlan.durationDays * 86_400_000L
+
+        val commitRes = commitKeyClaimBatch(
+            projectId = cfg.projectId,
+            idToken = tokenResult.idToken,
+            keyId = cleanKey,
+            uid = account.uid,
+            email = account.email,
+            plan = kPlan,
+            isLifetime = isLifetime,
+            serverNowMs = commitServerNow,
+            expiresAtMs = expiresAtMs,
+        )
+        if (commitRes.isFailure) {
+            return@withContext LicenseVerificationOutcome(
+                license = fallbackSettings.currentLicenseInfo().copy(
+                    uid = account.uid,
+                    email = account.email,
+                    displayName = account.displayName,
+                    firebaseConfigured = true,
+                    message = "Key activation error: ${commitRes.exceptionOrNull()?.message}",
+                ),
+                updatedRefreshToken = tokenResult.refreshToken,
+            )
+        }
+
+        LicenseVerificationOutcome(
+            license = LicenseInfo(
+                uid = account.uid,
+                email = account.email,
+                displayName = account.displayName,
+                plan = kPlan,
+                isLifetime = isLifetime,
+                expiresAtMs = expiresAtMs,
+                lastServerNowMs = commitServerNow,
+                lastVerifiedDeviceMs = deviceNow,
+                status = LicenseStatus.ACTIVE,
+                licenseKey = cleanKey,
+                firebaseConfigured = true,
+                message = "Activated ${kPlan.label} via License Key!",
+            ),
+            updatedRefreshToken = tokenResult.refreshToken,
+        )
+    }
+
+    private fun fetchFirestoreDoc(
+        projectId: String,
+        docPath: String,
+        idToken: String,
+    ): Result<FirestoreDocResult> = runCatching {
+        val url = "https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/$docPath"
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $idToken")
+            .get()
+            .build()
+        http.newCall(req).execute().use { resp ->
+            val serverNow = parseHttpServerDateMs(resp.header("Date"))
+            if (resp.code == 404) {
+                return@runCatching FirestoreDocResult(null, serverNow)
+            }
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                error("Firestore HTTP ${resp.code}")
+            }
+            FirestoreDocResult(body, serverNow)
+        }
+    }
+
+    private fun commitKeyClaimBatch(
+        projectId: String,
+        idToken: String,
+        keyId: String,
+        uid: String,
+        email: String,
+        plan: LicensePlan,
+        isLifetime: Boolean,
+        serverNowMs: Long,
+        expiresAtMs: Long,
+    ): Result<Unit> = runCatching {
+        val baseDocPath = "projects/$projectId/databases/(default)/documents"
+        val nowIso = Instant.ofEpochMilli(serverNowMs).toString()
+
+        val keyUpdate = JSONObject().apply {
+            put("updateMask", JSONObject().put("fieldPaths", JSONArray(listOf("status", "claimedByUid", "claimedByEmail", "claimedAt"))))
+            put("currentDocument", JSONObject().put("exists", true))
+            put(
+                "update",
+                JSONObject().apply {
+                    put("name", "$baseDocPath/license_keys/$keyId")
+                    put(
+                        "fields",
+                        JSONObject().apply {
+                            put("status", JSONObject().put("stringValue", "claimed"))
+                            put("claimedByUid", JSONObject().put("stringValue", uid))
+                            put("claimedByEmail", JSONObject().put("stringValue", email.lowercase()))
+                            put("claimedAt", JSONObject().put("timestampValue", nowIso))
+                        },
+                    )
+                },
+            )
+        }
+
+        val licFields = JSONObject().apply {
+            put("uid", JSONObject().put("stringValue", uid))
+            put("email", JSONObject().put("stringValue", email.lowercase()))
+            put("planId", JSONObject().put("stringValue", plan.id))
+            put("status", JSONObject().put("stringValue", "active"))
+            put("isLifetime", JSONObject().put("booleanValue", isLifetime))
+            if (isLifetime) {
+                put("expiresAt", JSONObject().put("nullValue", JSONObject.NULL))
+            } else {
+                put("expiresAt", JSONObject().put("timestampValue", Instant.ofEpochMilli(expiresAtMs).toString()))
+            }
+            put("expiresAtMs", JSONObject().put("integerValue", expiresAtMs.toString()))
+            put("source", JSONObject().put("stringValue", "license_key"))
+            put("licenseKey", JSONObject().put("stringValue", keyId))
+            put("updatedAt", JSONObject().put("timestampValue", nowIso))
+            put("updatedBy", JSONObject().put("stringValue", uid))
+        }
+        val licWrite = JSONObject().apply {
+            put(
+                "update",
+                JSONObject().apply {
+                    put("name", "$baseDocPath/licenses/$uid")
+                    put("fields", licFields)
+                },
+            )
+        }
+
+        val body = JSONObject().put("writes", JSONArray().put(keyUpdate).put(licWrite)).toString()
+        val req = Request.Builder()
+            .url("https://firestore.googleapis.com/v1/$baseDocPath:commit")
+            .header("Authorization", "Bearer $idToken")
+            .post(body.toRequestBody("application/json; charset=utf-8".toMediaType()))
+            .build()
+        http.newCall(req).execute().use { resp ->
+            val respBody = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) {
+                error("Commit HTTP ${resp.code}: $respBody")
+            }
+        }
+    }
+
     private fun fetchPinnedFirebaseConfig(): Result<RemoteFirebaseConfig> = runCatching {
         val req = Request.Builder()
             .url("$CONFIG_URL?ts=${System.currentTimeMillis() / 30000L}")
@@ -369,6 +643,7 @@ class AyshaLicenseManager {
             val isLifetime = fields.optJSONObject("isLifetime")?.optBoolean("booleanValue", false) == true ||
                 plan == LicensePlan.LIFETIME
             val couponCode = fields.optJSONObject("couponCode")?.optString("stringValue", "").orEmpty()
+            val licenseKey = fields.optJSONObject("licenseKey")?.optString("stringValue", "").orEmpty()
 
             val expiresFromTimestamp = fields.optJSONObject("expiresAt")
                 ?.optString("timestampValue", "")
@@ -393,6 +668,7 @@ class AyshaLicenseManager {
                     lastVerifiedDeviceMs = deviceNowMs,
                     status = LicenseStatus.REVOKED,
                     couponCode = couponCode,
+                    licenseKey = licenseKey,
                     message = "Your license was revoked by the administrator.",
                 )
             }
@@ -410,6 +686,7 @@ class AyshaLicenseManager {
                     lastVerifiedDeviceMs = deviceNowMs,
                     status = LicenseStatus.ACTIVE,
                     couponCode = couponCode,
+                    licenseKey = licenseKey,
                     message = if (isLifetime) "Lifetime license active" else "${plan.label} license active",
                 )
             } else {
@@ -424,6 +701,7 @@ class AyshaLicenseManager {
                     lastVerifiedDeviceMs = deviceNowMs,
                     status = LicenseStatus.EXPIRED,
                     couponCode = couponCode,
+                    licenseKey = licenseKey,
                     message = "License expired. Renew or redeem a coupon on the website.",
                 )
             }

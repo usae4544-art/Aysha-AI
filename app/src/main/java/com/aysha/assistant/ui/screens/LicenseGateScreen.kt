@@ -58,12 +58,14 @@ fun LicenseGateScreen(
     onBrowserGoogleSignIn: () -> Unit,
     onOpenPlansOrCouponWebsite: () -> Unit,
     onRefreshLicense: () -> Unit,
+    onClaimLicenseKey: (String) -> Unit,
     onVerifyManualToken: (String) -> Unit,
     onSignOut: () -> Unit,
 ) {
     val c = LocalAyshaColors.current
     var showTokenFallback by remember { mutableStateOf(false) }
     var manualToken by remember { mutableStateOf("") }
+    var licenseKeyInput by remember { mutableStateOf("") }
 
     LiquidAuroraBackground {
         Column(
@@ -180,12 +182,31 @@ fun LicenseGateScreen(
                     )
 
                     if (license.email.isNotBlank()) {
+                        OutlinedTextField(
+                            value = licenseKeyInput,
+                            onValueChange = { licenseKeyInput = it.uppercase() },
+                            label = { Text("Enter Unique License Key (optional)") },
+                            placeholder = { Text("AYSHA-XXXX-XXXX-XXXX-...") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                         Button(
-                            onClick = onOpenPlansOrCouponWebsite,
+                            onClick = { onClaimLicenseKey(licenseKeyInput.trim()) },
+                            enabled = licenseKeyInput.trim().length >= 12 && !isChecking,
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(14.dp),
                         ) {
                             Icon(Icons.Rounded.Key, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Unlock with License Key")
+                        }
+
+                        OutlinedButton(
+                            onClick = onOpenPlansOrCouponWebsite,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(14.dp),
+                        ) {
+                            Icon(Icons.AutoMirrored.Rounded.OpenInNew, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Buy Plan or Redeem Coupon on Site")
                         }

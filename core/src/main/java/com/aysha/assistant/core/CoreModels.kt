@@ -631,6 +631,7 @@ data class LicenseInfo(
     val lastVerifiedDeviceMs: Long = 0L,
     val status: LicenseStatus = LicenseStatus.SIGNED_OUT,
     val couponCode: String = "",
+    val licenseKey: String = "",
     val message: String = "",
     val firebaseConfigured: Boolean = false,
 ) {
@@ -742,6 +743,7 @@ data class AppSettings(
     val cachedLicenseServerNowMs: Long = 0L,
     val cachedLicenseVerifiedDeviceMs: Long = 0L,
     val cachedLicenseCouponCode: String = "",
+    val cachedLicenseKey: String = "",
 ) {
     fun currentLicenseInfo(): LicenseInfo = LicenseInfo(
         uid = authUid,
@@ -754,6 +756,7 @@ data class AppSettings(
         lastVerifiedDeviceMs = cachedLicenseVerifiedDeviceMs,
         status = runCatching { LicenseStatus.valueOf(cachedLicenseStatus) }.getOrDefault(LicenseStatus.SIGNED_OUT),
         couponCode = cachedLicenseCouponCode,
+        licenseKey = cachedLicenseKey,
     )
     fun currentKeyFor(provider: BrainProvider): String = when (provider) {
         BrainProvider.GEMINI -> geminiApiKey

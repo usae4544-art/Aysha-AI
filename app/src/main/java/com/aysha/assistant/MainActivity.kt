@@ -198,6 +198,7 @@ class MainActivity : ComponentActivity() {
                         onBrowserGoogleSignIn = { viewModel.openBrowserGoogleLogin() },
                         onOpenPlansOrCouponWebsite = { viewModel.openLicensePortalInBrowser() },
                         onRefreshLicense = { viewModel.refreshLicenseStatus(silent = false) },
+                        onClaimLicenseKey = { key -> viewModel.claimLicenseKey(key) },
                         onVerifyManualToken = { tok -> viewModel.verifyManualToken(tok) },
                         onSignOut = { viewModel.signOutGoogle() },
                     )

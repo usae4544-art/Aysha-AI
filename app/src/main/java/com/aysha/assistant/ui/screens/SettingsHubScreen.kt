@@ -59,7 +59,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -108,6 +110,7 @@ fun SettingsHubScreen(
     onNavigate: (SettingsSubRoute) -> Unit,
 ) {
     val c = LocalAyshaColors.current
+    val clipboard = LocalClipboardManager.current
     val settings by viewModel.settings.collectAsState()
     val license by viewModel.licenseInfo.collectAsState()
     val mood by viewModel.assistantMood.collectAsState()
@@ -233,7 +236,19 @@ fun SettingsHubScreen(
                         viewModel.refreshLicenseStatus(silent = false)
                     }
                 }
+                if (license.licenseKey.isNotBlank()) {
+                    Text(
+                        text = "Key: ${license.licenseKey}",
+                        color = c.textSecondary,
+                        fontSize = 11.sp,
+                    )
+                }
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (license.licenseKey.isNotBlank()) {
+                        GlassPill(text = "Copy Key", dotColor = c.accentPrimary) {
+                            clipboard.setText(AnnotatedString(license.licenseKey))
+                        }
+                    }
                     GlassPill(text = "Plans / Coupon", dotColor = c.accentSecondary) {
                         viewModel.openLicensePortalInBrowser()
                     }
