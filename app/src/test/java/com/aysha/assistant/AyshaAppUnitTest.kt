@@ -126,11 +126,11 @@ class AyshaAppUnitTest {
     @Test
     fun `store pricing config defaults and admin user record hold expected values`() {
         val pricing = StorePricingConfig()
-        assertEquals(199, pricing.priceFor(LicensePlan.ONE_MONTH))
-        assertEquals(349, pricing.priceFor(LicensePlan.TWO_MONTHS))
-        assertEquals(999, pricing.priceFor(LicensePlan.ONE_YEAR))
-        assertEquals(1599, pricing.priceFor(LicensePlan.TWO_YEARS))
-        assertEquals(2999, pricing.priceFor(LicensePlan.LIFETIME))
+        assertEquals(149, pricing.prices[LicensePlan.ONE_MONTH])
+        assertEquals(249, pricing.prices[LicensePlan.TWO_MONTHS])
+        assertEquals(999, pricing.prices[LicensePlan.ONE_YEAR])
+        assertEquals(1599, pricing.prices[LicensePlan.TWO_YEARS])
+        assertEquals(2999, pricing.prices[LicensePlan.LIFETIME])
 
         val rec = AdminUserRecord(
             uid = "uid123",
