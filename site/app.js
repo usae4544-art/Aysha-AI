@@ -1545,7 +1545,7 @@ async function loadLiveOtaConfig() {
     if ($("ota-apk-url")) $("ota-apk-url").value = d.apkDownloadUrl || "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk";
     if ($("ota-notes")) $("ota-notes").value = d.updateNotes || "";
     if ($("ota-banner")) $("ota-banner").value = d.announcementBanner || "";
-    if ($("ota-gemini-text")) $("ota-gemini-text").value = d.geminiTextModel || "gemini-3.8-flash";
+    if ($("ota-gemini-text")) $("ota-gemini-text").value = d.geminiTextModel || "gemini-2.5-flash";
     if ($("ota-gemini-live")) $("ota-gemini-live").value = d.geminiLiveModel || "gemini-3.8-live";
     if ($("ota-prompt-extra")) $("ota-prompt-extra").value = d.systemPromptExtra || "";
   } catch (_) {}

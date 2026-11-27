@@ -35,9 +35,9 @@ class MultiProviderAiClient {
 
     private val http = OkHttpClient.Builder()
         .connectionPool(okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
-        .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(18, TimeUnit.SECONDS)
-        .writeTimeout(15, TimeUnit.SECONDS)
+        .connectTimeout(25, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(30, TimeUnit.SECONDS)
         .build()
 
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
@@ -95,7 +95,7 @@ class MultiProviderAiClient {
                 val models = (0 until arr.length()).mapNotNull { i ->
                     arr.optJSONObject(i)?.optString("name")?.removePrefix("models/")
                 }.sorted()
-                val preferred = listOf("gemini-3.8-flash", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash")
+                val preferred = listOf("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-3.8-flash", "gemini-3-flash-preview")
                     .firstOrNull { cand -> models.any { it.equals(cand, ignoreCase = true) } }
                 if (preferred != null) {
                     cachedWorkingGeminiModel = preferred
@@ -291,9 +291,11 @@ class MultiProviderAiClient {
             model.trim().ifBlank { null },
             cachedWorkingGeminiModel,
             BrainProvider.GEMINI.defaultModel,
-            "gemini-3-flash-preview",
             "gemini-2.5-flash",
+            "gemini-2.5-flash-lite",
             "gemini-2.0-flash",
+            "gemini-3.8-flash",
+            "gemini-3-flash-preview",
         ).distinct()
 
         val contents = JSONArray()

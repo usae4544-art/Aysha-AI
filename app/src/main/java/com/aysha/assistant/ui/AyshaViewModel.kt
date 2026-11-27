@@ -1151,7 +1151,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 if (provider == BrainProvider.GEMINI && cleanKey.isNotEmpty()) {
                     settingsRepo.update { cur ->
-                        val pickedFlash = listOf("gemini-3.8-flash", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash")
+                        val pickedFlash = listOf("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-3.8-flash", "gemini-3-flash-preview")
                             .firstOrNull { cand -> res.models.any { it.equals(cand, ignoreCase = true) } }
                             ?: cur.geminiTextModel
                         val pickedLive = listOf("gemini-3.8-live", "gemini-3.1-flash-live-preview", "gemini-2.5-flash-native-audio-preview-09-2025", "gemini-2.0-flash-live-001")

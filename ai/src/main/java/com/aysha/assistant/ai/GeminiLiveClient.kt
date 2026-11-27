@@ -508,13 +508,23 @@ class GeminiLiveClient(
         }
 
         playJob = scope.launch {
+            var startedPlaying = false
             while (isActive && webSocket != null) {
+                // Pre-buffer at least 2 chunks before playing to avoid hardware underrun clicks/stutters ("tuk tuk")
+                if (!startedPlaying && playbackQueue.size < 2) {
+                    delay(30L)
+                    if (playbackQueue.isEmpty()) continue
+                }
                 val chunk = playbackQueue.poll(100, TimeUnit.MILLISECONDS) ?: continue
+                startedPlaying = true
                 _audioLevel.value = computeRms(chunk, chunk.size)
                 runCatching { player.write(chunk, 0, chunk.size) }
-                if (playbackQueue.isEmpty() && _orbState.value == OrbState.SPEAKING) {
-                    _orbState.value = OrbState.LISTENING
-                    _statusText.value = "Listening..."
+                if (playbackQueue.isEmpty()) {
+                    startedPlaying = false
+                    if (_orbState.value == OrbState.SPEAKING) {
+                        _orbState.value = OrbState.LISTENING
+                        _statusText.value = "Listening..."
+                    }
                 }
             }
         }

@@ -5,7 +5,7 @@
   "updateNotes": "100% Pure Gemini API (Offline Mode removed), fixed 'thinking...' hang with instant error surfacing, plus Digital Assistant & Calling support.",
   "forceUpdate": false,
   "announcementBanner": "",
-  "geminiTextModel": "gemini-3.8-flash",
+  "geminiTextModel": "gemini-2.5-flash",
   "geminiLiveModel": "gemini-3.8-live",
   "systemPromptExtra": "",
   "maintenanceMode": false,
