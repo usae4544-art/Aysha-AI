@@ -397,7 +397,8 @@ class MultiProviderAiClient {
 
             for (tryModel in modelsForRound) {
                 var includeTools = true
-                for (schemaAttempt in 0..1) {
+                var includeThinkingZero = tryModel.startsWith("gemini-2.5") || tryModel.startsWith("gemini-3")
+                for (schemaAttempt in 0..2) {
                     val payload = JSONObject().apply {
                         put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
                         put("contents", contents)
@@ -406,7 +407,12 @@ class MultiProviderAiClient {
                             "generationConfig",
                             JSONObject()
                                 .put("temperature", 0.7)
-                                .put("maxOutputTokens", 768),
+                                .put("maxOutputTokens", 512)
+                                .apply {
+                                    if (includeThinkingZero) {
+                                        put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
+                                    }
+                                },
                         )
                     }
 
@@ -425,6 +431,10 @@ class MultiProviderAiClient {
                             } else {
                                 val errMsg = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
                                 val detail = "Gemini HTTP ${resp.code}: ${errMsg ?: body.take(180)}"
+                                val isThinkingErr = resp.code == 400 && (errMsg?.contains("thinking", ignoreCase = true) == true)
+                                if (isThinkingErr && includeThinkingZero) {
+                                    throw RetryWithoutThinkingException(detail)
+                                }
                                 val isSchemaErr = resp.code == 400 && (
                                     errMsg?.contains("tool", ignoreCase = true) == true ||
                                         errMsg?.contains("function", ignoreCase = true) == true ||
@@ -444,6 +454,7 @@ class MultiProviderAiClient {
                         }
                     }.recoverCatching { err ->
                         when (err) {
+                            is RetryWithoutThinkingException,
                             is RetryWithoutToolsException,
                             is UnsupportedModelException,
                             is TransientOverloadException -> throw err
@@ -457,6 +468,10 @@ class MultiProviderAiClient {
                         break
                     } else {
                         val err = callOutcome.exceptionOrNull()
+                        if (err is RetryWithoutThinkingException) {
+                            includeThinkingZero = false
+                            continue
+                        }
                         if (err is RetryWithoutToolsException) {
                             includeTools = false
                             continue
@@ -659,6 +674,7 @@ class MultiProviderAiClient {
 
     private class UnsupportedModelException(message: String) : IllegalStateException(message)
     private class RetryWithoutToolsException(message: String) : IllegalStateException(message)
+    private class RetryWithoutThinkingException(message: String) : IllegalStateException(message)
     private class TransientOverloadException(message: String) : IllegalStateException(message)
 
     companion object {

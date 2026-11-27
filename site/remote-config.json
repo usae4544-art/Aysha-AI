@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.11.1",
-  "latestVersionCode": 15,
-  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.11.1/AYSHA-latest-release.apk",
-  "updateNotes": "Fixed Gemini HTTP 503 high-demand error by switching default to low-latency Gemini 2.5 Flash-Lite with automatic failover across 3.5/3.1 Flash-Lite, plus animated UI & Owner Admin Console.",
+  "latestVersion": "2.12.0",
+  "latestVersionCode": 16,
+  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.12.0/AYSHA-latest-release.apk",
+  "updateNotes": "Liquid Glassmorphism UI across every screen, upgraded 3D Orb & front resonance threads, 4x faster Gemini 2.5 Flash-Lite voice responses with parallel TTS streaming, and reliable 'Hey Aysha' pre-roll wake word.",
   "forceUpdate": false,
   "announcementBanner": "",
   "geminiTextModel": "gemini-2.5-flash-lite",

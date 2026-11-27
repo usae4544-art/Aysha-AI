@@ -8,9 +8,11 @@ import android.util.Base64
 import com.aysha.assistant.core.SafeLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
@@ -252,10 +254,11 @@ class GeminiNeuralTtsEngine {
     }
 
     private val http = OkHttpClient.Builder()
-        .connectionPool(okhttp3.ConnectionPool(4, 5, TimeUnit.MINUTES))
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
+        .connectionPool(okhttp3.ConnectionPool(6, 5, TimeUnit.MINUTES))
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(25, TimeUnit.SECONDS)
+        .writeTimeout(10, TimeUnit.SECONDS)
+        .retryOnConnectionFailure(true)
         .build()
 
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
@@ -292,24 +295,59 @@ class GeminiNeuralTtsEngine {
 
         activeJob = scope.launch {
             var notifiedStart = false
+            var prefetchedNext: Deferred<List<PcmPayload>?>? = null
             try {
-                for (chunk in chunks) {
+                for (i in chunks.indices) {
                     ensureActive()
-                    val ok = playChunkWithCascade(
-                        apiKey = cleanKey,
-                        text = chunk,
-                        voiceName = cleanVoice,
-                        style = styleHint,
-                        rate = safeRate,
-                        volume = safeVolume,
-                        onAudioStarted = {
-                            if (!notifiedStart) {
-                                notifiedStart = true
-                                onStarted()
-                            }
-                        },
-                        onRms = onRms,
-                    )
+                    val currentPrefetch = prefetchedNext
+                    prefetchedNext = null
+
+                    // Prefetch next chunk in parallel so multi-sentence speech has zero inter-sentence wait
+                    if (i + 1 < chunks.size) {
+                        val nextText = chunks[i + 1]
+                        prefetchedNext = async(Dispatchers.IO) {
+                            runCatching {
+                                fetchPcmChunks(
+                                    apiKey = cleanKey,
+                                    text = nextText,
+                                    voiceName = cleanVoice,
+                                    style = styleHint,
+                                )
+                            }.getOrNull()
+                        }
+                    }
+
+                    val preloaded = currentPrefetch?.await()
+                    val ok = if (!preloaded.isNullOrEmpty()) {
+                        playPreloadedChunks(
+                            chunks = preloaded,
+                            rate = safeRate,
+                            volume = safeVolume,
+                            onAudioStarted = {
+                                if (!notifiedStart) {
+                                    notifiedStart = true
+                                    onStarted()
+                                }
+                            },
+                            onRms = onRms,
+                        )
+                    } else {
+                        playChunkWithCascade(
+                            apiKey = cleanKey,
+                            text = chunks[i],
+                            voiceName = cleanVoice,
+                            style = styleHint,
+                            rate = safeRate,
+                            volume = safeVolume,
+                            onAudioStarted = {
+                                if (!notifiedStart) {
+                                    notifiedStart = true
+                                    onStarted()
+                                }
+                            },
+                            onRms = onRms,
+                        )
+                    }
                     if (!ok) {
                         throw IllegalStateException("Gemini Neural TTS audio response nahi aaya.")
                     }
@@ -317,8 +355,10 @@ class GeminiNeuralTtsEngine {
                 onRms(0f)
                 onFinished()
             } catch (_: CancellationException) {
+                prefetchedNext?.cancel()
                 onRms(0f)
             } catch (err: Throwable) {
+                prefetchedNext?.cancel()
                 SafeLogger.w(TAG, "Gemini TTS failed: ${err.message}")
                 onRms(0f)
                 onError(SafeLogger.redact(err.message ?: "Gemini Voice failed"))
@@ -475,11 +515,11 @@ class GeminiNeuralTtsEngine {
 
                                 if (!trackStarted) {
                                     preBuffer.write(unwrapped.pcmBytes)
-                                    // Wait until ~100ms (4800 bytes @ 24kHz mono 16-bit) before starting hardware track -> zero underrun clicks
-                                    if (preBuffer.size() >= 4800) {
+                                    // Wait ~50ms (2400 bytes @ 24kHz mono 16-bit) for instant low-latency playback with zero click
+                                    if (preBuffer.size() >= 2400) {
                                         val firstBuf = preBuffer.toByteArray()
                                         preBuffer.reset()
-                                        GeminiTtsProtocol.applyFadeIn(firstBuf)
+                                        GeminiTtsProtocol.applyFadeIn(firstBuf, fadeSamples = 160)
                                         val created = createOutputTrack(sampleRate, volume, rate)
                                             ?: throw IllegalStateException("AudioTrack unavailable.")
                                         track = created
@@ -672,9 +712,118 @@ class GeminiNeuralTtsEngine {
         return track
     }
 
+    private suspend fun fetchPcmChunks(
+        apiKey: String,
+        text: String,
+        voiceName: String,
+        style: String,
+    ): List<PcmPayload> {
+        val candidates = buildList {
+            cachedBackend?.let { add(it) }
+            TtsBackend.entries.forEach { if (it !in this) add(it) }
+        }
+        for (backend in candidates) {
+            currentCoroutineContext().ensureActive()
+            if (backend.isInteractions) {
+                val payload = GeminiTtsProtocol.buildInteractionsPayload(
+                    model = backend.model,
+                    text = text,
+                    voiceName = voiceName,
+                    style = style,
+                    stream = false,
+                )
+                val req = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/interactions")
+                    .header("x-goog-api-key", apiKey)
+                    .post(payload.toString().toRequestBody(jsonMedia))
+                    .build()
+                val res = runCatching {
+                    http.newCall(req).execute().use { resp ->
+                        val body = resp.body?.string().orEmpty()
+                        if (!resp.isSuccessful) return@use emptyList()
+                        val b64 = JSONObject(body).optJSONObject("output_audio")?.optString("data").orEmpty()
+                        if (b64.isBlank()) return@use emptyList()
+                        val raw = Base64.decode(b64, Base64.DEFAULT)
+                        val unwrapped = GeminiTtsProtocol.unwrapWavIfPresent(raw, 24000)
+                        if (unwrapped.pcmBytes.isNotEmpty()) listOf(unwrapped) else emptyList()
+                    }
+                }.getOrDefault(emptyList())
+                if (res.isNotEmpty()) return res
+            } else {
+                val payload = GeminiTtsProtocol.buildGenerateContentPayload(text = text, voiceName = voiceName)
+                val req = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/${backend.model}:generateContent?key=$apiKey")
+                    .post(payload.toString().toRequestBody(jsonMedia))
+                    .build()
+                val res = runCatching {
+                    http.newCall(req).execute().use { resp ->
+                        val body = resp.body?.string().orEmpty()
+                        if (!resp.isSuccessful) return@use emptyList()
+                        val out = mutableListOf<PcmPayload>()
+                        val parts = JSONObject(body).optJSONArray("candidates")
+                            ?.optJSONObject(0)?.optJSONObject("content")?.optJSONArray("parts") ?: JSONArray()
+                        for (i in 0 until parts.length()) {
+                            val inline = parts.optJSONObject(i)?.optJSONObject("inlineData") ?: continue
+                            val b64 = inline.optString("data")
+                            if (b64.isBlank()) continue
+                            val decoded = Base64.decode(b64, Base64.DEFAULT)
+                            val rateHint = GeminiTtsProtocol.extractSampleRate(inline.optString("mimeType"), 24000)
+                            val unwrapped = GeminiTtsProtocol.unwrapWavIfPresent(decoded, rateHint)
+                            if (unwrapped.pcmBytes.isNotEmpty()) out.add(unwrapped)
+                        }
+                        out
+                    }
+                }.getOrDefault(emptyList())
+                if (res.isNotEmpty()) return res
+            }
+        }
+        return emptyList()
+    }
+
+    private suspend fun playPreloadedChunks(
+        chunks: List<PcmPayload>,
+        rate: Float,
+        volume: Float,
+        onAudioStarted: () -> Unit,
+        onRms: (Float) -> Unit,
+    ): Boolean {
+        if (chunks.isEmpty()) return false
+        val sampleRate = chunks.first().sampleRate
+        val track = createOutputTrack(sampleRate, volume, rate) ?: return false
+        var totalBytesWritten = 0L
+        try {
+            activeTrack.set(track)
+            onAudioStarted()
+            track.play()
+            chunks.forEachIndexed { idx, chunk ->
+                currentCoroutineContext().ensureActive()
+                val pcm = chunk.pcmBytes
+                if (idx == 0) GeminiTtsProtocol.applyFadeIn(pcm, fadeSamples = 160)
+                if (idx == chunks.lastIndex) GeminiTtsProtocol.applyFadeOut(pcm)
+                val sliceSize = 4800
+                var offset = 0
+                while (offset < pcm.size) {
+                    currentCoroutineContext().ensureActive()
+                    val count = (pcm.size - offset).coerceAtMost(sliceSize) and 0x7FFFFFFE
+                    if (count <= 0) break
+                    val slice = pcm.copyOfRange(offset, offset + count)
+                    onRms(GeminiTtsProtocol.computeRms(slice, count))
+                    val written = runCatching { track.write(slice, 0, count) }.getOrDefault(-1)
+                    if (written < 0) break
+                    totalBytesWritten += written
+                    offset += count
+                }
+            }
+            awaitTrackDrain(track, totalBytesWritten / 2L, sampleRate)
+            return true
+        } finally {
+            releaseTrack(track)
+        }
+    }
+
     private suspend fun awaitTrackDrain(track: AudioTrack, totalFrames: Long, sampleRate: Int) {
         if (totalFrames <= 0L) return
-        val maxWaitMs = ((totalFrames * 1000L) / sampleRate.coerceAtLeast(8000) + 650L).coerceAtMost(8000L)
+        val maxWaitMs = ((totalFrames * 1000L) / sampleRate.coerceAtLeast(8000) + 120L).coerceAtMost(7500L)
         val deadline = System.currentTimeMillis() + maxWaitMs
         var stagnantPolls = 0
         var lastHead = -1L

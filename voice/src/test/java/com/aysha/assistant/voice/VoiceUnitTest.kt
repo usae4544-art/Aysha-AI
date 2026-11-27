@@ -18,8 +18,9 @@ class VoiceUnitTest {
     @Test
     fun `speech chunking splits long text cleanly on boundaries`() {
         val longText = List(40) { "This is sentence number $it for testing chunking." }.joinToString(" ")
-        val chunks = SpeechTextFormatter.splitChunks(longText, maxChars = 400)
+        val chunks = SpeechTextFormatter.splitChunks(longText, maxChars = 400, firstChunkMaxChars = 135)
         assertTrue(chunks.size > 2)
+        assertTrue(chunks.first().length <= 135)
         assertTrue(chunks.all { it.length <= 420 })
     }
 

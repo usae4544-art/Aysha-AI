@@ -32,22 +32,28 @@ object SpeechTextFormatter {
             .trim()
     }
 
-    fun splitChunks(text: String, maxChars: Int = 900): List<String> {
+    fun splitChunks(text: String, maxChars: Int = 320, firstChunkMaxChars: Int = 135): List<String> {
         val clean = cleanForSpeech(text)
-        if (clean.length <= maxChars) return if (clean.isEmpty()) emptyList() else listOf(clean)
+        if (clean.length <= firstChunkMaxChars) return if (clean.isEmpty()) emptyList() else listOf(clean)
         val out = mutableListOf<String>()
         var idx = 0
         while (idx < clean.length) {
-            val end = (idx + maxChars).coerceAtMost(clean.length)
+            val budget = if (out.isEmpty()) firstChunkMaxChars else maxChars
+            val end = (idx + budget).coerceAtMost(clean.length)
             if (end == clean.length) {
                 out.add(clean.substring(idx).trim())
                 break
             }
-            val splitAt = clean.lastIndexOf('.', end)
-                .coerceAtLeast(clean.lastIndexOf('!', end))
-                .coerceAtLeast(clean.lastIndexOf('?', end))
-                .coerceAtLeast(clean.lastIndexOf(' ', end))
-            val cut = if (splitAt > idx + 120) splitAt + 1 else end
+            val splitAt = listOf(
+                clean.lastIndexOf('.', end),
+                clean.lastIndexOf('!', end),
+                clean.lastIndexOf('?', end),
+                clean.lastIndexOf('।', end),
+                clean.lastIndexOf(',', end),
+                clean.lastIndexOf(' ', end),
+            ).maxOrNull() ?: -1
+            val minCut = if (out.isEmpty()) idx + 36 else idx + 90
+            val cut = if (splitAt > minCut) splitAt + 1 else end
             out.add(clean.substring(idx, cut).trim())
             idx = cut
         }
@@ -233,9 +239,9 @@ class VoiceController(context: Context) {
                     putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, localeTag)
                     putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
                     putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
-                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 1350L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 900L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 550L)
                 }
                 runCatching {
                     _isListening.value = true
@@ -249,7 +255,7 @@ class VoiceController(context: Context) {
 
             if (hadActiveRecognizer) {
                 pendingStartRunnable = startAction
-                mainHandler.postDelayed(startAction, 450L)
+                mainHandler.postDelayed(startAction, 140L)
             } else {
                 startAction.run()
             }

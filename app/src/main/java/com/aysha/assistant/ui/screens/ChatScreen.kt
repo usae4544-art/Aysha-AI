@@ -100,6 +100,7 @@ import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
+import com.aysha.assistant.core.ui.StaggeredAnimatedEntry
 import com.aysha.assistant.ui.AyshaViewModel
 import com.aysha.assistant.ui.components.MayaBottomNavBar
 import com.aysha.assistant.ui.components.PrimaryBottomTab
@@ -239,14 +240,16 @@ fun ChatScreen(
 
         if (messages.isEmpty()) {
             Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                GlassCard(cornerRadius = 22.dp, contentPadding = PaddingValues(20.dp)) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text("Namaste ${settings.userName}!", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-                        Text(
-                            "Kuch bhi baat karo — main automatic aapki important baatein aur reminders yaad rakhungi!",
-                            color = c.textSecondary,
-                            fontSize = 13.5.sp,
-                        )
+                StaggeredAnimatedEntry(index = 0) {
+                    GlassCard(cornerRadius = 22.dp, elevated = true, contentPadding = PaddingValues(20.dp)) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text("Namaste ${settings.userName}!", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                            Text(
+                                "Kuch bhi baat karo — main automatic aapki important baatein aur reminders yaad rakhungi!",
+                                color = c.textSecondary,
+                                fontSize = 13.5.sp,
+                            )
+                        }
                     }
                 }
             }
@@ -322,12 +325,13 @@ fun ChatScreen(
             }
         }
 
-        GlassCard(
-            modifier = Modifier.fillMaxWidth(),
-            cornerRadius = 28.dp,
-            elevated = true,
-            contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
-        ) {
+        StaggeredAnimatedEntry(index = 1) {
+            GlassCard(
+                modifier = Modifier.fillMaxWidth(),
+                cornerRadius = 28.dp,
+                elevated = true,
+                contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+            ) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 IconButton(
                     onClick = { imagePickerLauncher.launch("image/*") },
@@ -388,6 +392,7 @@ fun ChatScreen(
                 ) {
                     Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "Send", tint = Color.White, modifier = Modifier.size(18.dp))
                 }
+            }
             }
         }
         }

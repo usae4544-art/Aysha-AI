@@ -275,62 +275,55 @@ fun HomeOrbScreen(
                     )
                 }
             }
-            // Screenshot-exact soft blue License / Companion Banner
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(18.dp))
-                    .background(
-                        if (c.isDark) c.glassSurfaceElevated
-                        else Color(0xFFCDE1FD).copy(alpha = 0.72f),
-                    )
-                    .border(
-                        1.dp,
-                        if (c.isDark) c.glassBorder else Color.White.copy(alpha = 0.65f),
-                        RoundedCornerShape(18.dp),
-                    )
-                    .clickable(onClick = onOpenLicenseInfo)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
-            ) {
-                Row(
+            // Translucent Liquid Glass License / Companion Banner
+            StaggeredAnimatedEntry(index = 0) {
+                GlassCard(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    cornerRadius = 18.dp,
+                    elevated = true,
+                    onClick = onOpenLicenseInfo,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(
-                            imageVector = Icons.Rounded.LockOpen,
-                            contentDescription = null,
-                            tint = c.accentPrimary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text(
-                                text = "${license.plan.label} • ${settings.companionIntimacy.label}",
-                                color = c.textPrimary,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 13.5.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(
+                                imageVector = Icons.Rounded.LockOpen,
+                                contentDescription = null,
+                                tint = c.accentPrimary,
+                                modifier = Modifier.size(18.dp),
                             )
-                            Text(
-                                text = "Saare tools aur unlimited baat chalu hai",
-                                color = c.textSecondary,
-                                fontSize = 11.5.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = "${license.plan.label} • ${settings.companionIntimacy.label}",
+                                    color = c.textPrimary,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 13.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                                Text(
+                                    text = "Saare tools aur unlimited baat chalu hai",
+                                    color = c.textSecondary,
+                                    fontSize = 11.5.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Secret ->",
+                            color = c.accentPrimary,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp,
+                            modifier = Modifier.clickable(onClick = onOpenSecretSettings),
+                        )
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Secret ->",
-                        color = c.accentPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp,
-                        modifier = Modifier.clickable(onClick = onOpenSecretSettings),
-                    )
                 }
             }
 
@@ -438,41 +431,72 @@ fun HomeOrbScreen(
                 }
             }
 
-            // Centerpiece Neural HUD Orb Stage with soft ECG backdrop
+            // Centerpiece Neural HUD Orb Stage with Multi-Strand Luminous Resonance Threads
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(226.dp),
+                    .height(232.dp),
                 contentAlignment = Alignment.Center,
             ) {
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
-                    val cy = h * 0.56f
-                    val path = Path().apply {
-                        moveTo(0f, cy)
-                        var x = 0f
-                        while (x <= w) {
-                            val norm = x / w
-                            val spike = when {
-                                norm in 0.14f..0.18f -> kotlin.math.sin((norm - 0.14f) * 78f + ecgPhase) * -32f
-                                norm in 0.80f..0.88f -> kotlin.math.sin((norm - 0.80f) * 65f - ecgPhase) * 28f
-                                else -> kotlin.math.sin(norm * 14f + ecgPhase) * 7f
+                    val ampScale = 1f + audioLevel.coerceIn(0f, 1f) * 1.45f
+
+                    val threadSpecs = listOf(
+                        Triple(0.55f, c.accentPrimary.copy(alpha = if (c.isDark) 0.42f else 0.34f), 2.3.dp.toPx()),
+                        Triple(0.50f, c.accentSecondary.copy(alpha = if (c.isDark) 0.34f else 0.24f), 1.7.dp.toPx()),
+                        Triple(0.61f, c.accentGlow.copy(alpha = if (c.isDark) 0.28f else 0.22f), 1.3.dp.toPx()),
+                    )
+                    threadSpecs.forEachIndexed { idx, (yFrac, strokeCol, strokeW) ->
+                        val cy = h * yFrac
+                        val speed = if (idx % 2 == 0) 1f else -1.25f
+                        val path = Path().apply {
+                            moveTo(0f, cy)
+                            var x = 0f
+                            while (x <= w) {
+                                val norm = x / w
+                                val waveBase = kotlin.math.sin(norm * (12f + idx * 3f) + ecgPhase * speed + idx * 1.2f) * (8f + idx * 3f) * ampScale
+                                val beatBoost = when {
+                                    norm in 0.12f..0.19f -> kotlin.math.sin((norm - 0.12f) * 78f + ecgPhase) * (-30f * ampScale)
+                                    norm in 0.80f..0.88f -> kotlin.math.sin((norm - 0.80f) * 65f - ecgPhase) * (26f * ampScale)
+                                    else -> 0f
+                                }
+                                lineTo(x, cy + waveBase + beatBoost)
+                                x += 8f
                             }
-                            lineTo(x, cy + spike)
-                            x += 12f
                         }
+                        drawPath(
+                            path = path,
+                            color = strokeCol,
+                            style = Stroke(width = strokeW, cap = StrokeCap.Round),
+                        )
                     }
-                    drawPath(
-                        path = path,
-                        color = c.accentPrimary.copy(alpha = if (c.isDark) 0.25f else 0.18f),
-                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+
+                    // Traveling luminous energy beads along primary front thread
+                    for (nodeIdx in 0..3) {
+                        val normX = ((ecgPhase / 6.28318f) + nodeIdx * 0.25f) % 1.0f
+                        val bx = normX * w
+                        val by = h * 0.55f + kotlin.math.sin(normX * 12f + ecgPhase) * (8f * ampScale)
+                        drawCircle(
+                            color = if (nodeIdx % 2 == 0) c.accentPrimary else c.accentSecondary,
+                            radius = (2.4f + audioLevel * 2.2f).dp.toPx(),
+                            center = Offset(bx, by),
+                        )
+                    }
+
+                    // Dual Liquid Glass Ambient Halo Rings around Orb Stage
+                    drawCircle(
+                        color = c.accentPrimary.copy(alpha = if (c.isDark) 0.18f else 0.14f),
+                        radius = size.minDimension * 0.49f,
+                        center = Offset(w / 2f, h / 2f),
+                        style = Stroke(width = 1.2.dp.toPx()),
                     )
                     drawCircle(
-                        color = c.accentPrimary.copy(alpha = if (c.isDark) 0.12f else 0.08f),
-                        radius = size.minDimension * 0.48f,
+                        color = Color.White.copy(alpha = if (c.isDark) 0.12f else 0.45f),
+                        radius = size.minDimension * 0.43f,
                         center = Offset(w / 2f, h / 2f),
-                        style = Stroke(width = 1.dp.toPx()),
+                        style = Stroke(width = 0.9.dp.toPx()),
                     )
                 }
 
@@ -619,92 +643,96 @@ fun HomeOrbScreen(
                 Spacer(modifier = Modifier.height(6.dp))
             }
 
-            // Recessed Clay Prompt Bar matching Screenshot 1/3/18
-            ClayRecessedBox(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 28.dp,
-                contentPadding = PaddingValues(start = 10.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
-            ) {
-                Row(
+            // Recessed Liquid Glass Prompt Bar
+            StaggeredAnimatedEntry(index = 3) {
+                ClayRecessedBox(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+                    cornerRadius = 28.dp,
+                    contentPadding = PaddingValues(start = 10.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
                 ) {
-                    IconButton(
-                        onClick = { imagePickerLauncher.launch("image/*") },
-                        modifier = Modifier.size(34.dp),
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Icon(
-                            imageVector = if (pendingImage != null) Icons.Rounded.Close else Icons.Rounded.AttachFile,
-                            contentDescription = "Attach",
-                            tint = if (pendingImage != null) c.warning else c.textSecondary,
-                            modifier = Modifier.size(19.dp),
-                        )
-                    }
-                    BasicTextField(
-                        value = draft,
-                        onValueChange = { draft = it },
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                        singleLine = true,
-                        textStyle = TextStyle(color = c.textPrimary, fontSize = 14.5.sp),
-                        cursorBrush = SolidColor(c.accentPrimary),
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (draft.isNotBlank() || pendingImage != null) {
-                                    viewModel.sendTextMessage(draft)
-                                    draft = ""
+                        IconButton(
+                            onClick = { imagePickerLauncher.launch("image/*") },
+                            modifier = Modifier.size(34.dp),
+                        ) {
+                            Icon(
+                                imageVector = if (pendingImage != null) Icons.Rounded.Close else Icons.Rounded.AttachFile,
+                                contentDescription = "Attach",
+                                tint = if (pendingImage != null) c.warning else c.textSecondary,
+                                modifier = Modifier.size(19.dp),
+                            )
+                        }
+                        BasicTextField(
+                            value = draft,
+                            onValueChange = { draft = it },
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(vertical = 8.dp, horizontal = 4.dp),
+                            singleLine = true,
+                            textStyle = TextStyle(color = c.textPrimary, fontSize = 14.5.sp),
+                            cursorBrush = SolidColor(c.accentPrimary),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    if (draft.isNotBlank() || pendingImage != null) {
+                                        viewModel.sendTextMessage(draft)
+                                        draft = ""
+                                    }
+                                },
+                            ),
+                            decorationBox = { inner ->
+                                if (draft.isEmpty()) {
+                                    Text("${settings.assistantName} se kuch bhi poochho...", color = c.textSecondary, fontSize = 14.sp)
                                 }
+                                inner()
                             },
-                        ),
-                        decorationBox = { inner ->
-                            if (draft.isEmpty()) {
-                                Text("${settings.assistantName} se kuch bhi poochho...", color = c.textSecondary, fontSize = 14.sp)
-                            }
-                            inner()
-                        },
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(c.glassSurfaceElevated)
-                            .border(1.dp, c.glassBorder, CircleShape)
-                            .clickable {
-                                if (draft.isNotBlank() || pendingImage != null) {
-                                    viewModel.sendTextMessage(draft)
-                                    draft = ""
-                                } else {
-                                    viewModel.onOrbTap()
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.Send,
-                            contentDescription = "Send",
-                            tint = c.textPrimary,
-                            modifier = Modifier.size(17.dp),
                         )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Box(
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(CircleShape)
+                                .background(c.glassSurfaceElevated)
+                                .border(1.dp, c.glassBorder, CircleShape)
+                                .clickable {
+                                    if (draft.isNotBlank() || pendingImage != null) {
+                                        viewModel.sendTextMessage(draft)
+                                        draft = ""
+                                    } else {
+                                        viewModel.onOrbTap()
+                                    }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Send,
+                                contentDescription = "Send",
+                                tint = c.textPrimary,
+                                modifier = Modifier.size(17.dp),
+                            )
+                        }
                     }
                 }
             }
 
             // Slim secondary shortcut pills (Secret, Appearance, Browser, SOS) cleanly below fold
             Spacer(modifier = Modifier.height(8.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GlassPill("Orbs & Theme", dotColor = c.accentPrimary, onClick = onOpenAppearance)
-                GlassPill("Secret (18+)", dotColor = Color(0xFFEC4899), onClick = onOpenSecretSettings)
-                GlassPill("Browser", onClick = onOpenBrowser)
-                GlassPill("All Tools", onClick = onOpenMoreSheet)
-                GlassPill("SOS", dotColor = c.error) { viewModel.triggerSosConfirmation() }
+            StaggeredAnimatedEntry(index = 4) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    GlassPill("Orbs & Theme", dotColor = c.accentPrimary, onClick = onOpenAppearance)
+                    GlassPill("Secret (18+)", dotColor = Color(0xFFEC4899), onClick = onOpenSecretSettings)
+                    GlassPill("Browser", onClick = onOpenBrowser)
+                    GlassPill("All Tools", onClick = onOpenMoreSheet)
+                    GlassPill("SOS", dotColor = c.error) { viewModel.triggerSosConfirmation() }
+                }
             }
 
             Spacer(modifier = Modifier.height(6.dp))

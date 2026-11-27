@@ -150,6 +150,7 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestMultiplePermissions(),
     ) { _ ->
         viewModel.refreshPermissions()
+        viewModel.syncBackgroundServicesWithSettings()
     }
 
     private val deviceUnlockLauncher = registerForActivityResult(
@@ -290,6 +291,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshPermissions()
+        viewModel.syncBackgroundServicesWithSettings()
         viewModel.refreshRemoteConfig()
         if (viewModel.settings.value.firebaseRefreshToken.isNotBlank()) {
             viewModel.refreshLicenseStatus(silent = true)

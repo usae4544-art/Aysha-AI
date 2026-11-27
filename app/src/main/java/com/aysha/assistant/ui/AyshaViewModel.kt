@@ -49,6 +49,7 @@ import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.PendingActionConfirmation
 import com.aysha.assistant.core.PendingConfirmationType
 import com.aysha.assistant.core.StorePricingConfig
+import com.aysha.assistant.core.SurfaceStyle
 import com.aysha.assistant.core.ThemeMode
 import com.aysha.assistant.core.ToolLogEntry
 import com.aysha.assistant.core.UserGender
@@ -265,6 +266,9 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     @Volatile
     private var consecutiveSilentTimeouts = 0
 
+    @Volatile
+    private var lastWakeTriggerHandledMs = 0L
+
     private val liveClient = GeminiLiveClient(
         toolExecutor = toolExecutor,
         callbacks = object : LiveCallbacks {
@@ -347,6 +351,46 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             if (initial.firebaseRefreshToken.isNotBlank()) {
                 refreshLicenseStatus(silent = true)
             }
+            syncBackgroundServicesWithSettings()
+        }
+        viewModelScope.launch {
+            WakeWordStatusBus.wakeTriggers.collect { matchedPhrase ->
+                handleWakeWordTriggered(matchedPhrase)
+            }
+        }
+    }
+
+    fun syncBackgroundServicesWithSettings() {
+        val s = settings.value
+        if (s.wakeWordEnabled && hasMicPermission() && !WakeWordStatusBus.isRunning.value) {
+            runCatching {
+                ContextCompat.startForegroundService(
+                    app,
+                    Intent(app, AyshaForegroundService::class.java).apply {
+                        action = AyshaForegroundService.ACTION_START_WAKEWORD
+                    },
+                )
+            }
+        }
+        if (s.floatingOrbEnabled && Settings.canDrawOverlays(app)) {
+            runCatching {
+                ContextCompat.startForegroundService(
+                    app,
+                    Intent(app, AyshaForegroundService::class.java).apply {
+                        action = AyshaForegroundService.ACTION_SHOW_ORB
+                    },
+                )
+            }
+        }
+    }
+
+    private fun handleWakeWordTriggered(phrase: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastWakeTriggerHandledMs < 1400L) return
+        lastWakeTriggerHandledMs = now
+        _agentStatusText.value = "Sun rahi hoon ($phrase)..."
+        if (!liveClient.isActive() && !voice.isListening.value && !voice.isSpeaking.value) {
+            startVoiceFromShortcut()
         }
     }
 
@@ -461,11 +505,20 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             val targetPalette = if (enableDark) {
                 if (cur.mayaPalette.isDark) cur.mayaPalette else MayaPalette.MIDNIGHT
             } else {
-                MayaPalette.CLAY_DAY
+                if (!cur.mayaPalette.isDark && cur.mayaPalette != MayaPalette.CLAY_DAY) {
+                    cur.mayaPalette
+                } else {
+                    MayaPalette.DAYLIGHT
+                }
             }
             cur.copy(
                 mayaPalette = targetPalette,
                 themeMode = if (enableDark) ThemeMode.DARK else ThemeMode.LIGHT,
+                surfaceStyle = if (cur.surfaceStyle == SurfaceStyle.CLAY && targetPalette != MayaPalette.CLAY_DAY && targetPalette != MayaPalette.CLAY_NAVY) {
+                    SurfaceStyle.GLASS
+                } else {
+                    cur.surfaceStyle
+                },
             )
         }
     }
@@ -670,7 +723,10 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             speakText("Reminder! $reminderSpeak", settings.value, null)
         }
         if (!wakePhrase.isNullOrBlank()) {
-            _agentStatusText.value = "Wake word: $wakePhrase"
+            val now = System.currentTimeMillis()
+            if (now - lastWakeTriggerHandledMs < 1400L) return
+            lastWakeTriggerHandledMs = now
+            _agentStatusText.value = "Sun rahi hoon ($wakePhrase)..."
         }
         if (startVoice) {
             startVoiceFromShortcut()
@@ -727,7 +783,10 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             val latest = settingsRepo.settingsFlow.first()
-            pauseWakeWordForActiveMic()
+            if (latest.wakeWordEnabled) {
+                pauseWakeWordForActiveMic()
+                delay(180L) // ensure AudioRecord is fully released before STT/Live claims mic
+            }
             consecutiveSilentTimeouts = 0
             if (latest.geminiApiKey.isNotBlank() && latest.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE) {
                 startGeminiLiveSession()
@@ -1509,6 +1568,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         updateSettings { it.copy(wakeWordEnabled = enable) }
+        _agentStatusText.value = if (enable) "Wake Word chalu — 'Hey Aysha' boliye" else "Wake Word band kiya gaya"
         val intent = Intent(app, AyshaForegroundService::class.java).apply {
             action = if (enable) AyshaForegroundService.ACTION_START_WAKEWORD else AyshaForegroundService.ACTION_STOP_WAKEWORD
         }

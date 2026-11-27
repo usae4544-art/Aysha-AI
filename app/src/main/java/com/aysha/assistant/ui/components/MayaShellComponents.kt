@@ -93,10 +93,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aysha.assistant.R
 import com.aysha.assistant.core.OrbState
+import com.aysha.assistant.core.SurfaceStyle
 import com.aysha.assistant.core.ui.ClayCircleButton
 import com.aysha.assistant.core.ui.ClayRecessedBox
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.LocalAyshaColors
+import com.aysha.assistant.core.ui.StaggeredAnimatedEntry
 import com.aysha.assistant.ui.screens.SettingsSubRoute
 
 enum class PrimaryBottomTab {
@@ -250,13 +252,21 @@ fun MayaBottomNavBar(
                 )
                 .clip(CircleShape)
                 .background(
-                    if (isVoiceActive) Brush.verticalGradient(listOf(Color(0xFF60B2FF), Color(0xFF2563EB)))
-                    else Brush.verticalGradient(listOf(Color(0xFFEFF6FF), Color(0xFFCDE2FF))),
+                    when {
+                        isVoiceActive -> Brush.verticalGradient(listOf(c.accentPrimary, c.accentSecondary))
+                        c.surfaceStyle == SurfaceStyle.GLASS && c.isDark -> Brush.linearGradient(
+                            listOf(c.glassSurfaceElevated.copy(alpha = 0.92f), c.accentPrimary.copy(alpha = 0.34f)),
+                        )
+                        c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
+                            listOf(Color.White.copy(alpha = 0.96f), c.accentPrimary.copy(alpha = 0.24f)),
+                        )
+                        else -> Brush.verticalGradient(listOf(Color(0xFFEFF6FF), Color(0xFFCDE2FF)))
+                    },
                     CircleShape,
                 )
                 .border(
-                    width = 5.dp,
-                    brush = Brush.verticalGradient(listOf(Color(0xFF5CAEFF), Color(0xFF2D85FF))),
+                    width = 4.5.dp,
+                    brush = Brush.linearGradient(listOf(c.glassHighlight, c.accentPrimary, c.accentSecondary)),
                     shape = CircleShape,
                 )
                 .clickable(onClick = onMicOrStopClick),
@@ -273,7 +283,7 @@ fun MayaBottomNavBar(
                 Icon(
                     imageVector = Icons.Rounded.Mic,
                     contentDescription = "Speak",
-                    tint = Color(0xFF1D4ED8),
+                    tint = if (c.isDark) Color.White else c.accentPrimary,
                     modifier = Modifier.size(28.dp),
                 )
             }
@@ -301,9 +311,29 @@ private fun DockTabItem(
             .clip(RoundedCornerShape(18.dp))
             .background(
                 if (selected) {
-                    Brush.verticalGradient(listOf(Color(0xFF6BB3FF), Color(0xFF3E8DFF)))
+                    if (c.surfaceStyle == SurfaceStyle.GLASS) {
+                        Brush.linearGradient(
+                            listOf(
+                                c.accentPrimary.copy(alpha = if (c.isDark) 0.42f else 0.28f),
+                                c.accentSecondary.copy(alpha = if (c.isDark) 0.34f else 0.20f),
+                            ),
+                        )
+                    } else {
+                        Brush.verticalGradient(listOf(Color(0xFF6BB3FF), Color(0xFF3E8DFF)))
+                    }
                 } else {
                     Brush.verticalGradient(listOf(Color.Transparent, Color.Transparent))
+                },
+            )
+            .then(
+                if (selected && c.surfaceStyle == SurfaceStyle.GLASS) {
+                    Modifier.border(
+                        width = 1.dp,
+                        brush = Brush.linearGradient(listOf(c.glassHighlight, c.accentPrimary.copy(alpha = 0.45f))),
+                        shape = RoundedCornerShape(18.dp),
+                    )
+                } else {
+                    Modifier
                 },
             )
             .clickable(onClick = onClick)
@@ -395,8 +425,21 @@ fun MayaDrawerSheetContent(
             .width(304.dp)
             .clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp))
             .background(
-                if (c.isDark) Brush.verticalGradient(listOf(c.background, c.backgroundDeep))
-                else Brush.verticalGradient(listOf(Color(0xFFE7EFFD), Color(0xFFD8E5FC))),
+                when {
+                    c.surfaceStyle == SurfaceStyle.GLASS && c.isDark -> Brush.verticalGradient(
+                        listOf(c.background.copy(alpha = 0.88f), c.backgroundDeep.copy(alpha = 0.94f)),
+                    )
+                    c.surfaceStyle == SurfaceStyle.GLASS -> Brush.verticalGradient(
+                        listOf(Color(0xF0F4F8FF), Color(0xECE6EEFF)),
+                    )
+                    c.isDark -> Brush.verticalGradient(listOf(c.background, c.backgroundDeep))
+                    else -> Brush.verticalGradient(listOf(Color(0xFFE7EFFD), Color(0xFFD8E5FC)))
+                },
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.linearGradient(listOf(c.glassHighlight, c.glassBorder, c.accentPrimary.copy(alpha = 0.25f))),
+                shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
             )
             .statusBarsPadding()
             .navigationBarsPadding()
@@ -511,18 +554,22 @@ fun MayaDrawerSheetContent(
                             )
                             .clip(cardShape)
                             .background(
-                                if (isSelected) {
-                                    Brush.verticalGradient(listOf(Color(0xFF64B5FF), Color(0xFF2D85FF)))
-                                } else if (c.isDark) {
-                                    Brush.verticalGradient(listOf(c.glassSurfaceElevated, c.glassSurface))
-                                } else {
-                                    Brush.verticalGradient(listOf(Color(0xFFFCFDFF), Color(0xFFEEF3FD)))
+                                when {
+                                    isSelected && c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
+                                        listOf(c.accentPrimary.copy(alpha = 0.42f), c.accentSecondary.copy(alpha = 0.34f)),
+                                    )
+                                    isSelected -> Brush.verticalGradient(listOf(Color(0xFF64B5FF), Color(0xFF2D85FF)))
+                                    c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
+                                        listOf(c.glassSurfaceElevated, c.glassSurface),
+                                    )
+                                    c.isDark -> Brush.verticalGradient(listOf(c.glassSurfaceElevated, c.glassSurface))
+                                    else -> Brush.verticalGradient(listOf(Color(0xFFFCFDFF), Color(0xFFEEF3FD)))
                                 },
                                 cardShape,
                             )
                             .border(
                                 1.2.dp,
-                                if (isSelected) Color.White.copy(alpha = 0.55f) else Color.White.copy(alpha = if (c.isDark) 0.16f else 0.9f),
+                                if (isSelected) c.glassHighlight else c.glassBorder,
                                 cardShape,
                             )
                             .clickable {

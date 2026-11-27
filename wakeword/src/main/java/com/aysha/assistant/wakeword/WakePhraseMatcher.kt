@@ -13,12 +13,35 @@ object WakePhraseMatcher {
         "asha",
         "asia",
         "isha",
-        "eesha",
+        "esha",
         "aaysha",
+        "aaisha",
+        "aasha",
+        "aayesha",
         "ayisha",
+        "eysha",
+        "iysha",
+        "issa",
+        "yasha",
+        "eyesa",
     )
 
-    private val greetings = listOf("hey", "hello", "hi", "ok", "okay", "wake up", "wakeup")
+    private val greetings = listOf(
+        "hey",
+        "hello",
+        "hi",
+        "ok",
+        "okay",
+        "wake up",
+        "wakeup",
+        "suno",
+        "listen",
+        "yo",
+        "oye",
+        "they",
+        "he",
+        "aye",
+    )
 
     fun parseConfiguredPhrases(csv: String, assistantName: String = "AYSHA"): List<String> {
         val base = csv.split(",", "\n", ";")

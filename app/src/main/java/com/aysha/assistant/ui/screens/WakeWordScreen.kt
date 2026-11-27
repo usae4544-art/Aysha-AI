@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.sp
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
+import com.aysha.assistant.core.ui.StaggeredAnimatedEntry
 import com.aysha.assistant.ui.AyshaViewModel
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -82,44 +83,47 @@ fun WakeWordScreen(
             Text("Wake Word & Decision Log", color = c.textPrimary, fontSize = 20.5.sp, fontWeight = FontWeight.Bold)
         }
 
-        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, elevated = true, contentPadding = PaddingValues(16.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.Mic, contentDescription = null, tint = if (wakeRunning) c.success else c.textSecondary)
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Column {
-                            Text("On-Device Wake Word", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
-                            Text(wakeStatus, color = if (wakeRunning) c.success else c.textSecondary, fontSize = 12.sp)
+        StaggeredAnimatedEntry(index = 0) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, elevated = true, contentPadding = PaddingValues(16.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                            Icon(Icons.Rounded.Mic, contentDescription = null, tint = if (wakeRunning) c.success else c.textSecondary)
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text("On-Device Wake Word", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
+                                Text(wakeStatus, color = if (wakeRunning) c.success else c.textSecondary, fontSize = 12.sp)
+                            }
                         }
+                        Switch(checked = settings.wakeWordEnabled, onCheckedChange = { enable -> viewModel.toggleWakeWord(enable) })
                     }
-                    Switch(checked = settings.wakeWordEnabled, onCheckedChange = { enable -> viewModel.toggleWakeWord(enable) })
-                }
 
-                Text("Live Acoustic Energy Gate (${settings.awarenessSensitivity.label})", color = c.textSecondary, fontSize = 11.5.sp)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(10.dp)
-                        .clip(CircleShape)
-                        .background(c.glassBorder),
-                ) {
+                    Text("Live Acoustic Energy Gate (${settings.awarenessSensitivity.label})", color = c.textSecondary, fontSize = 11.5.sp)
                     Box(
                         modifier = Modifier
-                            .fillMaxHeight()
-                            .fillMaxWidth(wakeEnergy.coerceIn(0.02f, 1f))
+                            .fillMaxWidth()
+                            .height(10.dp)
                             .clip(CircleShape)
-                            .background(Brush.horizontalGradient(listOf(c.accentPrimary, c.accentSecondary))),
-                    )
+                            .background(c.glassBorder),
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(wakeEnergy.coerceIn(0.02f, 1f))
+                                .clip(CircleShape)
+                                .background(Brush.horizontalGradient(listOf(c.accentPrimary, c.accentSecondary))),
+                        )
+                    }
                 }
             }
         }
 
-        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(16.dp)) {
+        StaggeredAnimatedEntry(index = 1) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(16.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Wake Phrases (Comma-separated)", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp)
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -148,10 +152,12 @@ fun WakeWordScreen(
                     modifier = Modifier.fillMaxWidth(),
                 ) { Text("Save Wake Phrases") }
             }
+            }
         }
 
         // Maya-style Awareness Decision Log
-        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
+        StaggeredAnimatedEntry(index = 2) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("Awareness Decision Log (${decisionLogs.size})", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
@@ -172,17 +178,20 @@ fun WakeWordScreen(
                     }
                 }
             }
+            }
         }
 
-        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
-            Row(verticalAlignment = Alignment.Top) {
-                Icon(Icons.Rounded.Security, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(10.dp))
-                Text(
-                    "100% On-Device Audio Processing: Audio stays inside your phone's local Vosk acoustic recognizer with an adjustable energy VAD gate. Nothing is uploaded in the background.",
-                    color = c.textSecondary,
-                    fontSize = 12.5.sp,
-                )
+        StaggeredAnimatedEntry(index = 3) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
+                Row(verticalAlignment = Alignment.Top) {
+                    Icon(Icons.Rounded.Security, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        "100% On-Device Audio Processing: Audio stays inside your phone's local Vosk acoustic recognizer with a 500ms pre-roll ring buffer & energy VAD gate so 'Hey Aysha' wakes smoothly without uploading background audio.",
+                        color = c.textSecondary,
+                        fontSize = 12.5.sp,
+                    )
+                }
             }
         }
     }

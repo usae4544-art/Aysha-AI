@@ -102,6 +102,7 @@ class SettingsRepository(private val context: Context) {
         val selectedVibeId = stringPreferencesKey("selected_vibe_id")
         val geminiTextModel = stringPreferencesKey("gemini_text_model")
         val migratedGeminiLite25 = booleanPreferencesKey("migrated_gemini_lite_25")
+        val migratedLiquidGlassV12 = booleanPreferencesKey("migrated_liquid_glass_v12")
         val geminiLiveModel = stringPreferencesKey("gemini_live_model")
         val groqModel = stringPreferencesKey("groq_model")
         val openAiBaseUrl = stringPreferencesKey("openai_base_url")
@@ -148,7 +149,24 @@ class SettingsRepository(private val context: Context) {
             if (err is IOException) emit(emptyPreferences()) else throw err
         }
         .map { p ->
-            val mayaPal = enumOrDefault(p[Keys.mayaPalette], MayaPalette.CLAY_DAY)
+            val glassMigrated = p[Keys.migratedLiquidGlassV12] == true
+            val rawPal = p[Keys.mayaPalette]
+            val rawSurface = p[Keys.surfaceStyle]
+            val mayaPal = if (!glassMigrated && (rawPal == null || rawPal == MayaPalette.CLAY_DAY.name) && (rawSurface == null || rawSurface == SurfaceStyle.CLAY.name)) {
+                MayaPalette.DAYLIGHT
+            } else {
+                enumOrDefault(rawPal, MayaPalette.DAYLIGHT)
+            }
+            val resolvedSurface = if (!glassMigrated && (rawSurface == null || rawSurface == SurfaceStyle.CLAY.name) && (rawPal == null || rawPal == MayaPalette.CLAY_DAY.name)) {
+                SurfaceStyle.GLASS
+            } else {
+                enumOrDefault(rawSurface, SurfaceStyle.GLASS)
+            }
+            val resolvedGlassAlpha = if (!glassMigrated && (p[Keys.glassTransparency] == null || p[Keys.glassTransparency] == 0.72f)) {
+                0.62f
+            } else {
+                (p[Keys.glassTransparency] ?: 0.62f).coerceIn(0.35f, 0.95f)
+            }
             AppSettings(
                 assistantName = p[Keys.assistantName]?.ifBlank { "AYSHA" } ?: "AYSHA",
                 userName = p[Keys.userName]?.ifBlank { "Friend" } ?: "Friend",
@@ -171,7 +189,7 @@ class SettingsRepository(private val context: Context) {
                 themeMode = if (mayaPal.isDark) ThemeMode.DARK else ThemeMode.LIGHT,
                 accentPalette = enumOrDefault(p[Keys.accentPalette], AccentPalette.COSMIC_CYAN),
                 mayaPalette = mayaPal,
-                surfaceStyle = enumOrDefault(p[Keys.surfaceStyle], SurfaceStyle.CLAY),
+                surfaceStyle = resolvedSurface,
                 cornerStyle = enumOrDefault(p[Keys.cornerStyle], CornerStyle.ROUNDED),
                 uiFont = enumOrDefault(p[Keys.uiFont], UiFontFamily.NUNITO),
                 uiScale = enumOrDefault(p[Keys.uiScale], UiTextScale.NORMAL),
@@ -182,7 +200,7 @@ class SettingsRepository(private val context: Context) {
                 hudRaysLengthPct = (p[Keys.hudRaysLengthPct] ?: 0.85f).coerceIn(0.35f, 1.25f),
                 hudRingEnabled = p[Keys.hudRingEnabled] ?: true,
                 orbRenderMode = enumOrDefault(p[Keys.orbRenderMode], OrbRenderMode.HUD_ORB),
-                glassTransparency = (p[Keys.glassTransparency] ?: 0.72f).coerceIn(0.35f, 0.95f),
+                glassTransparency = resolvedGlassAlpha,
                 personalityStyle = enumOrDefault(p[Keys.personalityStyle], PersonalityStyle.FRIENDLY),
                 companionMode = enumOrDefault(p[Keys.companionMode], CompanionMode.BEST_FRIEND),
                 companionIntimacy = enumOrDefault(p[Keys.companionIntimacy], CompanionIntimacyLevel.FRIENDLY),
@@ -267,6 +285,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.accentPalette] = next.accentPalette.name
             prefs[Keys.mayaPalette] = next.mayaPalette.name
             prefs[Keys.surfaceStyle] = next.surfaceStyle.name
+            prefs[Keys.migratedLiquidGlassV12] = true
             prefs[Keys.cornerStyle] = next.cornerStyle.name
             prefs[Keys.uiFont] = next.uiFont.name
             prefs[Keys.uiScale] = next.uiScale.name
@@ -350,6 +369,17 @@ class SettingsRepository(private val context: Context) {
                     prefs[Keys.geminiTextModel] = "gemini-2.5-flash-lite"
                 }
                 prefs[Keys.migratedGeminiLite25] = true
+            }
+            if (prefs[Keys.migratedLiquidGlassV12] != true) {
+                val pal = prefs[Keys.mayaPalette]
+                val surf = prefs[Keys.surfaceStyle]
+                if ((pal == null || pal == MayaPalette.CLAY_DAY.name) && (surf == null || surf == SurfaceStyle.CLAY.name)) {
+                    prefs[Keys.mayaPalette] = MayaPalette.DAYLIGHT.name
+                    prefs[Keys.surfaceStyle] = SurfaceStyle.GLASS.name
+                    prefs[Keys.themeMode] = ThemeMode.LIGHT.name
+                    prefs[Keys.glassTransparency] = 0.62f
+                }
+                prefs[Keys.migratedLiquidGlassV12] = true
             }
         }
     }

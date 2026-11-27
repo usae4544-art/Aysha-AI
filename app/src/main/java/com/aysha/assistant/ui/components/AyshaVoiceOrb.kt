@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -501,12 +502,21 @@ fun AyshaVoiceOrb(
     val breathe = 1f + sin(phase.toDouble()).toFloat() * (if (orbState == OrbState.IDLE) 0.025f else 0.055f)
     val totalScale = (breathe + smoothLevel * 0.14f).coerceIn(0.95f, 1.22f)
 
+    val interactionSource = remember { MutableInteractionSource() }
+    val orbPressed by interactionSource.collectIsPressedAsState()
+    val tapScale by animateFloatAsState(
+        targetValue = if (orbPressed) 0.93f else 1f,
+        animationSpec = spring(dampingRatio = 0.62f, stiffness = 500f),
+        label = "orb_tap_scale",
+    )
+
     if (renderMode == OrbRenderMode.ANIMATED_AVATAR) {
         Box(
             modifier = modifier
+                .scale(tapScale)
                 .size(orbSize + 44.dp)
                 .clickable(
-                    interactionSource = remember { MutableInteractionSource() },
+                    interactionSource = interactionSource,
                     indication = null,
                     onClick = onTap,
                 ),
@@ -544,9 +554,10 @@ fun AyshaVoiceOrb(
 
     Box(
         modifier = modifier
+            .scale(tapScale)
             .size(orbSize + 44.dp)
             .clickable(
-                interactionSource = remember { MutableInteractionSource() },
+                interactionSource = interactionSource,
                 indication = null,
                 onClick = onTap,
             ),
@@ -596,6 +607,23 @@ fun AyshaVoiceOrb(
                     ringEnabled = hudRingEnabled,
                 )
             }
+
+            // Crisp Liquid Glass outer lens glare arc over top-left rim of every orb
+            drawArc(
+                brush = Brush.linearGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = 0.56f),
+                        mainPrimary.copy(alpha = 0.25f),
+                        Color.Transparent,
+                    ),
+                ),
+                startAngle = 200f,
+                sweepAngle = 115f,
+                useCenter = false,
+                topLeft = Offset(cPos.x - r * 0.64f * totalScale, cPos.y - r * 0.64f * totalScale),
+                size = Size(r * 1.28f * totalScale, r * 1.28f * totalScale),
+                style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round),
+            )
         }
 
         if (showCenterIcon && !useAgsl) {
@@ -922,16 +950,42 @@ private fun DrawScope.drawStyledOrb(
                 )
             }
 
-            // Orbital wireframe rings inside sphere
-            for (orbIdx in 0..2) {
-                rotate(spin * (if (orbIdx % 2 == 0) 0.5f else -0.4f) + orbIdx * 54f, pivot = cPos) {
+            // Orbital wireframe threads inside sphere + luminous energy glints
+            for (orbIdx in 0..3) {
+                rotate(spin * (if (orbIdx % 2 == 0) 0.58f else -0.44f) + orbIdx * 42f, pivot = cPos) {
+                    val ovalW = ringRadius * 1.58f
+                    val ovalH = ringRadius * (0.48f + orbIdx * 0.22f)
                     drawOval(
-                        color = secondary.copy(alpha = 0.34f),
-                        topLeft = Offset(cPos.x - ringRadius * 0.76f, cPos.y - ringRadius * (0.28f + orbIdx * 0.12f)),
-                        size = Size(ringRadius * 1.52f, ringRadius * (0.56f + orbIdx * 0.24f)),
-                        style = Stroke(width = 1.dp.toPx()),
+                        brush = Brush.sweepGradient(
+                            colors = listOf(
+                                secondary.copy(alpha = 0.62f),
+                                primary.copy(alpha = 0.34f),
+                                Color.White.copy(alpha = 0.48f),
+                                secondary.copy(alpha = 0.52f),
+                            ),
+                            center = cPos,
+                        ),
+                        topLeft = Offset(cPos.x - ovalW / 2f, cPos.y - ovalH / 2f),
+                        size = Size(ovalW, ovalH),
+                        style = Stroke(width = (1.15f + level * 0.45f).dp.toPx()),
                     )
                 }
+            }
+
+            // Crisp outer flowing front silk thread halo
+            rotate(-spin * 0.28f, pivot = cPos) {
+                drawArc(
+                    brush = Brush.sweepGradient(
+                        listOf(Color.Transparent, primary.copy(alpha = 0.72f), Color.White.copy(alpha = 0.65f), secondary.copy(alpha = 0.55f), Color.Transparent),
+                        center = cPos,
+                    ),
+                    startAngle = 15f,
+                    sweepAngle = 210f,
+                    useCenter = false,
+                    topLeft = Offset(cPos.x - ringRadius * 1.18f, cPos.y - ringRadius * 1.18f),
+                    size = Size(ringRadius * 2.36f, ringRadius * 2.36f),
+                    style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round),
+                )
             }
 
             // Gold neural filaments between close constellation nodes

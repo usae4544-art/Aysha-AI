@@ -77,6 +77,7 @@ class WakeWordEngine(private val context: Context) {
     private var ns: NoiseSuppressor? = null
     private var aec: AcousticEchoCanceler? = null
     private var listenJob: Job? = null
+    private val audioLock = Any()
 
     @Volatile
     private var configuredCsv = "Hey Aysha,Hello Aysha,Wake up Aysha"
@@ -185,6 +186,7 @@ class WakeWordEngine(private val context: Context) {
         _micEnergy.value = 0f
         if (_isRunning.value) {
             _statusText.value = "Paused while speaking/listening"
+            WakeWordStatusBus.publish(status = _statusText.value, energy = 0f)
         }
     }
 
@@ -194,9 +196,38 @@ class WakeWordEngine(private val context: Context) {
         if (listenJob?.isActive != true && model != null) {
             listenJob = scope.launch {
                 _statusText.value = "Listening for Hey Aysha (${sensitivity.label})"
+                WakeWordStatusBus.publish(running = true, state = WakeModelState.READY, status = _statusText.value)
                 runCaptureLoop()
             }
         }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun createAudioRecordWithFallback(sampleRate: Int, minBuf: Int): AudioRecord? {
+        val sources = listOf(
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.MIC,
+        )
+        for (src in sources) {
+            val rec = runCatching {
+                AudioRecord.Builder()
+                    .setAudioSource(src)
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setSampleRate(sampleRate)
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                            .build(),
+                    )
+                    .setBufferSizeInBytes(minBuf.coerceAtLeast(6400) * 2)
+                    .build()
+            }.getOrNull()
+            if (rec != null && rec.state == AudioRecord.STATE_INITIALIZED) {
+                return rec
+            }
+            runCatching { rec?.release() }
+        }
+        return null
     }
 
     @SuppressLint("MissingPermission")
@@ -211,51 +242,54 @@ class WakeWordEngine(private val context: Context) {
             _modelState.value = WakeModelState.ERROR
             _statusText.value = "AudioRecord unavailable"
             _isRunning.value = false
+            WakeWordStatusBus.publish(running = false, state = WakeModelState.ERROR, status = _statusText.value)
             return
         }
 
-        val recorder = runCatching {
-            AudioRecord.Builder()
-                .setAudioSource(MediaRecorder.AudioSource.VOICE_RECOGNITION)
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setSampleRate(sampleRate)
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-                        .build(),
-                )
-                .setBufferSizeInBytes(minBuf.coerceAtLeast(6400) * 2)
-                .build()
-        }.getOrNull()
-
-        if (recorder == null || recorder.state != AudioRecord.STATE_INITIALIZED) {
-            runCatching { recorder?.release() }
-            _statusText.value = "Microphone busy"
-            _isRunning.value = false
-            return
+        var recorder: AudioRecord? = null
+        for (attempt in 0..7) {
+            if (!scope.isActive || !_isRunning.value || pausedForActiveSpeech) return
+            recorder = createAudioRecordWithFallback(sampleRate, minBuf)
+            if (recorder != null) {
+                val startedOk = runCatching { recorder.startRecording() }.isSuccess
+                if (startedOk) break
+                runCatching { recorder.release() }
+                recorder = null
+            }
+            _statusText.value = "Waiting for microphone..."
+            WakeWordStatusBus.publish(status = _statusText.value)
+            delay(500L)
         }
 
-        audioRecord = recorder
-        if (NoiseSuppressor.isAvailable()) {
-            ns = runCatching { NoiseSuppressor.create(recorder.audioSessionId)?.apply { enabled = true } }.getOrNull()
-        }
-        if (AcousticEchoCanceler.isAvailable()) {
-            aec = runCatching { AcousticEchoCanceler.create(recorder.audioSessionId)?.apply { enabled = true } }.getOrNull()
-        }
-
-        val started = runCatching { recorder.startRecording() }.isSuccess
-        if (!started) {
+        if (recorder == null) {
             cleanupAudio()
-            _statusText.value = "Could not start wake mic"
+            _statusText.value = "Microphone busy — tap Resume"
             _isRunning.value = false
+            WakeWordStatusBus.publish(running = false, state = WakeModelState.ERROR, status = _statusText.value)
             return
         }
+
+        synchronized(audioLock) {
+            audioRecord = recorder
+            if (NoiseSuppressor.isAvailable()) {
+                ns = runCatching { NoiseSuppressor.create(recorder.audioSessionId)?.apply { enabled = true } }.getOrNull()
+            }
+            if (AcousticEchoCanceler.isAvailable()) {
+                aec = runCatching { AcousticEchoCanceler.create(recorder.audioSessionId)?.apply { enabled = true } }.getOrNull()
+            }
+        }
+
+        _statusText.value = "Listening for Hey Aysha (${sensitivity.label})"
+        WakeWordStatusBus.publish(running = true, state = WakeModelState.READY, status = _statusText.value)
 
         val buf = ByteArray(3200) // 100ms @ 16kHz PCM16
+        val preRollFrames = ArrayDeque<ByteArray>(6)
         var activeHangoverFrames = 0
+        var lastIdleResetMs = System.currentTimeMillis()
 
         while (scope.isActive && _isRunning.value && !pausedForActiveSpeech) {
-            val read = runCatching { recorder.read(buf, 0, buf.size) }.getOrDefault(-1)
+            val activeRec = synchronized(audioLock) { audioRecord } ?: break
+            val read = runCatching { activeRec.read(buf, 0, buf.size) }.getOrDefault(-1)
             if (read <= 0) {
                 delay(25L)
                 continue
@@ -272,18 +306,34 @@ class WakeWordEngine(private val context: Context) {
             _micEnergy.value = energy
             WakeWordStatusBus.publish(energy = energy)
 
-            val threshold = if (awarenessEnabled) sensitivity.rmsThreshold else 0.035f
+            val threshold = if (awarenessEnabled) sensitivity.rmsThreshold else 0.015f
+            val rec = recognizer ?: continue
+
             if (energy > threshold) {
-                activeHangoverFrames = 12
+                if (activeHangoverFrames <= 0 && preRollFrames.isNotEmpty()) {
+                    // Feed pre-roll audio so "Hey" syllable before VAD trigger is never clipped
+                    for (prev in preRollFrames) {
+                        rec.acceptWaveForm(prev, prev.size)
+                    }
+                    preRollFrames.clear()
+                }
+                activeHangoverFrames = 18
             } else if (activeHangoverFrames > 0) {
                 activeHangoverFrames--
             }
 
             if (activeHangoverFrames <= 0) {
+                if (preRollFrames.size >= 5) preRollFrames.removeFirst()
+                preRollFrames.addLast(buf.copyOfRange(0, read))
+                val now = System.currentTimeMillis()
+                if (now - lastIdleResetMs > 4500L) {
+                    lastIdleResetMs = now
+                    runCatching { rec.reset() }
+                }
                 continue
             }
+            lastIdleResetMs = System.currentTimeMillis()
 
-            val rec = recognizer ?: continue
             val isFinal = rec.acceptWaveForm(buf, read)
             val transcript = if (isFinal) {
                 runCatching { JSONObject(rec.result).optString("text") }.getOrDefault("")
@@ -298,10 +348,11 @@ class WakeWordEngine(private val context: Context) {
                     assistantName = assistantName,
                 )
                 val now = System.currentTimeMillis()
-                if (matched != null && now - lastTriggerMs > 2800L) {
+                if (matched != null && now - lastTriggerMs > 2400L) {
                     lastTriggerMs = now
                     rec.reset()
                     activeHangoverFrames = 0
+                    preRollFrames.clear()
                     SafeLogger.d(TAG, "Wake word detected: $matched")
                     WakeWordStatusBus.logDecision(
                         AwarenessDecisionLog(
@@ -347,13 +398,15 @@ class WakeWordEngine(private val context: Context) {
     }
 
     private fun cleanupAudio() {
-        runCatching { ns?.release() }
-        runCatching { aec?.release() }
-        ns = null
-        aec = null
-        runCatching { audioRecord?.stop() }
-        runCatching { audioRecord?.release() }
-        audioRecord = null
+        synchronized(audioLock) {
+            runCatching { ns?.release() }
+            runCatching { aec?.release() }
+            ns = null
+            aec = null
+            runCatching { audioRecord?.stop() }
+            runCatching { audioRecord?.release() }
+            audioRecord = null
+        }
     }
 
     fun destroy() {

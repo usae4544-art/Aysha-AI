@@ -1,8 +1,11 @@
 package com.aysha.assistant.wakeword
 
 import com.aysha.assistant.core.AwarenessDecisionLog
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 object WakeWordStatusBus {
@@ -20,6 +23,13 @@ object WakeWordStatusBus {
 
     private val _decisionLogs = MutableStateFlow<List<AwarenessDecisionLog>>(emptyList())
     val decisionLogs: StateFlow<List<AwarenessDecisionLog>> = _decisionLogs.asStateFlow()
+
+    private val _wakeTriggers = MutableSharedFlow<String>(extraBufferCapacity = 8)
+    val wakeTriggers: SharedFlow<String> = _wakeTriggers.asSharedFlow()
+
+    fun emitWakeTrigger(phrase: String) {
+        _wakeTriggers.tryEmit(phrase)
+    }
 
     fun publish(
         running: Boolean? = null,

@@ -55,6 +55,7 @@ import com.aysha.assistant.core.UiTextScale
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
+import com.aysha.assistant.core.ui.StaggeredAnimatedEntry
 import com.aysha.assistant.ui.AyshaViewModel
 import com.aysha.assistant.ui.components.AyshaVoiceOrb
 
@@ -83,7 +84,8 @@ fun AppearanceScreen(
         }
 
         // Live 3D AGSL Orb / Character Stage Preview (Maya parity)
-        GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+        StaggeredAnimatedEntry(index = 0) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
                 AyshaVoiceOrb(
                     orbState = OrbState.SPEAKING,
@@ -101,10 +103,12 @@ fun AppearanceScreen(
                 Text("${settings.orbStyle.label} · ${settings.orbRenderMode.label}", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
                 Text(settings.orbStyle.tagline, color = c.accentPrimary, fontSize = 11.5.sp)
             }
+            }
         }
 
         // Orb vs 3D Animated Character toggle
-        GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
+        StaggeredAnimatedEntry(index = 1) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Home Stage Look", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 Text(settings.orbRenderMode.blurb, color = c.textSecondary, fontSize = 12.sp)
@@ -120,10 +124,12 @@ fun AppearanceScreen(
                     }
                 }
             }
+            }
         }
 
         // Signature Orb Style Picker (11 Looks + HUD Ring + Core & Main Colors + Ray Length)
-        GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+        StaggeredAnimatedEntry(index = 2) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                 Text("Orb ka style (${OrbStyle.entries.size} Looks)", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
                 Text(settings.orbStyle.tagline, color = c.accentPrimary, fontSize = 12.sp)
@@ -239,6 +245,7 @@ fun AppearanceScreen(
                     onValueChange = { v -> viewModel.updateSettings { it.copy(hudRaysLengthPct = v) } },
                     valueRange = 0.35f..1.25f,
                 )
+            }
             }
         }
 

@@ -372,9 +372,9 @@ enum class SubAgentRole(val label: String, val shortTag: String, val specialtyIn
 }
 
 enum class AwarenessSensitivity(val label: String, val rmsThreshold: Float, val blurb: String) {
-    RESERVED("Reserved", 0.065f, "Stays quiet until speech is unmistakably clear"),
-    BALANCED("Balanced", 0.040f, "Natural balance between wake accuracy and noise rejection"),
-    ALERT("Alert", 0.022f, "Responds quickly even to softer voice cues"),
+    RESERVED("Reserved", 0.032f, "Stays quiet until speech is unmistakably clear"),
+    BALANCED("Balanced", 0.018f, "Natural balance between wake accuracy and noise rejection"),
+    ALERT("Alert", 0.010f, "Responds quickly even to softer voice cues"),
 }
 
 enum class AssistantLanguage(
@@ -951,8 +951,8 @@ data class AppSettings(
     val floatingOrbEnabled: Boolean = false,
     val themeMode: ThemeMode = ThemeMode.LIGHT,
     val accentPalette: AccentPalette = AccentPalette.COSMIC_CYAN,
-    val mayaPalette: MayaPalette = MayaPalette.CLAY_DAY,
-    val surfaceStyle: SurfaceStyle = SurfaceStyle.CLAY,
+    val mayaPalette: MayaPalette = MayaPalette.DAYLIGHT,
+    val surfaceStyle: SurfaceStyle = SurfaceStyle.GLASS,
     val cornerStyle: CornerStyle = CornerStyle.ROUNDED,
     val uiFont: UiFontFamily = UiFontFamily.NUNITO,
     val uiScale: UiTextScale = UiTextScale.NORMAL,
@@ -963,7 +963,7 @@ data class AppSettings(
     val hudRaysLengthPct: Float = 0.85f,
     val hudRingEnabled: Boolean = true,
     val orbRenderMode: OrbRenderMode = OrbRenderMode.HUD_ORB,
-    val glassTransparency: Float = 0.72f,
+    val glassTransparency: Float = 0.62f,
     val personalityStyle: PersonalityStyle = PersonalityStyle.FRIENDLY,
     val companionMode: CompanionMode = CompanionMode.BEST_FRIEND,
     val companionIntimacy: CompanionIntimacyLevel = CompanionIntimacyLevel.FRIENDLY,

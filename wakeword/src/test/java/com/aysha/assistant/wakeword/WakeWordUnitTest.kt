@@ -14,6 +14,10 @@ class WakeWordUnitTest {
         assertEquals("wake up aysha", WakePhraseMatcher.matchTranscript("wake up aysha"))
         assertNotNull(WakePhraseMatcher.matchTranscript("hey aisha"))
         assertNotNull(WakePhraseMatcher.matchTranscript("hello asha"))
+        assertNotNull(WakePhraseMatcher.matchTranscript("they aisha"))
+        assertNotNull(WakePhraseMatcher.matchTranscript("hey asia"))
+        assertNotNull(WakePhraseMatcher.matchTranscript("ok aisha"))
+        assertNotNull(WakePhraseMatcher.matchTranscript("suno aysha"))
         assertNull(WakePhraseMatcher.matchTranscript("open calculator please"))
     }
 

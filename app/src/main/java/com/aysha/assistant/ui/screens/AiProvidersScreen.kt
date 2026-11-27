@@ -57,6 +57,7 @@ import com.aysha.assistant.core.ui.ColoredIconBadge
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
+import com.aysha.assistant.core.ui.StaggeredAnimatedEntry
 import com.aysha.assistant.ui.AyshaViewModel
 
 @Composable
@@ -95,43 +96,46 @@ fun AiProvidersScreen(
             Triple(BrainProvider.OPENAI, Icons.Rounded.Dns, Color(0xFF334155)),
         )
 
-        providerCards.forEach { (provider, icon, badgeColor) ->
+        providerCards.forEachIndexed { idx, (provider, icon, badgeColor) ->
             val selected = settings.activeProvider == provider
             val currentKey = settings.currentKeyFor(provider)
             val keyStatus = if (currentKey.isBlank()) "Enter API Key" else "${settings.maskedKey(currentKey)} · ${settings.currentModelFor(provider)}"
 
-            GlassCard(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 18.dp,
-                elevated = selected,
-                borderColor = if (selected) c.accentPrimary else null,
-                onClick = {
-                    viewModel.updateSettings { it.copy(activeProvider = provider, offlineOnlyMode = false) }
-                    editingProvider = provider
-                },
-                contentPadding = PaddingValues(14.dp),
-            ) {
-                Row(
+            StaggeredAnimatedEntry(index = idx) {
+                GlassCard(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
+                    cornerRadius = 18.dp,
+                    elevated = selected,
+                    borderColor = if (selected) c.accentPrimary else null,
+                    onClick = {
+                        viewModel.updateSettings { it.copy(activeProvider = provider, offlineOnlyMode = false) }
+                        editingProvider = provider
+                    },
+                    contentPadding = PaddingValues(14.dp),
                 ) {
-                    ColoredIconBadge(icon = icon, tintColor = badgeColor, size = 38.dp)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(provider.displayName, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
-                        Text(keyStatus, color = c.textSecondary, fontSize = 12.sp)
-                    }
-                    if (selected) {
-                        Icon(Icons.Rounded.CheckCircle, contentDescription = "Active", tint = c.accentPrimary)
-                    } else {
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        ColoredIconBadge(icon = icon, tintColor = badgeColor, size = 38.dp)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(provider.displayName, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
+                            Text(keyStatus, color = c.textSecondary, fontSize = 12.sp)
+                        }
+                        if (selected) {
+                            Icon(Icons.Rounded.CheckCircle, contentDescription = "Active", tint = c.accentPrimary)
+                        } else {
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
+                        }
                     }
                 }
             }
         }
 
         // Fallback Provider Switch
-        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
+        StaggeredAnimatedEntry(index = 3) {
+            GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -145,6 +149,7 @@ fun AiProvidersScreen(
                     checked = settings.fallbackEnabled,
                     onCheckedChange = { on -> viewModel.updateSettings { it.copy(fallbackEnabled = on) } },
                 )
+            }
             }
         }
 

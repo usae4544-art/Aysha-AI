@@ -34,11 +34,13 @@ import androidx.core.content.ContextCompat
 import com.aysha.assistant.core.SafeLogger
 import com.aysha.assistant.settings.SettingsRepository
 import com.aysha.assistant.wakeword.WakeWordEngine
+import com.aysha.assistant.wakeword.WakeWordStatusBus
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -135,7 +137,27 @@ class AyshaForegroundService : Service() {
                 if (wakeActive) wakeEngine.resumeAfterActiveSession()
             }
             else -> {
-                promoteForeground()
+                // Service restarted by Android (START_STICKY): restore persisted wake & orb state
+                scope.launch {
+                    val s = settingsRepo.settingsFlow.first()
+                    orbVisible = s.floatingOrbEnabled && Settings.canDrawOverlays(this@AyshaForegroundService)
+                    wakeActive = s.wakeWordEnabled &&
+                        ContextCompat.checkSelfPermission(this@AyshaForegroundService, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+                    promoteForeground()
+                    if (orbVisible) showOrbIfPermitted()
+                    if (wakeActive) {
+                        wakeEngine.start(
+                            wakeWordsCsv = s.wakeWordsCsv,
+                            assistantName = s.assistantName,
+                            awareness = s.awarenessEnabled,
+                            sens = s.awarenessSensitivity,
+                            muteMedia = s.muteDuringMedia,
+                        )
+                    } else if (!orbVisible) {
+                        runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
+                        stopSelf()
+                    }
+                }
             }
         }
         return START_STICKY
@@ -147,6 +169,8 @@ class AyshaForegroundService : Service() {
             wakeEngine.wakeEvents.collect { matchedPhrase ->
                 SafeLogger.d(TAG, "Wake trigger received in service: $matchedPhrase")
                 wakeEngine.pauseForActiveSession()
+                delay(140L) // allow OS AudioRecord release before handoff to STT/Gemini Live
+                WakeWordStatusBus.emitWakeTrigger(matchedPhrase)
                 launchAssistant(startVoice = true, quickTab = null, wakePhrase = matchedPhrase)
             }
         }
@@ -233,12 +257,12 @@ class AyshaForegroundService : Service() {
         val orbContainer = FrameLayout(this).apply {
             background = GradientDrawable(
                 GradientDrawable.Orientation.TL_BR,
-                intArrayOf(Color.parseColor("#22D3EE"), Color.parseColor("#8B5CF6"), Color.parseColor("#EC4899")),
+                intArrayOf(Color.parseColor("#B822D3EE"), Color.parseColor("#B88B5CF6"), Color.parseColor("#B8EC4899")),
             ).apply {
                 shape = GradientDrawable.OVAL
-                setStroke((2.5f * density).toInt(), Color.parseColor("#E0F2FE"))
+                setStroke((2.2f * density).toInt(), Color.parseColor("#D8FFFFFF"))
             }
-            elevation = 18f * density
+            elevation = 20f * density
             clipToOutline = true
             outlineProvider = object : ViewOutlineProvider() {
                 override fun getOutline(view: View, outline: Outline) {
@@ -349,9 +373,9 @@ class AyshaForegroundService : Service() {
             setPadding(pad, pad, pad, pad)
             background = GradientDrawable().apply {
                 shape = GradientDrawable.RECTANGLE
-                cornerRadius = 20 * density
-                setColor(Color.parseColor("#E6101938"))
-                setStroke((1.5f * density).toInt(), Color.parseColor("#8822D3EE"))
+                cornerRadius = 22 * density
+                setColor(Color.parseColor("#CC0D1834"))
+                setStroke((1.5f * density).toInt(), Color.parseColor("#B0FFFFFF"))
             }
             elevation = 22f * density
         }

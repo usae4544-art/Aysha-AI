@@ -55,6 +55,7 @@ import com.aysha.assistant.core.VoicePersonalities
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
+import com.aysha.assistant.core.ui.StaggeredAnimatedEntry
 import com.aysha.assistant.ui.AyshaViewModel
 import java.util.Locale
 
@@ -108,42 +109,44 @@ fun VoiceAndLanguageScreen(
             }
         }
 
-        voicesForTab.forEach { persona ->
+        voicesForTab.forEachIndexed { idx, persona ->
             val selected = settings.voicePersonalityId == persona.id
-            GlassCard(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 18.dp,
-                elevated = selected,
-                borderColor = if (selected) c.accentPrimary else null,
-                onClick = {
-                    viewModel.updateSettings {
-                        it.copy(
-                            voicePersonalityId = persona.id,
-                            selectedTtsVoiceName = "",
+            StaggeredAnimatedEntry(index = idx.coerceAtMost(8)) {
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = 18.dp,
+                    elevated = selected,
+                    borderColor = if (selected) c.accentPrimary else null,
+                    onClick = {
+                        viewModel.updateSettings {
+                            it.copy(
+                                voicePersonalityId = persona.id,
+                                selectedTtsVoiceName = "",
+                            )
+                        }
+                    },
+                    contentPadding = PaddingValues(12.dp),
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        Image(
+                            painter = painterResource(id = R.drawable.aysha_portrait),
+                            contentDescription = persona.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier.size(42.dp).clip(CircleShape),
                         )
-                    }
-                },
-                contentPadding = PaddingValues(12.dp),
-            ) {
-                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                    Image(
-                        painter = painterResource(id = R.drawable.aysha_portrait),
-                        contentDescription = persona.name,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.size(42.dp).clip(CircleShape),
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(persona.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text("${persona.subtitle} · Real Voice (${persona.geminiLiveVoice})", color = c.textSecondary, fontSize = 11.5.sp)
-                    }
-                    IconButton(onClick = { viewModel.previewVoicePersonality(persona) }) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = "Preview", tint = c.accentPrimary)
-                    }
-                    if (selected) {
-                        Icon(Icons.Rounded.CheckCircle, contentDescription = "Selected", tint = c.accentSecondary)
-                    } else {
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(persona.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                            Text("${persona.subtitle} · Real Voice (${persona.geminiLiveVoice})", color = c.textSecondary, fontSize = 11.5.sp)
+                        }
+                        IconButton(onClick = { viewModel.previewVoicePersonality(persona) }) {
+                            Icon(Icons.Rounded.PlayArrow, contentDescription = "Preview", tint = c.accentPrimary)
+                        }
+                        if (selected) {
+                            Icon(Icons.Rounded.CheckCircle, contentDescription = "Selected", tint = c.accentSecondary)
+                        } else {
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
+                        }
                     }
                 }
             }
