@@ -1089,7 +1089,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                 approvedByUser = true,
                 source = "notes",
             )
-            memoryRepo.addDocument(title = cleanTitle, content = cleanBody)
+            memoryRepo.saveDocument(title = cleanTitle, content = cleanBody)
             refreshData()
         }
     }
