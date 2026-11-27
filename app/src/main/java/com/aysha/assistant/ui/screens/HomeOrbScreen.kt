@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -85,6 +86,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -500,10 +502,11 @@ fun HomeOrbScreen(
                         )
                     }
 
-                    // Dual Liquid Glass Ambient Halo Rings around Orb Stage (subtle, zero glare)
+                    // Dual Liquid Glass Ambient Halo Rings + Subtle LiDAR Radar Sweep around Orb Stage
+                    val outerHaloR = size.minDimension * 0.49f
                     drawCircle(
                         color = c.accentPrimary.copy(alpha = if (c.isDark) 0.12f else 0.10f),
-                        radius = size.minDimension * 0.49f,
+                        radius = outerHaloR,
                         center = Offset(w / 2f, h / 2f),
                         style = Stroke(width = 1.0.dp.toPx()),
                     )
@@ -513,6 +516,25 @@ fun HomeOrbScreen(
                         center = Offset(w / 2f, h / 2f),
                         style = Stroke(width = 0.85.dp.toPx()),
                     )
+                    rotate((ecgPhase * 57.2958f), pivot = Offset(w / 2f, h / 2f)) {
+                        drawArc(
+                            brush = Brush.sweepGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    c.accentPrimary.copy(alpha = if (c.isDark) 0.24f else 0.18f),
+                                    c.accentSecondary.copy(alpha = if (c.isDark) 0.20f else 0.14f),
+                                    Color.Transparent,
+                                ),
+                                center = Offset(w / 2f, h / 2f),
+                            ),
+                            startAngle = 0f,
+                            sweepAngle = 82f,
+                            useCenter = false,
+                            topLeft = Offset(w / 2f - outerHaloR, h / 2f - outerHaloR),
+                            size = androidx.compose.ui.geometry.Size(outerHaloR * 2f, outerHaloR * 2f),
+                            style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round),
+                        )
+                    }
                 }
 
                 AnimatedContent(
@@ -574,7 +596,7 @@ fun HomeOrbScreen(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     GlassCard(
-                        modifier = Modifier.weight(1f).height(94.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 96.dp),
                         cornerRadius = 20.dp,
                         elevated = true,
                         onClick = {
@@ -583,7 +605,7 @@ fun HomeOrbScreen(
                         },
                         contentPadding = PaddingValues(12.dp),
                     ) {
-                        Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Rounded.Cloud, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -595,13 +617,13 @@ fun HomeOrbScreen(
                     }
 
                     GlassCard(
-                        modifier = Modifier.weight(1f).height(94.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 96.dp),
                         cornerRadius = 20.dp,
                         elevated = true,
                         onClick = onOpenAutomation,
                         contentPadding = PaddingValues(12.dp),
                     ) {
-                        Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(Icons.Rounded.CalendarToday, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(13.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
@@ -620,20 +642,20 @@ fun HomeOrbScreen(
                         label = "heart_pulse",
                     )
                     GlassCard(
-                        modifier = Modifier.weight(1f).height(94.dp),
+                        modifier = Modifier.weight(1f).heightIn(min = 96.dp),
                         cornerRadius = 20.dp,
                         elevated = true,
                         onClick = onOpenSecretSettings,
                         contentPadding = PaddingValues(12.dp),
                     ) {
-                        Box(modifier = Modifier.fillMaxSize()) {
+                        Box(modifier = Modifier.fillMaxWidth()) {
                             Icon(
                                 imageVector = Icons.Rounded.Favorite,
                                 contentDescription = null,
                                 tint = Color(mood.colorHex).copy(alpha = 0.24f),
                                 modifier = Modifier.size(46.dp).scale(heartScale).align(Alignment.CenterEnd),
                             )
-                            Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(13.dp))
                                     Spacer(modifier = Modifier.width(4.dp))

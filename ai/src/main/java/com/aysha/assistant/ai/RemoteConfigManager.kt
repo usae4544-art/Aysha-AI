@@ -46,14 +46,16 @@ class RemoteConfigManager {
 
         val merged = when {
             base != null && releaseFallback != null -> {
-                val baseHasNewer = base.latestVersion.isNotBlank()
-                if (baseHasNewer) {
+                val releaseIsNewer = releaseFallback.latestVersion.isNotBlank() &&
+                    (base.latestVersion.isBlank() || isNewerVersion(releaseFallback.latestVersion, base.latestVersion))
+                if (!releaseIsNewer) {
                     base
                 } else {
                     base.copy(
                         latestVersion = releaseFallback.latestVersion,
+                        latestVersionCode = maxOf(base.latestVersionCode, releaseFallback.latestVersionCode),
                         apkDownloadUrl = releaseFallback.apkDownloadUrl.ifBlank { base.apkDownloadUrl },
-                        updateNotes = base.updateNotes.ifBlank { releaseFallback.updateNotes },
+                        updateNotes = releaseFallback.updateNotes.ifBlank { base.updateNotes },
                     )
                 }
             }
@@ -141,14 +143,27 @@ class RemoteConfigManager {
         }
     }.getOrNull()
 
-    private fun mergeConfigs(primary: LiveRemoteConfig?, secondary: LiveRemoteConfig?): LiveRemoteConfig? {
+    internal fun mergeConfigs(primary: LiveRemoteConfig?, secondary: LiveRemoteConfig?): LiveRemoteConfig? {
         if (primary == null) return secondary
         if (secondary == null) return primary
+        val primaryIsOlder = primary.latestVersion.isBlank() ||
+            (secondary.latestVersion.isNotBlank() && isNewerVersion(secondary.latestVersion, primary.latestVersion))
+        val bestVersion = if (primaryIsOlder) secondary.latestVersion else primary.latestVersion
+        val bestApkUrl = if (primaryIsOlder) {
+            secondary.apkDownloadUrl.ifBlank { primary.apkDownloadUrl }
+        } else {
+            primary.apkDownloadUrl.ifBlank { secondary.apkDownloadUrl }
+        }
+        val bestNotes = if (primaryIsOlder) {
+            secondary.updateNotes.ifBlank { primary.updateNotes }
+        } else {
+            primary.updateNotes.ifBlank { secondary.updateNotes }
+        }
         return LiveRemoteConfig(
-            latestVersion = primary.latestVersion.ifBlank { secondary.latestVersion },
-            latestVersionCode = if (primary.latestVersionCode > 0) primary.latestVersionCode else secondary.latestVersionCode,
-            apkDownloadUrl = primary.apkDownloadUrl.ifBlank { secondary.apkDownloadUrl },
-            updateNotes = primary.updateNotes.ifBlank { secondary.updateNotes },
+            latestVersion = bestVersion,
+            latestVersionCode = maxOf(primary.latestVersionCode, secondary.latestVersionCode),
+            apkDownloadUrl = bestApkUrl,
+            updateNotes = bestNotes,
             forceUpdate = primary.forceUpdate || secondary.forceUpdate,
             announcementBanner = primary.announcementBanner.ifBlank { secondary.announcementBanner },
             geminiTextModelOverride = primary.geminiTextModelOverride.ifBlank { secondary.geminiTextModelOverride },

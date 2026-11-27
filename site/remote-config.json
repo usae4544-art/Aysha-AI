@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.12.1",
-  "latestVersionCode": 17,
-  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.12.1/AYSHA-latest-release.apk",
-  "updateNotes": "Fixes Gemini HTTP 400 Invalid Argument completely (cleaner REST payloads + smart 400/503 model failover), plus refined low-glare optical Liquid Glassmorphism across Light Mist and Obsidian Night modes.",
+  "latestVersion": "2.12.2",
+  "latestVersionCode": 18,
+  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.12.2/AYSHA-latest-release.apk",
+  "updateNotes": "Animated 3D LiDAR Center Mic Orb, crisp high-legibility Inter/Nunito font weights, clean Liquid Glass drawer & cards without shadow stripes or bleed-through, zero bottom/card clipping, and seamless in-app APK updater.",
   "forceUpdate": false,
   "announcementBanner": "",
   "geminiTextModel": "gemini-2.5-flash-lite",

@@ -954,7 +954,7 @@ data class AppSettings(
     val mayaPalette: MayaPalette = MayaPalette.DAYLIGHT,
     val surfaceStyle: SurfaceStyle = SurfaceStyle.GLASS,
     val cornerStyle: CornerStyle = CornerStyle.ROUNDED,
-    val uiFont: UiFontFamily = UiFontFamily.NUNITO,
+    val uiFont: UiFontFamily = UiFontFamily.INTER,
     val uiScale: UiTextScale = UiTextScale.NORMAL,
     val orbStyle: OrbStyle = OrbStyle.RED_HUD,
     val hudColor: HudColorOption = HudColorOption.RED,

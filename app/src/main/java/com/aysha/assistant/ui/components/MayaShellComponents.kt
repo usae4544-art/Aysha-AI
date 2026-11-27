@@ -2,6 +2,7 @@ package com.aysha.assistant.ui.components
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -9,6 +10,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -23,8 +25,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -80,10 +84,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.vector.ImageVector
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -179,17 +191,17 @@ fun MayaBottomNavBar(
             .padding(horizontal = 12.dp, vertical = 6.dp),
         contentAlignment = Alignment.BottomCenter,
     ) {
-        // Puffy 3D Clay Nav Dock Container
+        // Liquid Glass Nav Dock Container (heightIn prevents clipping at large font scales)
         GlassCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(66.dp),
+                .heightIn(min = 66.dp),
             cornerRadius = 26.dp,
             elevated = true,
-            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
+            contentPadding = PaddingValues(horizontal = 6.dp, vertical = 5.dp),
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().fillMaxHeight(),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
@@ -207,7 +219,7 @@ fun MayaBottomNavBar(
                     modifier = Modifier.weight(1f),
                     onClick = { onSelectTab(PrimaryBottomTab.SCAN) },
                 )
-                Spacer(modifier = Modifier.width(68.dp))
+                Spacer(modifier = Modifier.width(78.dp))
                 DockTabItem(
                     label = "Yaadein",
                     icon = Icons.Rounded.Psychology,
@@ -225,81 +237,175 @@ fun MayaBottomNavBar(
             }
         }
 
-        // Protruding Glowing Sky-Blue Center Mic / Stop FAB Orb with animated pulse halo
-        val micInf = rememberInfiniteTransition(label = "mic_fab_pulse")
-        val micPulse by micInf.animateFloat(
+        // Protruding 3D Liquid Glass Center LiDAR Mic Orb with rotating LiDAR radar & sonar pulse
+        val micInf = rememberInfiniteTransition(label = "mic_lidar_anim")
+        val lidarSweepAngle by micInf.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(if (isVoiceActive) 1250 else 2800, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "lidar_sweep",
+        )
+        val lidarPulse by micInf.animateFloat(
+            initialValue = 0f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(if (isVoiceActive) 1100 else 2200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "lidar_pulse",
+        )
+        val micBreath by micInf.animateFloat(
             initialValue = 1.0f,
-            targetValue = if (isVoiceActive) 1.14f else 1.03f,
-            animationSpec = infiniteRepeatable(tween(if (isVoiceActive) 700 else 2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-            label = "mic_pulse",
+            targetValue = if (isVoiceActive) 1.08f else 1.02f,
+            animationSpec = infiniteRepeatable(tween(if (isVoiceActive) 650 else 2000, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "mic_breath",
         )
         val fabScale by animateFloatAsState(
-            targetValue = if (isVoiceActive) 1.06f else 1f,
+            targetValue = if (isVoiceActive) 1.05f else 1f,
             animationSpec = spring(dampingRatio = 0.6f, stiffness = 450f),
             label = "fab_scale",
         )
         Box(
             modifier = Modifier
-                .padding(bottom = 14.dp)
-                .scale(fabScale * if (isVoiceActive) micPulse else 1f)
-                .size(64.dp)
-                .shadow(
-                    elevation = if (isVoiceActive) 16.dp else 10.dp,
-                    shape = CircleShape,
-                    clip = false,
-                    ambientColor = c.accentPrimary.copy(alpha = if (isVoiceActive) 0.34f else 0.18f),
-                    spotColor = c.accentSecondary.copy(alpha = if (isVoiceActive) 0.38f else 0.22f),
-                )
-                .clip(CircleShape)
-                .background(
-                    when {
-                        isVoiceActive -> Brush.verticalGradient(listOf(c.accentPrimary.copy(alpha = 0.92f), c.accentSecondary.copy(alpha = 0.94f)))
-                        c.surfaceStyle == SurfaceStyle.GLASS && c.isDark -> Brush.linearGradient(
-                            listOf(
-                                c.glassSurfaceElevated.copy(alpha = 0.72f),
-                                c.accentPrimary.copy(alpha = 0.20f),
-                                c.glassSurface.copy(alpha = 0.62f),
-                            ),
-                        )
-                        c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
-                            listOf(
-                                Color.White.copy(alpha = 0.60f),
-                                c.glassSurfaceElevated.copy(alpha = 0.56f),
-                                c.accentPrimary.copy(alpha = 0.15f),
-                            ),
-                        )
-                        else -> Brush.verticalGradient(listOf(Color(0xFFEFF6FF), Color(0xFFCDE2FF)))
-                    },
-                    CircleShape,
-                )
-                .border(
-                    width = if (c.surfaceStyle == SurfaceStyle.GLASS) 2.2.dp else 3.8.dp,
-                    brush = Brush.linearGradient(
-                        listOf(
-                            c.glassHighlight,
-                            c.accentPrimary.copy(alpha = 0.52f),
-                            c.accentSecondary.copy(alpha = 0.42f),
-                        ),
-                    ),
-                    shape = CircleShape,
-                )
-                .clickable(onClick = onMicOrStopClick),
+                .padding(bottom = 8.dp)
+                .size(80.dp)
+                .scale(fabScale),
             contentAlignment = Alignment.Center,
         ) {
-            if (isVoiceActive) {
-                Box(
-                    modifier = Modifier
-                        .size(16.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White.copy(alpha = 0.92f)),
-                )
-            } else {
-                Icon(
-                    imageVector = Icons.Rounded.Mic,
-                    contentDescription = "Speak",
-                    tint = if (c.isDark) c.textPrimary else c.accentPrimary,
-                    modifier = Modifier.size(28.dp),
-                )
+            // Outer Animated LiDAR Radar Ring + Expanding Dual Sonar Pulses + Telemetry Ticks
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val centerPos = Offset(size.width / 2f, size.height / 2f)
+                val maxR = size.minDimension / 2f
+                val pulse2 = (lidarPulse + 0.5f) % 1f
+
+                listOf(lidarPulse, pulse2).forEach { waveT ->
+                    val waveR = maxR * (0.70f + waveT * 0.29f)
+                    val waveAlpha = (1f - waveT) * if (isVoiceActive) 0.58f else 0.28f
+                    drawCircle(
+                        color = c.accentPrimary.copy(alpha = waveAlpha),
+                        radius = waveR,
+                        center = centerPos,
+                        style = Stroke(width = (1.6f - waveT * 0.7f).dp.toPx()),
+                    )
+                }
+
+                // 24 LiDAR Precision Degree Ticks
+                val tickOuter = maxR * 0.87f
+                val tickInner = maxR * 0.79f
+                for (i in 0 until 24) {
+                    val deg = i * 15f
+                    val rad = deg * (PI.toFloat() / 180f)
+                    val isCardinal = i % 6 == 0
+                    val innerR = if (isCardinal) tickInner - 1.5.dp.toPx() else tickInner
+                    drawLine(
+                        color = (if (isCardinal) c.accentSecondary else c.accentPrimary).copy(
+                            alpha = if (isVoiceActive) 0.64f else if (isCardinal) 0.42f else 0.22f,
+                        ),
+                        start = Offset(centerPos.x + cos(rad) * innerR, centerPos.y + sin(rad) * innerR),
+                        end = Offset(centerPos.x + cos(rad) * tickOuter, centerPos.y + sin(rad) * tickOuter),
+                        strokeWidth = if (isCardinal) 1.5.dp.toPx() else 0.9.dp.toPx(),
+                        cap = StrokeCap.Round,
+                    )
+                }
+
+                // Rotating LiDAR Scanner Sweep Beam + Leading Tracker Beacon
+                rotate(lidarSweepAngle, pivot = centerPos) {
+                    val arcR = maxR * 0.83f
+                    drawArc(
+                        brush = Brush.sweepGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                c.accentPrimary.copy(alpha = if (isVoiceActive) 0.85f else 0.48f),
+                                c.accentSecondary.copy(alpha = if (isVoiceActive) 0.92f else 0.56f),
+                                Color.Transparent,
+                            ),
+                            center = centerPos,
+                        ),
+                        startAngle = -75f,
+                        sweepAngle = 110f,
+                        useCenter = false,
+                        topLeft = Offset(centerPos.x - arcR, centerPos.y - arcR),
+                        size = Size(arcR * 2f, arcR * 2f),
+                        style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round),
+                    )
+                    val beaconAngle = 35f * (PI.toFloat() / 180f)
+                    drawCircle(
+                        color = c.accentPrimary.copy(alpha = if (isVoiceActive) 0.95f else 0.72f),
+                        radius = 2.4.dp.toPx(),
+                        center = Offset(centerPos.x + cos(beaconAngle) * arcR, centerPos.y + sin(beaconAngle) * arcR),
+                    )
+                }
+            }
+
+            // Frosted Crystal Lens Dome (opaque mist core blocks dock line slice; zero shadow bleed!)
+            Box(
+                modifier = Modifier
+                    .scale(micBreath)
+                    .size(58.dp)
+                    .clip(CircleShape)
+                    .background(
+                        when {
+                            isVoiceActive -> Brush.radialGradient(
+                                listOf(c.accentPrimary.copy(alpha = 0.95f), c.accentSecondary.copy(alpha = 0.98f)),
+                            )
+                            c.isDark -> Brush.radialGradient(
+                                listOf(Color(0xFF1A294B), Color(0xFF0E172E)),
+                            )
+                            else -> Brush.radialGradient(
+                                listOf(Color(0xFFF6F9FE), Color(0xFFDCE7F9)),
+                            )
+                        },
+                        CircleShape,
+                    )
+                    .border(
+                        width = 1.7.dp,
+                        brush = Brush.linearGradient(
+                            listOf(
+                                c.glassHighlight,
+                                c.accentPrimary.copy(alpha = 0.72f),
+                                c.accentSecondary.copy(alpha = 0.52f),
+                            ),
+                        ),
+                        shape = CircleShape,
+                    )
+                    .clickable(onClick = onMicOrStopClick),
+                contentAlignment = Alignment.Center,
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val pad = 4.dp.toPx()
+                    drawArc(
+                        brush = Brush.linearGradient(
+                            listOf(
+                                Color.White.copy(alpha = if (c.isDark) 0.24f else 0.55f),
+                                Color.Transparent,
+                            ),
+                        ),
+                        startAngle = 200f,
+                        sweepAngle = 110f,
+                        useCenter = false,
+                        topLeft = Offset(pad, pad),
+                        size = Size(size.width - pad * 2f, size.height - pad * 2f),
+                        style = Stroke(width = 1.2.dp.toPx(), cap = StrokeCap.Round),
+                    )
+                }
+                if (isVoiceActive) {
+                    Box(
+                        modifier = Modifier
+                            .size(16.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(Color.White.copy(alpha = 0.94f)),
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Rounded.Mic,
+                        contentDescription = "Speak",
+                        tint = if (c.isDark) c.accentPrimary else Color(0xFF2563EB),
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
             }
         }
     }
@@ -351,7 +457,7 @@ private fun DockTabItem(
                 },
             )
             .clickable(onClick = onClick)
-            .padding(vertical = 5.dp, horizontal = 4.dp),
+            .padding(vertical = 5.dp, horizontal = 2.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
@@ -359,14 +465,16 @@ private fun DockTabItem(
             imageVector = icon,
             contentDescription = label,
             tint = if (selected) c.textPrimary else c.textSecondary,
-            modifier = Modifier.size(20.dp),
+            modifier = Modifier.size(19.dp),
         )
         Text(
             text = label,
             color = c.textPrimary,
-            fontSize = 11.sp,
+            fontSize = 10.5.sp,
             fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
             maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -436,23 +544,21 @@ fun MayaDrawerSheetContent(
     Column(
         modifier = Modifier
             .fillMaxHeight()
-            .width(304.dp)
+            .width(296.dp)
             .clip(RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp))
             .background(
                 when {
-                    c.surfaceStyle == SurfaceStyle.GLASS && c.isDark -> Brush.verticalGradient(
-                        listOf(c.background.copy(alpha = 0.88f), c.backgroundDeep.copy(alpha = 0.94f)),
+                    c.isDark -> Brush.verticalGradient(
+                        listOf(Color(0xFF0A1020), Color(0xFF10192F)),
                     )
-                    c.surfaceStyle == SurfaceStyle.GLASS -> Brush.verticalGradient(
-                        listOf(Color(0xF0F4F8FF), Color(0xECE6EEFF)),
+                    else -> Brush.verticalGradient(
+                        listOf(Color(0xFFF2F6FC), Color(0xFFE5EDF9)),
                     )
-                    c.isDark -> Brush.verticalGradient(listOf(c.background, c.backgroundDeep))
-                    else -> Brush.verticalGradient(listOf(Color(0xFFE7EFFD), Color(0xFFD8E5FC)))
                 },
             )
             .border(
                 width = 1.dp,
-                brush = Brush.linearGradient(listOf(c.glassHighlight, c.glassBorder, c.accentPrimary.copy(alpha = 0.25f))),
+                brush = Brush.linearGradient(listOf(c.glassHighlight, c.glassBorder, c.accentPrimary.copy(alpha = 0.22f))),
                 shape = RoundedCornerShape(topEnd = 28.dp, bottomEnd = 28.dp),
             )
             .statusBarsPadding()
@@ -560,17 +666,26 @@ fun MayaDrawerSheetContent(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .shadow(
-                                elevation = if (isSelected) 10.dp else 7.dp,
-                                shape = cardShape,
-                                clip = false,
-                                ambientColor = if (isSelected) c.accentPrimary.copy(alpha = 0.45f) else Color(0x45708BB8),
+                            .then(
+                                if (c.surfaceStyle == SurfaceStyle.GLASS) {
+                                    Modifier
+                                } else {
+                                    Modifier.shadow(
+                                        elevation = if (isSelected) 10.dp else 7.dp,
+                                        shape = cardShape,
+                                        clip = false,
+                                        ambientColor = if (isSelected) c.accentPrimary.copy(alpha = 0.45f) else Color(0x45708BB8),
+                                    )
+                                },
                             )
                             .clip(cardShape)
                             .background(
                                 when {
                                     isSelected && c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
-                                        listOf(c.accentPrimary.copy(alpha = 0.42f), c.accentSecondary.copy(alpha = 0.34f)),
+                                        listOf(
+                                            c.accentPrimary.copy(alpha = if (c.isDark) 0.34f else 0.22f),
+                                            c.accentSecondary.copy(alpha = if (c.isDark) 0.28f else 0.16f),
+                                        ),
                                     )
                                     isSelected -> Brush.verticalGradient(listOf(Color(0xFF64B5FF), Color(0xFF2D85FF)))
                                     c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
@@ -582,8 +697,8 @@ fun MayaDrawerSheetContent(
                                 cardShape,
                             )
                             .border(
-                                1.2.dp,
-                                if (isSelected) c.glassHighlight else c.glassBorder,
+                                1.1.dp,
+                                if (isSelected) c.accentPrimary.copy(alpha = 0.42f) else c.glassBorder,
                                 cardShape,
                             )
                             .clickable {
@@ -596,19 +711,24 @@ fun MayaDrawerSheetContent(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.SpaceBetween,
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.weight(1f),
+                            ) {
                                 Icon(
                                     imageVector = entry.icon,
                                     contentDescription = null,
-                                    tint = if (isSelected) Color(0xFF0A1428) else c.accentPrimary,
+                                    tint = if (isSelected) (if (c.isDark) c.textPrimary else Color(0xFF1E3A8A)) else c.accentPrimary,
                                     modifier = Modifier.size(19.dp),
                                 )
                                 Spacer(modifier = Modifier.width(12.dp))
                                 Text(
                                     text = entry.title,
-                                    color = if (isSelected) Color(0xFF0A1428) else c.textPrimary,
+                                    color = if (isSelected) (if (c.isDark) Color.White else Color(0xFF0F172A)) else c.textPrimary,
                                     fontSize = 14.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                 )
                             }
                             if (entry.hasBadge) {
@@ -623,13 +743,16 @@ fun MayaDrawerSheetContent(
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(6.dp))
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = "v$versionName · AYSHA AI · Free-First + Licensed Pro",
             color = c.textSecondary,
             fontSize = 11.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(start = 4.dp),
         )
     }

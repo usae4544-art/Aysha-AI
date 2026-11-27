@@ -70,6 +70,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontVariation
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -198,18 +199,21 @@ fun resolveComposeFontFamily(uiFont: UiFontFamily): FontFamily {
             Font(R.font.inter_medium, FontWeight.Medium),
             Font(R.font.inter_semibold, FontWeight.SemiBold),
             Font(R.font.inter_bold, FontWeight.Bold),
+            Font(R.font.inter_bold, FontWeight.ExtraBold),
         )
         UiFontFamily.NUNITO -> FontFamily(
-            Font(R.font.nunito, FontWeight.Normal),
-            Font(R.font.nunito, FontWeight.Medium),
-            Font(R.font.nunito, FontWeight.SemiBold),
-            Font(R.font.nunito, FontWeight.Bold),
+            Font(R.font.nunito, FontWeight.Normal, variationSettings = FontVariation.Settings(FontVariation.weight(460))),
+            Font(R.font.nunito, FontWeight.Medium, variationSettings = FontVariation.Settings(FontVariation.weight(550))),
+            Font(R.font.nunito, FontWeight.SemiBold, variationSettings = FontVariation.Settings(FontVariation.weight(650))),
+            Font(R.font.nunito, FontWeight.Bold, variationSettings = FontVariation.Settings(FontVariation.weight(750))),
+            Font(R.font.nunito, FontWeight.ExtraBold, variationSettings = FontVariation.Settings(FontVariation.weight(820))),
         )
         UiFontFamily.JETBRAINS_MONO -> FontFamily(
             Font(R.font.jetbrains_mono_regular, FontWeight.Normal),
             Font(R.font.jetbrains_mono_regular, FontWeight.Medium),
             Font(R.font.jetbrains_mono_bold, FontWeight.SemiBold),
             Font(R.font.jetbrains_mono_bold, FontWeight.Bold),
+            Font(R.font.jetbrains_mono_bold, FontWeight.ExtraBold),
         )
         UiFontFamily.SERIF -> FontFamily.Serif
         UiFontFamily.SYSTEM -> FontFamily.Default
@@ -598,13 +602,7 @@ fun GlassCard(
             ambientColor = if (c.isDark) Color.Black else Color(0x5A6F8BB8),
             spotColor = if (c.isDark) Color.Black else Color(0x6B5878AE),
         )
-        SurfaceStyle.GLASS -> Modifier.shadow(
-            elevation = if (elevated) 10.dp else 5.dp,
-            shape = shape,
-            clip = false,
-            ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.28f) else Color(0xFF475E82).copy(alpha = 0.16f),
-            spotColor = if (c.isDark) c.accentPrimary.copy(alpha = 0.16f) else Color(0xFF3E5579).copy(alpha = 0.18f),
-        )
+        SurfaceStyle.GLASS -> Modifier
         SurfaceStyle.SOFT -> Modifier.shadow(elevation = 4.dp, shape = shape, clip = false)
         else -> Modifier
     }
@@ -772,12 +770,18 @@ fun AuroraGradientButton(
             .fillMaxWidth()
             .scale(pressScale)
             .height(height)
-            .shadow(
-                elevation = if (enabled) 9.dp else 2.dp,
-                shape = shape,
-                clip = false,
-                ambientColor = endCol.copy(alpha = 0.26f),
-                spotColor = endCol.copy(alpha = 0.34f),
+            .then(
+                if (c.surfaceStyle == SurfaceStyle.GLASS) {
+                    Modifier
+                } else {
+                    Modifier.shadow(
+                        elevation = if (enabled) 9.dp else 2.dp,
+                        shape = shape,
+                        clip = false,
+                        ambientColor = endCol.copy(alpha = 0.26f),
+                        spotColor = endCol.copy(alpha = 0.34f),
+                    )
+                },
             )
             .clip(shape)
             .background(
@@ -850,12 +854,18 @@ fun ClayCircleButton(
         modifier = modifier
             .scale(pressScale)
             .size(size)
-            .shadow(
-                elevation = if (c.isDark) 4.dp else 7.dp,
-                shape = CircleShape,
-                clip = false,
-                ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.35f) else Color(0x2E4B648E),
-                spotColor = if (c.isDark) Color.Black.copy(alpha = 0.38f) else Color(0x33405982),
+            .then(
+                if (c.surfaceStyle == SurfaceStyle.GLASS) {
+                    Modifier
+                } else {
+                    Modifier.shadow(
+                        elevation = if (c.isDark) 4.dp else 7.dp,
+                        shape = CircleShape,
+                        clip = false,
+                        ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.35f) else Color(0x2E4B648E),
+                        spotColor = if (c.isDark) Color.Black.copy(alpha = 0.38f) else Color(0x33405982),
+                    )
+                },
             )
             .clip(CircleShape)
             .background(

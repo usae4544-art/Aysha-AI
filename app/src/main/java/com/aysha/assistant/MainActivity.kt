@@ -37,6 +37,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -450,9 +451,14 @@ private fun AyshaMainRouter(
 
     ModalNavigationDrawer(
         drawerState = drawerState,
+        scrimColor = Color(0xFF091022).copy(alpha = if (settings.mayaPalette.isDark) 0.68f else 0.44f),
         gesturesEnabled = currentScreen == AppScreenRoute.HOME || (currentScreen == AppScreenRoute.SETTINGS && (settingsRoute == SettingsSubRoute.SCANNER || settingsRoute == SettingsSubRoute.MEMORY_HISTORY)),
         drawerContent = {
-            ModalDrawerSheet(drawerContainerColor = Color.Transparent) {
+            ModalDrawerSheet(
+                drawerContainerColor = Color.Transparent,
+                drawerTonalElevation = 0.dp,
+                modifier = Modifier.widthIn(max = 296.dp),
+            ) {
                 MayaDrawerSheetContent(
                     assistantName = settings.assistantName,
                     versionName = BuildConfig.VERSION_NAME,

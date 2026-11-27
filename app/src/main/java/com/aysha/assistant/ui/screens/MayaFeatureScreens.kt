@@ -47,6 +47,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -445,7 +446,7 @@ fun ScannerScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(430.dp)
+                    .heightIn(min = 260.dp, max = 380.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .background(Color(0xFF05080F))
                     .border(1.dp, Color(0xFF1E3A5F), RoundedCornerShape(22.dp)),

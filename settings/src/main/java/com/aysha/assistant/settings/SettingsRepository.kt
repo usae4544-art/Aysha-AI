@@ -103,6 +103,7 @@ class SettingsRepository(private val context: Context) {
         val geminiTextModel = stringPreferencesKey("gemini_text_model")
         val migratedGeminiLite25 = booleanPreferencesKey("migrated_gemini_lite_25")
         val migratedLiquidGlassV12 = booleanPreferencesKey("migrated_liquid_glass_v12")
+        val migratedCrispFontV122 = booleanPreferencesKey("migrated_crisp_font_v122")
         val geminiLiveModel = stringPreferencesKey("gemini_live_model")
         val groqModel = stringPreferencesKey("groq_model")
         val openAiBaseUrl = stringPreferencesKey("openai_base_url")
@@ -167,6 +168,11 @@ class SettingsRepository(private val context: Context) {
             } else {
                 (p[Keys.glassTransparency] ?: 0.62f).coerceIn(0.35f, 0.95f)
             }
+            val resolvedFont = if (p[Keys.migratedCrispFontV122] != true && (p[Keys.uiFont] == null || p[Keys.uiFont] == UiFontFamily.NUNITO.name)) {
+                UiFontFamily.INTER
+            } else {
+                enumOrDefault(p[Keys.uiFont], UiFontFamily.INTER)
+            }
             AppSettings(
                 assistantName = p[Keys.assistantName]?.ifBlank { "AYSHA" } ?: "AYSHA",
                 userName = p[Keys.userName]?.ifBlank { "Friend" } ?: "Friend",
@@ -191,7 +197,7 @@ class SettingsRepository(private val context: Context) {
                 mayaPalette = mayaPal,
                 surfaceStyle = resolvedSurface,
                 cornerStyle = enumOrDefault(p[Keys.cornerStyle], CornerStyle.ROUNDED),
-                uiFont = enumOrDefault(p[Keys.uiFont], UiFontFamily.NUNITO),
+                uiFont = resolvedFont,
                 uiScale = enumOrDefault(p[Keys.uiScale], UiTextScale.NORMAL),
                 orbStyle = enumOrDefault(p[Keys.orbStyle], OrbStyle.RED_HUD),
                 hudColor = enumOrDefault(p[Keys.hudColor], HudColorOption.RED),
@@ -380,6 +386,13 @@ class SettingsRepository(private val context: Context) {
                     prefs[Keys.glassTransparency] = 0.62f
                 }
                 prefs[Keys.migratedLiquidGlassV12] = true
+            }
+            if (prefs[Keys.migratedCrispFontV122] != true) {
+                val curFont = prefs[Keys.uiFont]
+                if (curFont == null || curFont == UiFontFamily.NUNITO.name) {
+                    prefs[Keys.uiFont] = UiFontFamily.INTER.name
+                }
+                prefs[Keys.migratedCrispFontV122] = true
             }
         }
     }

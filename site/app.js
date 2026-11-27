@@ -833,7 +833,7 @@ async function syncUserRecords(user) {
     lastLoginAt: serverTimestamp(),
     lastLoginSource: "web",
     deviceModel: `${navigator.platform || "Web"} · Browser`.slice(0, 120),
-    appVersion: "web-2.12.1",
+    appVersion: "web-2.12.2",
   };
   if (user.email) {
     telemetryPayload.email = String(user.email).toLowerCase().slice(0, 254);
@@ -1662,8 +1662,8 @@ async function loadLiveOtaConfig() {
   try {
     const snap = await getDoc(doc(state.db, "config", "app_live"));
     const d = snap.exists() ? snap.data() : {};
-    if ($("ota-version")) $("ota-version").value = d.latestVersion || "2.12.1";
-    if ($("ota-version-code")) $("ota-version-code").value = d.latestVersionCode || 17;
+    if ($("ota-version")) $("ota-version").value = d.latestVersion || "2.12.2";
+    if ($("ota-version-code")) $("ota-version-code").value = d.latestVersionCode || 18;
     if ($("ota-apk-url")) $("ota-apk-url").value = d.apkDownloadUrl || "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk";
     if ($("ota-notes")) $("ota-notes").value = d.updateNotes || "";
     if ($("ota-banner")) $("ota-banner").value = d.announcementBanner || "";
@@ -1677,8 +1677,8 @@ async function handleSaveLiveOtaConfig(e) {
   e.preventDefault();
   if (!state.isAdmin || !state.db) return;
   const payload = {
-    latestVersion: ($("ota-version")?.value || "2.12.1").trim(),
-    latestVersionCode: Number($("ota-version-code")?.value || 17),
+    latestVersion: ($("ota-version")?.value || "2.12.2").trim(),
+    latestVersionCode: Number($("ota-version-code")?.value || 18),
     apkDownloadUrl: ($("ota-apk-url")?.value || "").trim(),
     updateNotes: ($("ota-notes")?.value || "").trim(),
     announcementBanner: ($("ota-banner")?.value || "").trim(),

@@ -318,4 +318,27 @@ class AiUnitTest {
         assertTrue(client.isGeminiAuthError(401, "Unauthorized"))
         assertFalse(client.isGeminiAuthError(400, "Request contains an invalid argument."))
     }
+
+    @Test
+    fun `remote config merge picks highest semantic version across sources`() {
+        val mgr = RemoteConfigManager()
+        val staleFirestore = com.aysha.assistant.core.LiveRemoteConfig(
+            latestVersion = "2.11.0",
+            latestVersionCode = 14,
+            apkDownloadUrl = "https://example.com/old.apk",
+            announcementBanner = "Welcome",
+        )
+        val freshPages = com.aysha.assistant.core.LiveRemoteConfig(
+            latestVersion = "2.12.2",
+            latestVersionCode = 18,
+            apkDownloadUrl = "https://example.com/new.apk",
+            updateNotes = "LiDAR + Crisp Fonts",
+        )
+        val merged = mgr.mergeConfigs(primary = staleFirestore, secondary = freshPages)!!
+        assertEquals("2.12.2", merged.latestVersion)
+        assertEquals(18, merged.latestVersionCode)
+        assertEquals("https://example.com/new.apk", merged.apkDownloadUrl)
+        assertEquals("LiDAR + Crisp Fonts", merged.updateNotes)
+        assertEquals("Welcome", merged.announcementBanner)
+    }
 }

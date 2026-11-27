@@ -395,6 +395,7 @@ fun ChatScreen(
             }
             }
         }
+        Spacer(modifier = Modifier.height(4.dp))
         }
 
         if (onSelectBottomTab != null) {

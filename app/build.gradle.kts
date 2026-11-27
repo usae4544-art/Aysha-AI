@@ -12,8 +12,8 @@ android {
         applicationId = "com.aysha.assistant"
         minSdk = 26
         targetSdk = 35
-        versionCode = 17
-        versionName = "2.12.1"
+        versionCode = 18
+        versionName = "2.12.2"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables {

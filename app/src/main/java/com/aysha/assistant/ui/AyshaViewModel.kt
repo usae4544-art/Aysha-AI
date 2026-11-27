@@ -3,12 +3,16 @@ package com.aysha.assistant.ui
 import android.Manifest
 import android.app.Application
 import android.app.DownloadManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Environment
 import android.provider.Settings
+import android.widget.Toast
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
@@ -528,6 +532,8 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk"
         }
         if (!cleanUrl.startsWith("https://")) return
+        val fileName = "AYSHA-update-${System.currentTimeMillis() / 1000}.apk"
+        var queued = false
         runCatching {
             val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
             if (dm != null) {
@@ -535,13 +541,43 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                     .setTitle("AYSHA AI Update")
                     .setDescription("Downloading latest AYSHA APK...")
                     .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "AYSHA-latest-release.apk")
+                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
                     .setMimeType("application/vnd.android.package-archive")
-                dm.enqueue(req)
+                val downloadId = dm.enqueue(req)
+                queued = true
+                Toast.makeText(app, "Update APK download shuru ho gaya — complete hote hi installer khulega", Toast.LENGTH_LONG).show()
+                val receiver = object : BroadcastReceiver() {
+                    override fun onReceive(ctx: Context, intent: Intent) {
+                        val doneId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
+                        if (doneId != downloadId) return
+                        runCatching { app.unregisterReceiver(this) }
+                        val apkUri = runCatching { dm.getUriForDownloadedFile(doneId) }.getOrNull() ?: return
+                        runCatching {
+                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(apkUri, "application/vnd.android.package-archive")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                            }
+                            app.startActivity(installIntent)
+                        }.onFailure {
+                            runCatching {
+                                app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            }
+                        }
+                    }
+                }
+                val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    app.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
+                } else {
+                    @Suppress("UnspecifiedRegisterReceiverFlag")
+                    app.registerReceiver(receiver, filter)
+                }
             }
         }
-        runCatching {
-            app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        if (!queued) {
+            runCatching {
+                app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
         }
     }
 
