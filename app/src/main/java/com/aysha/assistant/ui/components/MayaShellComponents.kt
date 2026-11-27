@@ -244,29 +244,43 @@ fun MayaBottomNavBar(
                 .scale(fabScale * if (isVoiceActive) micPulse else 1f)
                 .size(64.dp)
                 .shadow(
-                    elevation = if (isVoiceActive) 20.dp else 14.dp,
+                    elevation = if (isVoiceActive) 16.dp else 10.dp,
                     shape = CircleShape,
                     clip = false,
-                    ambientColor = Color(0xFF2E85FF),
-                    spotColor = Color(0xFF2474FF),
+                    ambientColor = c.accentPrimary.copy(alpha = if (isVoiceActive) 0.34f else 0.18f),
+                    spotColor = c.accentSecondary.copy(alpha = if (isVoiceActive) 0.38f else 0.22f),
                 )
                 .clip(CircleShape)
                 .background(
                     when {
-                        isVoiceActive -> Brush.verticalGradient(listOf(c.accentPrimary, c.accentSecondary))
+                        isVoiceActive -> Brush.verticalGradient(listOf(c.accentPrimary.copy(alpha = 0.92f), c.accentSecondary.copy(alpha = 0.94f)))
                         c.surfaceStyle == SurfaceStyle.GLASS && c.isDark -> Brush.linearGradient(
-                            listOf(c.glassSurfaceElevated.copy(alpha = 0.92f), c.accentPrimary.copy(alpha = 0.34f)),
+                            listOf(
+                                c.glassSurfaceElevated.copy(alpha = 0.72f),
+                                c.accentPrimary.copy(alpha = 0.20f),
+                                c.glassSurface.copy(alpha = 0.62f),
+                            ),
                         )
                         c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
-                            listOf(Color.White.copy(alpha = 0.96f), c.accentPrimary.copy(alpha = 0.24f)),
+                            listOf(
+                                Color.White.copy(alpha = 0.60f),
+                                c.glassSurfaceElevated.copy(alpha = 0.56f),
+                                c.accentPrimary.copy(alpha = 0.15f),
+                            ),
                         )
                         else -> Brush.verticalGradient(listOf(Color(0xFFEFF6FF), Color(0xFFCDE2FF)))
                     },
                     CircleShape,
                 )
                 .border(
-                    width = 4.5.dp,
-                    brush = Brush.linearGradient(listOf(c.glassHighlight, c.accentPrimary, c.accentSecondary)),
+                    width = if (c.surfaceStyle == SurfaceStyle.GLASS) 2.2.dp else 3.8.dp,
+                    brush = Brush.linearGradient(
+                        listOf(
+                            c.glassHighlight,
+                            c.accentPrimary.copy(alpha = 0.52f),
+                            c.accentSecondary.copy(alpha = 0.42f),
+                        ),
+                    ),
                     shape = CircleShape,
                 )
                 .clickable(onClick = onMicOrStopClick),
@@ -277,13 +291,13 @@ fun MayaBottomNavBar(
                     modifier = Modifier
                         .size(16.dp)
                         .clip(RoundedCornerShape(4.dp))
-                        .background(Color.White),
+                        .background(Color.White.copy(alpha = 0.92f)),
                 )
             } else {
                 Icon(
                     imageVector = Icons.Rounded.Mic,
                     contentDescription = "Speak",
-                    tint = if (c.isDark) Color.White else c.accentPrimary,
+                    tint = if (c.isDark) c.textPrimary else c.accentPrimary,
                     modifier = Modifier.size(28.dp),
                 )
             }
@@ -314,8 +328,8 @@ private fun DockTabItem(
                     if (c.surfaceStyle == SurfaceStyle.GLASS) {
                         Brush.linearGradient(
                             listOf(
-                                c.accentPrimary.copy(alpha = if (c.isDark) 0.42f else 0.28f),
-                                c.accentSecondary.copy(alpha = if (c.isDark) 0.34f else 0.20f),
+                                c.accentPrimary.copy(alpha = if (c.isDark) 0.28f else 0.18f),
+                                c.accentSecondary.copy(alpha = if (c.isDark) 0.20f else 0.12f),
                             ),
                         )
                     } else {
@@ -328,8 +342,8 @@ private fun DockTabItem(
             .then(
                 if (selected && c.surfaceStyle == SurfaceStyle.GLASS) {
                     Modifier.border(
-                        width = 1.dp,
-                        brush = Brush.linearGradient(listOf(c.glassHighlight, c.accentPrimary.copy(alpha = 0.45f))),
+                        width = 0.9.dp,
+                        brush = Brush.linearGradient(listOf(c.glassHighlight.copy(alpha = 0.65f), c.accentPrimary.copy(alpha = 0.28f))),
                         shape = RoundedCornerShape(18.dp),
                     )
                 } else {

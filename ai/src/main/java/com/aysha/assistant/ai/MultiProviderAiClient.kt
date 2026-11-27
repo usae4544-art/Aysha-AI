@@ -338,6 +338,34 @@ class MultiProviderAiClient {
         return RETRYABLE_ERROR_HINTS.any { hint -> message.contains(hint, ignoreCase = true) }
     }
 
+    internal fun isGeminiAuthError(httpCode: Int, message: String?): Boolean {
+        if (httpCode == 401 || httpCode == 403) return true
+        if (message.isNullOrBlank()) return false
+        return message.contains("api key", ignoreCase = true) ||
+            message.contains("api_key", ignoreCase = true) ||
+            message.contains("key not valid", ignoreCase = true) ||
+            message.contains("permission denied", ignoreCase = true)
+    }
+
+    internal fun buildGeminiGeneratePayload(
+        systemInstruction: String,
+        contents: JSONArray,
+        toolsArray: JSONArray,
+        includeTools: Boolean,
+    ): JSONObject {
+        return JSONObject().apply {
+            put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
+            put("contents", contents)
+            if (includeTools) put("tools", toolsArray)
+            put(
+                "generationConfig",
+                JSONObject()
+                    .put("temperature", 0.7)
+                    .put("maxOutputTokens", 512),
+            )
+        }
+    }
+
     private suspend fun runGeminiTurn(
         apiKey: String,
         model: String,
@@ -375,6 +403,7 @@ class MultiProviderAiClient {
                     ),
                 )
             }
+            if (length() == 0) put(JSONObject().put("text", "Hi"))
         }
         contents.put(JSONObject().put("role", "user").put("parts", userParts))
 
@@ -397,24 +426,13 @@ class MultiProviderAiClient {
 
             for (tryModel in modelsForRound) {
                 var includeTools = true
-                var includeThinkingZero = tryModel.startsWith("gemini-2.5") || tryModel.startsWith("gemini-3")
-                for (schemaAttempt in 0..2) {
-                    val payload = JSONObject().apply {
-                        put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
-                        put("contents", contents)
-                        if (includeTools) put("tools", toolsArray)
-                        put(
-                            "generationConfig",
-                            JSONObject()
-                                .put("temperature", 0.7)
-                                .put("maxOutputTokens", 512)
-                                .apply {
-                                    if (includeThinkingZero) {
-                                        put("thinkingConfig", JSONObject().put("thinkingBudget", 0))
-                                    }
-                                },
-                        )
-                    }
+                for (schemaAttempt in 0..1) {
+                    val payload = buildGeminiGeneratePayload(
+                        systemInstruction = systemInstruction,
+                        contents = contents,
+                        toolsArray = toolsArray,
+                        includeTools = includeTools,
+                    )
 
                     val req = Request.Builder()
                         .url("https://generativelanguage.googleapis.com/v1beta/models/$tryModel:generateContent?key=$cleanKey")
@@ -431,22 +449,10 @@ class MultiProviderAiClient {
                             } else {
                                 val errMsg = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
                                 val detail = "Gemini HTTP ${resp.code}: ${errMsg ?: body.take(180)}"
-                                val isThinkingErr = resp.code == 400 && (errMsg?.contains("thinking", ignoreCase = true) == true)
-                                if (isThinkingErr && includeThinkingZero) {
-                                    throw RetryWithoutThinkingException(detail)
-                                }
-                                val isSchemaErr = resp.code == 400 && (
-                                    errMsg?.contains("tool", ignoreCase = true) == true ||
-                                        errMsg?.contains("function", ignoreCase = true) == true ||
-                                        errMsg?.contains("schema", ignoreCase = true) == true ||
-                                        errMsg?.contains("parameters", ignoreCase = true) == true
-                                    )
-                                if (isSchemaErr && includeTools) {
-                                    throw RetryWithoutToolsException(detail)
-                                }
-                                val isModelNotSupported = resp.code == 404 || (resp.code == 400 && (errMsg?.contains("model", ignoreCase = true) == true))
                                 when {
-                                    isModelNotSupported -> throw UnsupportedModelException(detail)
+                                    isGeminiAuthError(resp.code, errMsg) -> throw IllegalStateException(detail)
+                                    resp.code == 400 && includeTools -> throw RetryWithoutToolsException(detail)
+                                    resp.code == 404 || resp.code == 400 -> throw UnsupportedModelException(detail)
                                     isRetryableGeminiError(resp.code, errMsg) -> throw TransientOverloadException(detail)
                                     else -> throw IllegalStateException(detail)
                                 }
@@ -454,7 +460,6 @@ class MultiProviderAiClient {
                         }
                     }.recoverCatching { err ->
                         when (err) {
-                            is RetryWithoutThinkingException,
                             is RetryWithoutToolsException,
                             is UnsupportedModelException,
                             is TransientOverloadException -> throw err
@@ -468,10 +473,6 @@ class MultiProviderAiClient {
                         break
                     } else {
                         val err = callOutcome.exceptionOrNull()
-                        if (err is RetryWithoutThinkingException) {
-                            includeThinkingZero = false
-                            continue
-                        }
                         if (err is RetryWithoutToolsException) {
                             includeTools = false
                             continue
@@ -674,7 +675,6 @@ class MultiProviderAiClient {
 
     private class UnsupportedModelException(message: String) : IllegalStateException(message)
     private class RetryWithoutToolsException(message: String) : IllegalStateException(message)
-    private class RetryWithoutThinkingException(message: String) : IllegalStateException(message)
     private class TransientOverloadException(message: String) : IllegalStateException(message)
 
     companion object {

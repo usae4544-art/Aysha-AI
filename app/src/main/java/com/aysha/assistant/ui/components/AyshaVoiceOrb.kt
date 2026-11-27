@@ -608,12 +608,12 @@ fun AyshaVoiceOrb(
                 )
             }
 
-            // Crisp Liquid Glass outer lens glare arc over top-left rim of every orb
+            // Soft Liquid Glass outer lens glare arc over top-left rim of every orb
             drawArc(
                 brush = Brush.linearGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = 0.56f),
-                        mainPrimary.copy(alpha = 0.25f),
+                        Color.White.copy(alpha = 0.36f),
+                        mainPrimary.copy(alpha = 0.18f),
                         Color.Transparent,
                     ),
                 ),
@@ -622,7 +622,7 @@ fun AyshaVoiceOrb(
                 useCenter = false,
                 topLeft = Offset(cPos.x - r * 0.64f * totalScale, cPos.y - r * 0.64f * totalScale),
                 size = Size(r * 1.28f * totalScale, r * 1.28f * totalScale),
-                style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round),
+                style = Stroke(width = 1.4.dp.toPx(), cap = StrokeCap.Round),
             )
         }
 
@@ -958,10 +958,10 @@ private fun DrawScope.drawStyledOrb(
                     drawOval(
                         brush = Brush.sweepGradient(
                             colors = listOf(
-                                secondary.copy(alpha = 0.62f),
-                                primary.copy(alpha = 0.34f),
-                                Color.White.copy(alpha = 0.48f),
-                                secondary.copy(alpha = 0.52f),
+                                secondary.copy(alpha = 0.46f),
+                                primary.copy(alpha = 0.26f),
+                                Color.White.copy(alpha = 0.30f),
+                                secondary.copy(alpha = 0.40f),
                             ),
                             center = cPos,
                         ),
@@ -976,7 +976,7 @@ private fun DrawScope.drawStyledOrb(
             rotate(-spin * 0.28f, pivot = cPos) {
                 drawArc(
                     brush = Brush.sweepGradient(
-                        listOf(Color.Transparent, primary.copy(alpha = 0.72f), Color.White.copy(alpha = 0.65f), secondary.copy(alpha = 0.55f), Color.Transparent),
+                        listOf(Color.Transparent, primary.copy(alpha = 0.54f), Color.White.copy(alpha = 0.42f), secondary.copy(alpha = 0.42f), Color.Transparent),
                         center = cPos,
                     ),
                     startAngle = 15f,
@@ -984,7 +984,7 @@ private fun DrawScope.drawStyledOrb(
                     useCenter = false,
                     topLeft = Offset(cPos.x - ringRadius * 1.18f, cPos.y - ringRadius * 1.18f),
                     size = Size(ringRadius * 2.36f, ringRadius * 2.36f),
-                    style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(width = 1.5.dp.toPx(), cap = StrokeCap.Round),
                 )
             }
 

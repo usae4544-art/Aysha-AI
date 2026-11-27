@@ -444,9 +444,9 @@ fun HomeOrbScreen(
                     val ampScale = 1f + audioLevel.coerceIn(0f, 1f) * 1.45f
 
                     val threadSpecs = listOf(
-                        Triple(0.55f, c.accentPrimary.copy(alpha = if (c.isDark) 0.42f else 0.34f), 2.3.dp.toPx()),
-                        Triple(0.50f, c.accentSecondary.copy(alpha = if (c.isDark) 0.34f else 0.24f), 1.7.dp.toPx()),
-                        Triple(0.61f, c.accentGlow.copy(alpha = if (c.isDark) 0.28f else 0.22f), 1.3.dp.toPx()),
+                        Triple(0.55f, c.accentPrimary.copy(alpha = if (c.isDark) 0.25f else 0.22f), 2.1.dp.toPx()),
+                        Triple(0.50f, c.accentSecondary.copy(alpha = if (c.isDark) 0.19f else 0.16f), 1.5.dp.toPx()),
+                        Triple(0.61f, c.accentGlow.copy(alpha = if (c.isDark) 0.16f else 0.14f), 1.2.dp.toPx()),
                     )
                     threadSpecs.forEachIndexed { idx, (yFrac, strokeCol, strokeW) ->
                         val cy = h * yFrac
@@ -468,35 +468,49 @@ fun HomeOrbScreen(
                         }
                         drawPath(
                             path = path,
-                            color = strokeCol,
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    Color.Transparent,
+                                    strokeCol,
+                                    strokeCol,
+                                    Color.Transparent,
+                                ),
+                            ),
                             style = Stroke(width = strokeW, cap = StrokeCap.Round),
                         )
                     }
 
-                    // Traveling luminous energy beads along primary front thread
+                    // Traveling soft frosted droplets along primary front filament (fade near horizontal edges)
                     for (nodeIdx in 0..3) {
                         val normX = ((ecgPhase / 6.28318f) + nodeIdx * 0.25f) % 1.0f
+                        val edgeFade = (kotlin.math.sin(normX * kotlin.math.PI.toFloat())).coerceIn(0f, 1f)
                         val bx = normX * w
                         val by = h * 0.55f + kotlin.math.sin(normX * 12f + ecgPhase) * (8f * ampScale)
+                        val nodeCol = if (nodeIdx % 2 == 0) c.accentPrimary else c.accentSecondary
                         drawCircle(
-                            color = if (nodeIdx % 2 == 0) c.accentPrimary else c.accentSecondary,
-                            radius = (2.4f + audioLevel * 2.2f).dp.toPx(),
+                            color = nodeCol.copy(alpha = 0.16f * edgeFade),
+                            radius = (5.2f + audioLevel * 3.0f).dp.toPx(),
+                            center = Offset(bx, by),
+                        )
+                        drawCircle(
+                            color = nodeCol.copy(alpha = 0.52f * edgeFade),
+                            radius = (2.1f + audioLevel * 1.6f).dp.toPx(),
                             center = Offset(bx, by),
                         )
                     }
 
-                    // Dual Liquid Glass Ambient Halo Rings around Orb Stage
+                    // Dual Liquid Glass Ambient Halo Rings around Orb Stage (subtle, zero glare)
                     drawCircle(
-                        color = c.accentPrimary.copy(alpha = if (c.isDark) 0.18f else 0.14f),
+                        color = c.accentPrimary.copy(alpha = if (c.isDark) 0.12f else 0.10f),
                         radius = size.minDimension * 0.49f,
                         center = Offset(w / 2f, h / 2f),
-                        style = Stroke(width = 1.2.dp.toPx()),
+                        style = Stroke(width = 1.0.dp.toPx()),
                     )
                     drawCircle(
-                        color = Color.White.copy(alpha = if (c.isDark) 0.12f else 0.45f),
+                        color = Color.White.copy(alpha = if (c.isDark) 0.08f else 0.24f),
                         radius = size.minDimension * 0.43f,
                         center = Offset(w / 2f, h / 2f),
-                        style = Stroke(width = 0.9.dp.toPx()),
+                        style = Stroke(width = 0.85.dp.toPx()),
                     )
                 }
 

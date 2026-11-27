@@ -293,4 +293,29 @@ class AiUnitTest {
         assertTrue(client.isRetryableGeminiError(400, "Service unavailable right now, try again"))
         assertFalse(client.isRetryableGeminiError(401, "API key not valid"))
     }
+
+    @Test
+    fun `gemini payload omits unsupported thinkingConfig and classifies auth errors cleanly`() {
+        val client = MultiProviderAiClient()
+        val contents = org.json.JSONArray().put(
+            org.json.JSONObject().put("role", "user").put(
+                "parts",
+                org.json.JSONArray().put(org.json.JSONObject().put("text", "Hello")),
+            ),
+        )
+        val payload = client.buildGeminiGeneratePayload(
+            systemInstruction = "Be concise.",
+            contents = contents,
+            toolsArray = org.json.JSONArray(),
+            includeTools = true,
+        )
+        val genCfg = payload.getJSONObject("generationConfig")
+        assertFalse("thinkingConfig must not be injected in REST payload", genCfg.has("thinkingConfig"))
+        assertEquals(512, genCfg.getInt("maxOutputTokens"))
+        assertTrue(payload.has("tools"))
+
+        assertTrue(client.isGeminiAuthError(400, "API key not valid. Please pass a valid API key."))
+        assertTrue(client.isGeminiAuthError(401, "Unauthorized"))
+        assertFalse(client.isGeminiAuthError(400, "Request contains an invalid argument."))
+    }
 }

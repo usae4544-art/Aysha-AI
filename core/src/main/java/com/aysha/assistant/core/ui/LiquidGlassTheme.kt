@@ -55,8 +55,10 @@ import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -151,27 +153,27 @@ fun buildAyshaColors(
         backgroundDeep = Color(palette.bgDeepHex),
         glassSurface = baseSurface.copy(
             alpha = if (surfaceStyle == SurfaceStyle.GLASS) {
-                (alphaBase * if (palette.isDark) 0.72f else 0.78f).coerceIn(0.28f, 0.88f)
+                (alphaBase * if (palette.isDark) 0.56f else 0.54f).coerceIn(0.24f, 0.72f)
             } else {
                 1f
             },
         ),
         glassSurfaceElevated = elevSurface.copy(
             alpha = if (surfaceStyle == SurfaceStyle.GLASS) {
-                (alphaBase * if (palette.isDark) 0.88f else 0.92f).coerceIn(0.42f, 0.95f)
+                (alphaBase * if (palette.isDark) 0.70f else 0.66f).coerceIn(0.32f, 0.80f)
             } else {
                 1f
             },
         ),
         glassBorder = if (surfaceStyle == SurfaceStyle.GLASS) {
-            if (palette.isDark) Color.White.copy(alpha = 0.22f) else Color.White.copy(alpha = 0.82f)
+            if (palette.isDark) Color.White.copy(alpha = 0.20f) else Color.White.copy(alpha = 0.54f)
         } else {
             Color(palette.borderHex)
         },
         glassHighlight = if (palette.isDark) {
-            Color.White.copy(alpha = if (surfaceStyle == SurfaceStyle.GLASS) 0.34f else if (surfaceStyle == SurfaceStyle.CLAY) 0.28f else 0.16f)
+            Color.White.copy(alpha = if (surfaceStyle == SurfaceStyle.GLASS) 0.28f else if (surfaceStyle == SurfaceStyle.CLAY) 0.24f else 0.14f)
         } else {
-            Color.White.copy(alpha = 0.96f)
+            Color.White.copy(alpha = if (surfaceStyle == SurfaceStyle.GLASS) 0.62f else 0.84f)
         },
         textPrimary = Color(palette.textPrimaryHex),
         textSecondary = Color(palette.textSecondaryHex),
@@ -383,7 +385,7 @@ fun LiquidAuroraBackground(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = 0.28f * drift),
+                            c.accentPrimary.copy(alpha = 0.17f * drift),
                             Color.Transparent,
                         ),
                         center = Offset(w * (0.20f + ribbonShift), h * 0.16f),
@@ -395,7 +397,7 @@ fun LiquidAuroraBackground(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            c.accentSecondary.copy(alpha = 0.25f),
+                            c.accentSecondary.copy(alpha = 0.15f),
                             Color.Transparent,
                         ),
                         center = Offset(w * (0.86f - ribbonShift), h * 0.56f),
@@ -407,7 +409,7 @@ fun LiquidAuroraBackground(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            c.accentGlow.copy(alpha = 0.18f),
+                            c.accentGlow.copy(alpha = 0.11f),
                             Color.Transparent,
                         ),
                         center = Offset(w * 0.45f, h * 0.92f),
@@ -428,9 +430,9 @@ fun LiquidAuroraBackground(
                     path = wave1,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = 0.17f),
-                            c.accentSecondary.copy(alpha = 0.22f),
-                            c.accentGlow.copy(alpha = 0.16f),
+                            c.accentPrimary.copy(alpha = 0.10f),
+                            c.accentSecondary.copy(alpha = 0.14f),
+                            c.accentGlow.copy(alpha = 0.10f),
                         ),
                     ),
                 )
@@ -443,45 +445,64 @@ fun LiquidAuroraBackground(
                     path = ribbonStroke,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = 0.52f),
-                            c.accentSecondary.copy(alpha = 0.56f),
-                            c.accentGlow.copy(alpha = 0.42f),
+                            Color.Transparent,
+                            c.accentPrimary.copy(alpha = 0.24f),
+                            c.accentSecondary.copy(alpha = 0.26f),
+                            c.accentGlow.copy(alpha = 0.20f),
+                            Color.Transparent,
                         ),
                     ),
-                    style = Stroke(width = 2.2.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round),
                 )
             }
         } else if (!isPureMinimal) {
-            // Vivid Light Liquid Glass Refractive Mesh (sky-cyan + lavender + ice specular ribbons)
+            // Calm Mist Liquid Glass Refractive Mesh (soft atmospheric refractions, zero white glare)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(c.accentPrimary.copy(alpha = 0.20f * drift), Color.Transparent),
-                        center = Offset(w * (0.16f + ribbonShift), h * 0.14f),
-                        radius = w * 0.85f * drift,
+                        colors = listOf(c.accentPrimary.copy(alpha = 0.16f * drift), Color.Transparent),
+                        center = Offset(w * (0.16f + ribbonShift), h * 0.15f),
+                        radius = w * 0.88f * drift,
                     ),
-                    center = Offset(w * (0.16f + ribbonShift), h * 0.14f),
-                    radius = w * 0.85f * drift,
+                    center = Offset(w * (0.16f + ribbonShift), h * 0.15f),
+                    radius = w * 0.88f * drift,
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(c.accentSecondary.copy(alpha = 0.18f), Color.Transparent),
-                        center = Offset(w * (0.88f - ribbonShift), h * 0.46f),
-                        radius = w * 0.82f,
+                        colors = listOf(c.accentSecondary.copy(alpha = 0.14f), Color.Transparent),
+                        center = Offset(w * (0.86f - ribbonShift), h * 0.48f),
+                        radius = w * 0.86f,
                     ),
-                    center = Offset(w * (0.88f - ribbonShift), h * 0.46f),
-                    radius = w * 0.82f,
+                    center = Offset(w * (0.86f - ribbonShift), h * 0.48f),
+                    radius = w * 0.86f,
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(Color.White.copy(alpha = 0.65f), Color.Transparent),
-                        center = Offset(w * 0.5f, h * 0.28f),
+                        colors = listOf(c.glassSurfaceElevated.copy(alpha = 0.36f), Color.Transparent),
+                        center = Offset(w * 0.48f, h * 0.28f),
                         radius = w * 0.90f * drift,
                     ),
-                    center = Offset(w * 0.5f, h * 0.28f),
+                    center = Offset(w * 0.48f, h * 0.28f),
                     radius = w * 0.90f * drift,
+                )
+                val mistWave = Path().apply {
+                    moveTo(-w * 0.1f, h * (0.78f + ribbonShift * 0.4f))
+                    cubicTo(w * 0.25f, h * 0.64f, w * 0.64f, h * 0.89f, w * 1.1f, h * (0.68f - ribbonShift * 0.4f))
+                    lineTo(w * 1.1f, h * 1.05f)
+                    lineTo(-w * 0.1f, h * 1.05f)
+                    close()
+                }
+                drawPath(
+                    path = mistWave,
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            c.accentPrimary.copy(alpha = 0.08f),
+                            c.accentSecondary.copy(alpha = 0.10f),
+                            c.accentGlow.copy(alpha = 0.08f),
+                        ),
+                    ),
                 )
                 val silkPath = Path().apply {
                     moveTo(-w * 0.05f, h * (0.77f + ribbonShift * 0.4f))
@@ -491,12 +512,14 @@ fun LiquidAuroraBackground(
                     path = silkPath,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = 0.28f),
-                            Color.White.copy(alpha = 0.65f),
-                            c.accentSecondary.copy(alpha = 0.26f),
+                            Color.Transparent,
+                            c.accentPrimary.copy(alpha = 0.18f),
+                            Color.White.copy(alpha = 0.34f),
+                            c.accentSecondary.copy(alpha = 0.17f),
+                            Color.Transparent,
                         ),
                     ),
-                    style = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round),
                 )
             }
         }
@@ -529,15 +552,17 @@ fun GlassCard(
         SurfaceStyle.GLASS -> Brush.linearGradient(
             colors = if (c.isDark) {
                 listOf(
-                    baseFill.copy(alpha = (c.transparencyFactor * 0.95f).coerceIn(0.36f, 0.86f)),
-                    c.accentPrimary.copy(alpha = 0.09f),
-                    baseFill.copy(alpha = (c.transparencyFactor * 0.68f).coerceIn(0.24f, 0.72f)),
+                    Color.White.copy(alpha = 0.08f),
+                    baseFill.copy(alpha = (c.transparencyFactor * 0.74f).coerceIn(0.28f, 0.64f)),
+                    c.accentPrimary.copy(alpha = 0.07f),
+                    Color.Black.copy(alpha = 0.24f),
                 )
             } else {
                 listOf(
-                    Color.White.copy(alpha = (c.transparencyFactor * 0.96f).coerceIn(0.55f, 0.90f)),
-                    baseFill.copy(alpha = (c.transparencyFactor * 0.82f).coerceIn(0.42f, 0.82f)),
-                    c.accentPrimary.copy(alpha = 0.07f),
+                    Color.White.copy(alpha = (c.transparencyFactor * 0.76f).coerceIn(0.36f, 0.66f)),
+                    baseFill.copy(alpha = (c.transparencyFactor * 0.68f).coerceIn(0.32f, 0.60f)),
+                    c.accentPrimary.copy(alpha = 0.06f),
+                    c.backgroundDeep.copy(alpha = 0.22f),
                 )
             },
         )
@@ -548,19 +573,19 @@ fun GlassCard(
         SurfaceStyle.CLAY -> 1.4.dp
         SurfaceStyle.FLAT -> 1.dp
         SurfaceStyle.SOFT -> 0.8.dp
-        SurfaceStyle.GLASS -> if (elevated) 1.35.dp else 1.1.dp
+        SurfaceStyle.GLASS -> if (elevated) 1.25.dp else 1.05.dp
     }
     val borderBrush = when {
         c.surfaceStyle == SurfaceStyle.FLAT -> Brush.linearGradient(listOf(actualBorder, actualBorder))
         c.surfaceStyle == SurfaceStyle.CLAY && !c.isDark -> Brush.linearGradient(
-            listOf(Color.White.copy(alpha = 0.96f), Color(0x66B7CBEB)),
+            listOf(Color.White.copy(alpha = 0.88f), Color(0x66B7CBEB)),
         )
         c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
             listOf(
                 c.glassHighlight,
-                actualBorder,
-                c.accentPrimary.copy(alpha = if (elevated) 0.48f else 0.28f),
-                c.glassHighlight.copy(alpha = 0.55f),
+                actualBorder.copy(alpha = 0.56f),
+                c.accentPrimary.copy(alpha = if (elevated) 0.26f else 0.16f),
+                if (c.isDark) Color.White.copy(alpha = 0.08f) else c.backgroundDeep.copy(alpha = 0.45f),
             ),
         )
         else -> Brush.linearGradient(listOf(c.glassHighlight, actualBorder, c.accentSecondary.copy(alpha = 0.22f)))
@@ -574,14 +599,48 @@ fun GlassCard(
             spotColor = if (c.isDark) Color.Black else Color(0x6B5878AE),
         )
         SurfaceStyle.GLASS -> Modifier.shadow(
-            elevation = if (elevated) 14.dp else 7.dp,
+            elevation = if (elevated) 10.dp else 5.dp,
             shape = shape,
             clip = false,
-            ambientColor = if (c.isDark) c.accentPrimary.copy(alpha = 0.26f) else c.accentPrimary.copy(alpha = 0.18f),
-            spotColor = if (c.isDark) c.accentSecondary.copy(alpha = 0.30f) else c.accentSecondary.copy(alpha = 0.16f),
+            ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.28f) else Color(0xFF475E82).copy(alpha = 0.16f),
+            spotColor = if (c.isDark) c.accentPrimary.copy(alpha = 0.16f) else Color(0xFF3E5579).copy(alpha = 0.18f),
         )
         SurfaceStyle.SOFT -> Modifier.shadow(elevation = 4.dp, shape = shape, clip = false)
         else -> Modifier
+    }
+    val opticalGlintMod = if (c.surfaceStyle == SurfaceStyle.GLASS) {
+        Modifier.drawBehind {
+            val radiusPx = resolvedRadius.toPx()
+            // Top diagonal frosted depth mist band
+            drawRoundRect(
+                brush = Brush.verticalGradient(
+                    colors = listOf(
+                        Color.White.copy(alpha = if (c.isDark) 0.06f else 0.18f),
+                        Color.Transparent,
+                    ),
+                    startY = 0f,
+                    endY = size.height * 0.48f,
+                ),
+                cornerRadius = CornerRadius(radiusPx, radiusPx),
+            )
+            // Delicate top-edge optical specular catch-light
+            val edgeInset = (radiusPx * 0.45f).coerceAtMost(size.width * 0.35f)
+            drawLine(
+                brush = Brush.horizontalGradient(
+                    colors = listOf(
+                        Color.Transparent,
+                        c.glassHighlight.copy(alpha = if (c.isDark) 0.24f else 0.42f),
+                        c.accentPrimary.copy(alpha = 0.14f),
+                        Color.Transparent,
+                    ),
+                ),
+                start = Offset(edgeInset, 1.dp.toPx()),
+                end = Offset((size.width - edgeInset).coerceAtLeast(edgeInset), 1.dp.toPx()),
+                strokeWidth = 1.dp.toPx(),
+            )
+        }
+    } else {
+        Modifier
     }
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -606,6 +665,7 @@ fun GlassCard(
             .then(clayShadowMod)
             .clip(shape)
             .background(fillBrush, shape)
+            .then(opticalGlintMod)
             .border(width = borderWidth, brush = borderBrush, shape = shape)
             .then(clickMod)
             .padding(contentPadding),
@@ -640,13 +700,19 @@ fun GlassPill(
             .then(clickMod),
         shape = CircleShape,
         color = if (c.surfaceStyle == SurfaceStyle.GLASS) {
-            c.glassSurfaceElevated.copy(alpha = if (c.isDark) 0.72f else 0.86f)
+            c.glassSurfaceElevated.copy(alpha = if (c.isDark) 0.58f else 0.62f)
         } else {
             c.glassSurfaceElevated
         },
         border = BorderStroke(
-            width = if (c.surfaceStyle == SurfaceStyle.GLASS) 1.15.dp else 1.dp,
-            brush = Brush.linearGradient(listOf(c.glassHighlight, c.glassBorder, c.accentPrimary.copy(alpha = 0.25f))),
+            width = if (c.surfaceStyle == SurfaceStyle.GLASS) 0.95.dp else 1.dp,
+            brush = Brush.linearGradient(
+                listOf(
+                    c.glassHighlight,
+                    c.glassBorder.copy(alpha = 0.65f),
+                    c.accentPrimary.copy(alpha = 0.20f),
+                ),
+            ),
         ),
     ) {
         Row(
@@ -707,19 +773,19 @@ fun AuroraGradientButton(
             .scale(pressScale)
             .height(height)
             .shadow(
-                elevation = if (enabled) 12.dp else 2.dp,
+                elevation = if (enabled) 9.dp else 2.dp,
                 shape = shape,
                 clip = false,
-                ambientColor = endCol.copy(alpha = 0.45f),
-                spotColor = endCol.copy(alpha = 0.55f),
+                ambientColor = endCol.copy(alpha = 0.26f),
+                spotColor = endCol.copy(alpha = 0.34f),
             )
             .clip(shape)
             .background(
-                if (enabled) Brush.verticalGradient(listOf(startCol, endCol))
+                if (enabled) Brush.verticalGradient(listOf(startCol.copy(alpha = 0.90f), endCol.copy(alpha = 0.92f)))
                 else Brush.verticalGradient(listOf(c.glassSurface, c.backgroundDeep)),
                 shape,
             )
-            .border(1.2.dp, Color.White.copy(alpha = if (enabled) 0.45f else 0.2f), shape)
+            .border(1.1.dp, Color.White.copy(alpha = if (enabled) 0.30f else 0.16f), shape)
             .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
@@ -730,7 +796,7 @@ fun AuroraGradientButton(
                     brush = Brush.horizontalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            Color.White.copy(alpha = 0.16f),
+                            Color.White.copy(alpha = 0.10f),
                             Color.Transparent,
                         ),
                         startX = x - size.width * 0.28f,
@@ -785,20 +851,29 @@ fun ClayCircleButton(
             .scale(pressScale)
             .size(size)
             .shadow(
-                elevation = if (c.isDark) 4.dp else 10.dp,
+                elevation = if (c.isDark) 4.dp else 7.dp,
                 shape = CircleShape,
                 clip = false,
-                ambientColor = if (c.isDark) Color.Black else Color(0x55708BB8),
-                spotColor = if (c.isDark) Color.Black else Color(0x665B7AB0),
+                ambientColor = if (c.isDark) Color.Black.copy(alpha = 0.35f) else Color(0x2E4B648E),
+                spotColor = if (c.isDark) Color.Black.copy(alpha = 0.38f) else Color(0x33405982),
             )
             .clip(CircleShape)
             .background(
                 when {
                     c.surfaceStyle == SurfaceStyle.GLASS && c.isDark -> Brush.linearGradient(
-                        listOf(c.glassSurfaceElevated.copy(alpha = 0.78f), c.accentPrimary.copy(alpha = 0.14f), c.glassSurface.copy(alpha = 0.68f)),
+                        listOf(
+                            Color.White.copy(alpha = 0.10f),
+                            c.glassSurfaceElevated.copy(alpha = 0.60f),
+                            c.accentPrimary.copy(alpha = 0.10f),
+                            Color.Black.copy(alpha = 0.24f),
+                        ),
                     )
                     c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
-                        listOf(Color.White.copy(alpha = 0.88f), c.glassSurface.copy(alpha = 0.74f)),
+                        listOf(
+                            Color.White.copy(alpha = 0.58f),
+                            c.glassSurface.copy(alpha = 0.54f),
+                            c.backgroundDeep.copy(alpha = 0.24f),
+                        ),
                     )
                     c.isDark -> Brush.verticalGradient(listOf(c.glassSurfaceElevated, c.backgroundDeep))
                     else -> Brush.verticalGradient(listOf(Color(0xFFFCFDFF), Color(0xFFE7EFFD)))
@@ -806,8 +881,14 @@ fun ClayCircleButton(
                 CircleShape,
             )
             .border(
-                width = 1.2.dp,
-                brush = Brush.linearGradient(listOf(c.glassHighlight, c.glassBorder, c.accentPrimary.copy(alpha = 0.28f))),
+                width = 1.05.dp,
+                brush = Brush.linearGradient(
+                    listOf(
+                        c.glassHighlight,
+                        c.glassBorder.copy(alpha = 0.60f),
+                        c.accentPrimary.copy(alpha = 0.20f),
+                    ),
+                ),
                 shape = CircleShape,
             )
             .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
@@ -847,10 +928,18 @@ fun ClayRecessedBox(
             .background(
                 when {
                     c.surfaceStyle == SurfaceStyle.GLASS && c.isDark -> Brush.linearGradient(
-                        listOf(c.backgroundDeep.copy(alpha = 0.74f), c.glassSurface.copy(alpha = 0.66f)),
+                        listOf(
+                            Color.Black.copy(alpha = 0.28f),
+                            c.backgroundDeep.copy(alpha = 0.62f),
+                            c.glassSurface.copy(alpha = 0.50f),
+                        ),
                     )
                     c.surfaceStyle == SurfaceStyle.GLASS -> Brush.linearGradient(
-                        listOf(Color.White.copy(alpha = 0.72f), c.glassSurfaceElevated.copy(alpha = 0.80f)),
+                        listOf(
+                            c.backgroundDeep.copy(alpha = 0.48f),
+                            Color.White.copy(alpha = 0.46f),
+                            c.glassSurfaceElevated.copy(alpha = 0.56f),
+                        ),
                     )
                     c.isDark -> Brush.verticalGradient(listOf(c.backgroundDeep, c.glassSurface))
                     else -> Brush.verticalGradient(listOf(Color(0xFFD6E2F6), Color(0xFFEDF3FE)))
@@ -858,12 +947,12 @@ fun ClayRecessedBox(
                 shape,
             )
             .border(
-                width = 1.15.dp,
+                width = 1.05.dp,
                 brush = Brush.linearGradient(
                     listOf(
                         c.glassHighlight,
-                        c.glassBorder,
-                        c.accentPrimary.copy(alpha = 0.28f),
+                        c.glassBorder.copy(alpha = 0.60f),
+                        c.accentPrimary.copy(alpha = 0.20f),
                     ),
                 ),
                 shape = shape,
@@ -892,7 +981,7 @@ fun ColoredIconBadge(
                     Brush.linearGradient(listOf(tintColor.copy(alpha = 0.85f), tintColor.copy(alpha = 0.55f)))
                 },
             )
-            .border(1.dp, Color.White.copy(alpha = if (c.isDark) 0.24f else 0.85f), RoundedCornerShape(12.dp)),
+            .border(1.dp, c.glassHighlight.copy(alpha = if (c.isDark) 0.85f else 0.75f), RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center,
     ) {
         Icon(
