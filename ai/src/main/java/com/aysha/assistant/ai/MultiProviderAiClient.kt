@@ -514,6 +514,10 @@ class MultiProviderAiClient {
                 .url(endpoint)
                 .post(payload.toString().toRequestBody(jsonMedia))
             if (cleanKey.isNotEmpty()) builder.header("Authorization", "Bearer $cleanKey")
+            if (endpoint.contains("openrouter.ai", ignoreCase = true)) {
+                builder.header("HTTP-Referer", "https://aysha.ai")
+                builder.header("X-Title", "AYSHA AI Assistant")
+            }
 
             val respJson = http.newCall(builder.build()).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
