@@ -442,7 +442,7 @@ class MultiProviderAiClient {
 
         return AiTurnResult(
             text = "Actions executed (${toolsUsed.joinToString(", ")}).",
-            providerTag = "Gemini · $safeModel",
+            providerTag = "Gemini · $activeModel",
             toolsUsed = toolsUsed,
             confirmationRequired = pendingConfirm,
         )
