@@ -85,6 +85,8 @@ import com.aysha.assistant.core.SurfaceStyle
 import com.aysha.assistant.core.ThemeMode
 import com.aysha.assistant.core.UiFontFamily
 import com.aysha.assistant.core.UiTextScale
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Immutable
 data class AyshaColors(
@@ -362,18 +364,15 @@ fun LiquidAuroraBackground(
     val c = LocalAyshaColors.current
     val isPureMinimal = c.palette == MayaPalette.OBSIDIAN || c.surfaceStyle == SurfaceStyle.FLAT
     val inf = rememberInfiniteTransition(label = "aurora_drift")
-    val drift by inf.animateFloat(
-        initialValue = 0.88f,
-        targetValue = 1.14f,
-        animationSpec = infiniteRepeatable(tween(4200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "drift",
+    val liquidPhase by inf.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.283185f,
+        animationSpec = infiniteRepeatable(tween(7200, easing = LinearEasing), RepeatMode.Restart),
+        label = "liquid_phase",
     )
-    val ribbonShift by inf.animateFloat(
-        initialValue = -0.06f,
-        targetValue = 0.06f,
-        animationSpec = infiniteRepeatable(tween(5200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "ribbon_shift",
-    )
+    val drift = 1.0f + 0.13f * sin(liquidPhase)
+    val ribbonShift = 0.08f * cos(liquidPhase)
+    val flowWave = 0.06f * sin(liquidPhase * 2f)
     Box(
         modifier = modifier
             .fillMaxSize()
@@ -388,46 +387,47 @@ fun LiquidAuroraBackground(
                 val w = size.width
                 val h = size.height
 
+                // Smooth orbital translucent liquid caustics under dark frosted glass
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = 0.17f * drift),
+                            c.accentPrimary.copy(alpha = 0.22f * drift),
                             Color.Transparent,
                         ),
-                        center = Offset(w * (0.20f + ribbonShift), h * 0.16f),
-                        radius = w * 0.90f * drift,
+                        center = Offset(w * (0.20f + ribbonShift), h * (0.16f + flowWave)),
+                        radius = w * 0.92f * drift,
                     ),
-                    center = Offset(w * (0.20f + ribbonShift), h * 0.16f),
-                    radius = w * 0.90f * drift,
+                    center = Offset(w * (0.20f + ribbonShift), h * (0.16f + flowWave)),
+                    radius = w * 0.92f * drift,
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            c.accentSecondary.copy(alpha = 0.15f),
+                            c.accentSecondary.copy(alpha = 0.19f),
                             Color.Transparent,
                         ),
-                        center = Offset(w * (0.86f - ribbonShift), h * 0.56f),
+                        center = Offset(w * (0.84f - ribbonShift), h * (0.54f - flowWave)),
                         radius = w * 0.92f,
                     ),
-                    center = Offset(w * (0.86f - ribbonShift), h * 0.56f),
+                    center = Offset(w * (0.84f - ribbonShift), h * (0.54f - flowWave)),
                     radius = w * 0.92f,
                 )
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            c.accentGlow.copy(alpha = 0.11f),
+                            c.accentGlow.copy(alpha = 0.13f),
                             Color.Transparent,
                         ),
-                        center = Offset(w * 0.45f, h * 0.92f),
-                        radius = w * 0.72f * drift,
+                        center = Offset(w * (0.45f + flowWave), h * 0.88f),
+                        radius = w * 0.76f * drift,
                     ),
-                    center = Offset(w * 0.45f, h * 0.92f),
-                    radius = w * 0.72f * drift,
+                    center = Offset(w * (0.45f + flowWave), h * 0.88f),
+                    radius = w * 0.76f * drift,
                 )
 
                 val wave1 = Path().apply {
-                    moveTo(-w * 0.1f, h * (0.76f + ribbonShift * 0.4f))
-                    cubicTo(w * 0.25f, h * 0.60f, w * 0.62f, h * 0.88f, w * 1.1f, h * (0.66f - ribbonShift * 0.4f))
+                    moveTo(-w * 0.1f, h * (0.74f + ribbonShift * 0.5f))
+                    cubicTo(w * 0.25f, h * (0.58f - flowWave), w * 0.62f, h * (0.88f + flowWave), w * 1.1f, h * (0.64f - ribbonShift * 0.5f))
                     lineTo(w * 1.1f, h * 1.05f)
                     lineTo(-w * 0.1f, h * 1.05f)
                     close()
@@ -436,66 +436,83 @@ fun LiquidAuroraBackground(
                     path = wave1,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = 0.10f),
-                            c.accentSecondary.copy(alpha = 0.14f),
-                            c.accentGlow.copy(alpha = 0.10f),
+                            c.accentPrimary.copy(alpha = 0.12f),
+                            c.accentSecondary.copy(alpha = 0.16f),
+                            c.accentGlow.copy(alpha = 0.12f),
                         ),
                     ),
                 )
 
+                val topCaustic = Path().apply {
+                    moveTo(-w * 0.08f, h * (0.18f + flowWave))
+                    cubicTo(w * 0.30f, h * (0.06f - flowWave), w * 0.68f, h * (0.30f + flowWave), w * 1.08f, h * (0.14f - ribbonShift * 0.4f))
+                }
+                drawPath(
+                    path = topCaustic,
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            c.accentPrimary.copy(alpha = 0.20f),
+                            c.accentSecondary.copy(alpha = 0.18f),
+                            Color.Transparent,
+                        ),
+                    ),
+                    style = Stroke(width = 1.4.dp.toPx(), cap = StrokeCap.Round),
+                )
+
                 val ribbonStroke = Path().apply {
-                    moveTo(-w * 0.05f, h * (0.73f + ribbonShift * 0.35f))
-                    cubicTo(w * 0.28f, h * 0.57f, w * 0.64f, h * 0.86f, w * 1.05f, h * (0.64f - ribbonShift * 0.35f))
+                    moveTo(-w * 0.05f, h * (0.71f + ribbonShift * 0.45f))
+                    cubicTo(w * 0.28f, h * (0.56f - flowWave), w * 0.64f, h * (0.86f + flowWave), w * 1.05f, h * (0.62f - ribbonShift * 0.45f))
                 }
                 drawPath(
                     path = ribbonStroke,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            c.accentPrimary.copy(alpha = 0.24f),
-                            c.accentSecondary.copy(alpha = 0.26f),
-                            c.accentGlow.copy(alpha = 0.20f),
+                            c.accentPrimary.copy(alpha = 0.28f),
+                            c.accentSecondary.copy(alpha = 0.30f),
+                            c.accentGlow.copy(alpha = 0.22f),
                             Color.Transparent,
                         ),
                     ),
-                    style = Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round),
                 )
             }
         } else if (!isPureMinimal) {
-            // Calm Mist Liquid Glass Refractive Mesh (soft atmospheric refractions, zero white glare)
+            // Flowing Light Mist Liquid Refraction (visible organic waves behind translucent frosted cards, zero glare)
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
                 drawCircle(
                     brush = Brush.radialGradient(
-                        colors = listOf(c.accentPrimary.copy(alpha = 0.16f * drift), Color.Transparent),
-                        center = Offset(w * (0.16f + ribbonShift), h * 0.15f),
-                        radius = w * 0.88f * drift,
-                    ),
-                    center = Offset(w * (0.16f + ribbonShift), h * 0.15f),
-                    radius = w * 0.88f * drift,
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(c.accentSecondary.copy(alpha = 0.14f), Color.Transparent),
-                        center = Offset(w * (0.86f - ribbonShift), h * 0.48f),
-                        radius = w * 0.86f,
-                    ),
-                    center = Offset(w * (0.86f - ribbonShift), h * 0.48f),
-                    radius = w * 0.86f,
-                )
-                drawCircle(
-                    brush = Brush.radialGradient(
-                        colors = listOf(c.glassSurfaceElevated.copy(alpha = 0.36f), Color.Transparent),
-                        center = Offset(w * 0.48f, h * 0.28f),
+                        colors = listOf(c.accentPrimary.copy(alpha = 0.20f * drift), Color.Transparent),
+                        center = Offset(w * (0.18f + ribbonShift), h * (0.16f + flowWave)),
                         radius = w * 0.90f * drift,
                     ),
-                    center = Offset(w * 0.48f, h * 0.28f),
+                    center = Offset(w * (0.18f + ribbonShift), h * (0.16f + flowWave)),
                     radius = w * 0.90f * drift,
                 )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(c.accentSecondary.copy(alpha = 0.17f), Color.Transparent),
+                        center = Offset(w * (0.84f - ribbonShift), h * (0.48f - flowWave)),
+                        radius = w * 0.88f,
+                    ),
+                    center = Offset(w * (0.84f - ribbonShift), h * (0.48f - flowWave)),
+                    radius = w * 0.88f,
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(c.glassSurfaceElevated.copy(alpha = 0.34f), Color.Transparent),
+                        center = Offset(w * (0.48f + flowWave), h * 0.28f),
+                        radius = w * 0.92f * drift,
+                    ),
+                    center = Offset(w * (0.48f + flowWave), h * 0.28f),
+                    radius = w * 0.92f * drift,
+                )
                 val mistWave = Path().apply {
-                    moveTo(-w * 0.1f, h * (0.78f + ribbonShift * 0.4f))
-                    cubicTo(w * 0.25f, h * 0.64f, w * 0.64f, h * 0.89f, w * 1.1f, h * (0.68f - ribbonShift * 0.4f))
+                    moveTo(-w * 0.1f, h * (0.76f + ribbonShift * 0.45f))
+                    cubicTo(w * 0.25f, h * (0.62f - flowWave), w * 0.64f, h * (0.89f + flowWave), w * 1.1f, h * (0.66f - ribbonShift * 0.45f))
                     lineTo(w * 1.1f, h * 1.05f)
                     lineTo(-w * 0.1f, h * 1.05f)
                     close()
@@ -504,28 +521,45 @@ fun LiquidAuroraBackground(
                     path = mistWave,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = 0.08f),
-                            c.accentSecondary.copy(alpha = 0.10f),
-                            c.accentGlow.copy(alpha = 0.08f),
+                            c.accentPrimary.copy(alpha = 0.11f),
+                            c.accentSecondary.copy(alpha = 0.13f),
+                            c.accentGlow.copy(alpha = 0.10f),
                         ),
                     ),
                 )
+                val upperLiquidArc = Path().apply {
+                    moveTo(-w * 0.08f, h * (0.20f + flowWave))
+                    cubicTo(w * 0.28f, h * (0.08f - flowWave), w * 0.68f, h * (0.31f + flowWave), w * 1.06f, h * (0.16f - ribbonShift * 0.35f))
+                }
+                drawPath(
+                    path = upperLiquidArc,
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            c.accentPrimary.copy(alpha = 0.17f),
+                            Color.White.copy(alpha = 0.28f),
+                            c.accentSecondary.copy(alpha = 0.16f),
+                            Color.Transparent,
+                        ),
+                    ),
+                    style = Stroke(width = 1.6.dp.toPx(), cap = StrokeCap.Round),
+                )
                 val silkPath = Path().apply {
-                    moveTo(-w * 0.05f, h * (0.77f + ribbonShift * 0.4f))
-                    cubicTo(w * 0.26f, h * 0.64f, w * 0.68f, h * 0.88f, w * 1.05f, h * (0.69f - ribbonShift * 0.4f))
+                    moveTo(-w * 0.05f, h * (0.75f + ribbonShift * 0.45f))
+                    cubicTo(w * 0.26f, h * (0.62f - flowWave), w * 0.68f, h * (0.88f + flowWave), w * 1.05f, h * (0.67f - ribbonShift * 0.45f))
                 }
                 drawPath(
                     path = silkPath,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
                             Color.Transparent,
-                            c.accentPrimary.copy(alpha = 0.18f),
-                            Color.White.copy(alpha = 0.34f),
-                            c.accentSecondary.copy(alpha = 0.17f),
+                            c.accentPrimary.copy(alpha = 0.22f),
+                            Color.White.copy(alpha = 0.36f),
+                            c.accentSecondary.copy(alpha = 0.20f),
                             Color.Transparent,
                         ),
                     ),
-                    style = Stroke(width = 1.9.dp.toPx(), cap = StrokeCap.Round),
+                    style = Stroke(width = 2.0.dp.toPx(), cap = StrokeCap.Round),
                 )
             }
         }
@@ -608,6 +642,17 @@ fun GlassCard(
         SurfaceStyle.SOFT -> Modifier.shadow(elevation = 4.dp, shape = shape, clip = false)
         else -> Modifier
     }
+    val opticalGlintPhase = if (c.surfaceStyle == SurfaceStyle.GLASS && elevated) {
+        val glintInf = rememberInfiniteTransition(label = "glass_glint")
+        glintInf.animateFloat(
+            initialValue = -0.35f,
+            targetValue = 1.35f,
+            animationSpec = infiniteRepeatable(tween(4600, easing = LinearEasing), RepeatMode.Restart),
+            label = "glint_x",
+        ).value
+    } else {
+        0.5f
+    }
     val opticalGlintMod = if (c.surfaceStyle == SurfaceStyle.GLASS) {
         Modifier.drawBehind {
             val radiusPx = resolvedRadius.toPx()
@@ -615,7 +660,7 @@ fun GlassCard(
             drawRoundRect(
                 brush = Brush.verticalGradient(
                     colors = listOf(
-                        Color.White.copy(alpha = if (c.isDark) 0.06f else 0.18f),
+                        Color.White.copy(alpha = if (c.isDark) 0.07f else 0.20f),
                         Color.Transparent,
                     ),
                     startY = 0f,
@@ -623,20 +668,37 @@ fun GlassCard(
                 ),
                 cornerRadius = CornerRadius(radiusPx, radiusPx),
             )
+            // Moving optical caustic glint sweep across elevated Liquid Glass panel
+            if (elevated) {
+                val gx = size.width * opticalGlintPhase
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = if (c.isDark) 0.045f else 0.14f),
+                            c.accentPrimary.copy(alpha = if (c.isDark) 0.045f else 0.05f),
+                            Color.Transparent,
+                        ),
+                        startX = gx - size.width * 0.36f,
+                        endX = gx + size.width * 0.36f,
+                    ),
+                    cornerRadius = CornerRadius(radiusPx, radiusPx),
+                )
+            }
             // Delicate top-edge optical specular catch-light
             val edgeInset = (radiusPx * 0.45f).coerceAtMost(size.width * 0.35f)
             drawLine(
                 brush = Brush.horizontalGradient(
                     colors = listOf(
                         Color.Transparent,
-                        c.glassHighlight.copy(alpha = if (c.isDark) 0.24f else 0.42f),
-                        c.accentPrimary.copy(alpha = 0.14f),
+                        c.glassHighlight.copy(alpha = if (c.isDark) 0.24f else 0.44f),
+                        c.accentPrimary.copy(alpha = 0.16f),
                         Color.Transparent,
                     ),
                 ),
                 start = Offset(edgeInset, 1.dp.toPx()),
                 end = Offset((size.width - edgeInset).coerceAtLeast(edgeInset), 1.dp.toPx()),
-                strokeWidth = 1.dp.toPx(),
+                strokeWidth = 1.05.dp.toPx(),
             )
         }
     } else {

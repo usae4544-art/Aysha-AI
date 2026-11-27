@@ -6,6 +6,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.io.File
 import java.util.concurrent.TimeUnit
 
 /**
@@ -63,6 +64,44 @@ class RemoteConfigManager {
             else -> releaseFallback
         }
         merged?.copy(fetchedAtMs = System.currentTimeMillis())
+    }
+
+    suspend fun downloadApkToFile(url: String, destFile: File): Result<File> = withContext(Dispatchers.IO) {
+        runCatching {
+            destFile.parentFile?.mkdirs()
+            val req = Request.Builder()
+                .url(url)
+                .header("Accept", "application/vnd.android.package-archive, application/octet-stream, */*")
+                .get()
+                .build()
+            val apkHttp = http.newBuilder()
+                .followRedirects(true)
+                .followSslRedirects(true)
+                .readTimeout(120, TimeUnit.SECONDS)
+                .build()
+            apkHttp.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    error("Download failed (HTTP ${resp.code})")
+                }
+                val body = resp.body ?: error("Empty download response")
+                val tmp = File(destFile.parentFile, "${destFile.name}.part")
+                body.byteStream().use { input ->
+                    tmp.outputStream().use { output ->
+                        input.copyTo(output, bufferSize = 32_768)
+                    }
+                }
+                if (tmp.length() < 1_000_000L) {
+                    tmp.delete()
+                    error("Downloaded file too small (${tmp.length()} bytes)")
+                }
+                if (destFile.exists()) destFile.delete()
+                if (!tmp.renameTo(destFile)) {
+                    tmp.copyTo(destFile, overwrite = true)
+                    tmp.delete()
+                }
+                destFile
+            }
+        }
     }
 
     private fun fetchFromFirestore(): LiveRemoteConfig? = runCatching {

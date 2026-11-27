@@ -9,6 +9,7 @@ import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
 import androidx.core.content.ContextCompat
 import com.aysha.assistant.core.AwarenessDecisionLog
@@ -76,6 +77,9 @@ class WakeWordEngine(private val context: Context) {
     private var audioRecord: AudioRecord? = null
     private var ns: NoiseSuppressor? = null
     private var aec: AcousticEchoCanceler? = null
+    private var agc: AutomaticGainControl? = null
+    private var hpPrevIn = 0f
+    private var hpPrevOut = 0f
     private var listenJob: Job? = null
     private val audioLock = Any()
 
@@ -115,7 +119,17 @@ class WakeWordEngine(private val context: Context) {
         awarenessEnabled = awareness
         sensitivity = sens
         muteDuringMedia = muteMedia
+        if (_isRunning.value && !pausedForActiveSpeech) {
+            _statusText.value = "Listening for '${primaryWakeLabel()}' (${sensitivity.label})"
+            WakeWordStatusBus.publish(running = true, state = WakeModelState.READY, status = _statusText.value)
+        }
     }
+
+    private fun primaryWakeLabel(): String =
+        configuredCsv.split(",", "\n", ";")
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+            ?: "Hey ${assistantName.ifBlank { "Aysha" }}"
 
     fun start(
         wakeWordsCsv: String,
@@ -174,7 +188,7 @@ class WakeWordEngine(private val context: Context) {
 
             _modelState.value = WakeModelState.READY
             _isRunning.value = true
-            _statusText.value = "Listening for Hey Aysha (${sensitivity.label})"
+            _statusText.value = "Listening for '${primaryWakeLabel()}' (${sensitivity.label})"
             WakeWordStatusBus.publish(running = true, state = WakeModelState.READY, status = _statusText.value)
             runCaptureLoop()
         }
@@ -195,7 +209,7 @@ class WakeWordEngine(private val context: Context) {
         pausedForActiveSpeech = false
         if (listenJob?.isActive != true && model != null) {
             listenJob = scope.launch {
-                _statusText.value = "Listening for Hey Aysha (${sensitivity.label})"
+                _statusText.value = "Listening for '${primaryWakeLabel()}' (${sensitivity.label})"
                 WakeWordStatusBus.publish(running = true, state = WakeModelState.READY, status = _statusText.value)
                 runCaptureLoop()
             }
@@ -277,9 +291,14 @@ class WakeWordEngine(private val context: Context) {
             if (AcousticEchoCanceler.isAvailable()) {
                 aec = runCatching { AcousticEchoCanceler.create(recorder.audioSessionId)?.apply { enabled = true } }.getOrNull()
             }
+            if (AutomaticGainControl.isAvailable()) {
+                agc = runCatching { AutomaticGainControl.create(recorder.audioSessionId)?.apply { enabled = true } }.getOrNull()
+            }
         }
+        hpPrevIn = 0f
+        hpPrevOut = 0f
 
-        _statusText.value = "Listening for Hey Aysha (${sensitivity.label})"
+        _statusText.value = "Listening for '${primaryWakeLabel()}' (${sensitivity.label})"
         WakeWordStatusBus.publish(running = true, state = WakeModelState.READY, status = _statusText.value)
 
         val buf = ByteArray(3200) // 100ms @ 16kHz PCM16
@@ -302,6 +321,7 @@ class WakeWordEngine(private val context: Context) {
                 continue
             }
 
+            filterHighPassRumble(buf, read)
             val energy = computeNormalizedRms(buf, read)
             _micEnergy.value = energy
             WakeWordStatusBus.publish(energy = energy)
@@ -401,12 +421,32 @@ class WakeWordEngine(private val context: Context) {
         synchronized(audioLock) {
             runCatching { ns?.release() }
             runCatching { aec?.release() }
+            runCatching { agc?.release() }
             ns = null
             aec = null
+            agc = null
             runCatching { audioRecord?.stop() }
             runCatching { audioRecord?.release() }
             audioRecord = null
         }
+    }
+
+    private fun filterHighPassRumble(pcm: ByteArray, length: Int) {
+        var prevX = hpPrevIn
+        var prevY = hpPrevOut
+        var i = 0
+        while (i + 1 < length) {
+            val raw = ((pcm[i + 1].toInt() shl 8) or (pcm[i].toInt() and 0xFF)).toShort().toFloat()
+            val hp = 0.96f * (prevY + raw - prevX)
+            prevX = raw
+            prevY = hp
+            val outSample = hp.toInt().coerceIn(-32768, 32767)
+            pcm[i] = (outSample and 0xFF).toByte()
+            pcm[i + 1] = ((outSample shr 8) and 0xFF).toByte()
+            i += 2
+        }
+        hpPrevIn = prevX
+        hpPrevOut = prevY
     }
 
     fun destroy() {

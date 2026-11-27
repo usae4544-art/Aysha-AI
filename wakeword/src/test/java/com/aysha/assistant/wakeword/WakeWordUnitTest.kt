@@ -30,4 +30,24 @@ class WakeWordUnitTest {
         )
         assertEquals("hey nova", hit)
     }
+
+    @Test
+    fun `wake phrase matcher fuzzy-matches arbitrary user-configured wake words`() {
+        assertEquals(
+            "jarvis",
+            WakePhraseMatcher.matchTranscript(
+                transcript = "ok jarves open settings",
+                configuredCsv = "Jarvis,Hello Buddy",
+                assistantName = "AYSHA",
+            ),
+        )
+        assertEquals(
+            "suno jana",
+            WakePhraseMatcher.matchTranscript(
+                transcript = "shuno jaana time batao",
+                configuredCsv = "Suno Jana",
+                assistantName = "AYSHA",
+            ),
+        )
+    }
 }

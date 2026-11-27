@@ -72,11 +72,11 @@ jobs:
           mkdir -p apk-out
           DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
           RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          cp "$DEBUG_APK" apk-out/AYSHA-v2.12.2-debug.apk
-          cp "$RELEASE_APK" apk-out/AYSHA-v2.12.2-release.apk
+          cp "$DEBUG_APK" apk-out/AYSHA-v2.13.0-debug.apk
+          cp "$RELEASE_APK" apk-out/AYSHA-v2.13.0-release.apk
           cp "$RELEASE_APK" apk-out/AYSHA-latest-release.apk
           APKSIGNER=$(find "${ANDROID_HOME:-/usr/local/lib/android/sdk}/build-tools" -name apksigner | sort -V | tail -n 1)
-          "$APKSIGNER" verify --verbose apk-out/AYSHA-v2.12.2-release.apk
+          "$APKSIGNER" verify --verbose apk-out/AYSHA-v2.13.0-release.apk
           ls -lh apk-out/
           sha256sum apk-out/*.apk
 
@@ -91,9 +91,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          TAG="v2.12.2"
+          TAG="v2.13.0"
           gh release delete "$TAG" --yes 2>/dev/null || true
-          gh release create "$TAG" apk-out/AYSHA-v2.12.2-release.apk apk-out/AYSHA-latest-release.apk apk-out/AYSHA-v2.12.2-debug.apk \
-            --title "AYSHA v2.12.2 – Animated LiDAR Center Mic, Crisp Glass Drawer & Zero Clipping" \
-            --notes "Upgrades the center Mic FAB with animated 3D LiDAR radar sweep & dual sonar waves, fixes variable-font thin rendering, removes translucent card shadow stripes & drawer bleed-through, fixes card/scanner clipping, and adds auto-launch in-app APK updater." \
+          gh release create "$TAG" apk-out/AYSHA-v2.13.0-release.apk apk-out/AYSHA-latest-release.apk apk-out/AYSHA-v2.13.0-debug.apk \
+            --title "AYSHA v2.13.0 – Fixed Gemini Live + Noise Cancel, Background Wake Word & Flowing Liquid Glass" \
+            --notes "Fixes Gemini Live WebSocket (v1alpha/v1beta failover + speakerphone routing + hardware & DSP active noise cancellation + instant Voice Chat fallback), upgrades always-on background custom wake word listening with WakeLock & FullScreen alerts, adds flowing animated Liquid Glass caustic waves, and fixes 1-tap FileProvider APK updates." \
             --latest

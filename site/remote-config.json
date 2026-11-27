@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.12.2",
-  "latestVersionCode": 18,
-  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.12.2/AYSHA-latest-release.apk",
-  "updateNotes": "Animated 3D LiDAR Center Mic Orb, crisp high-legibility Inter/Nunito font weights, clean Liquid Glass drawer & cards without shadow stripes or bleed-through, zero bottom/card clipping, and seamless in-app APK updater.",
+  "latestVersion": "2.13.0",
+  "latestVersionCode": 19,
+  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.13.0/AYSHA-latest-release.apk",
+  "updateNotes": "Fixed Gemini Live Voice WebSocket (v1alpha/v1beta + Speakerphone + Dual-Stage Active Noise Cancellation), always-on background custom wake word listening with FullScreen wake alerts, animated flowing Liquid Glass refraction waves, and 1-tap FileProvider APK auto-updater.",
   "forceUpdate": false,
   "announcementBanner": "",
   "geminiTextModel": "gemini-2.5-flash-lite",

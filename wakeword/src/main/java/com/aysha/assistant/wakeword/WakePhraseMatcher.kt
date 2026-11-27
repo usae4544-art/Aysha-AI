@@ -71,6 +71,33 @@ object WakePhraseMatcher {
             }
         }
 
+        // Phonetic normalization + word-window matching for ANY user-written custom phrases (e.g. "Hello Jaana", "Jarvis", "Suno Buddy")
+        val textWords = text.split(" ").filter { it.isNotBlank() }
+        val userCustomPhrases = configuredCsv.split(",", "\n", ";")
+            .map { normalize(it) }
+            .filter { it.isNotBlank() }
+        for (customPhrase in userCustomPhrases) {
+            val targetWords = customPhrase.split(" ").filter { it.isNotBlank() }
+            if (targetWords.isEmpty() || textWords.size < targetWords.size) continue
+            for (start in 0..(textWords.size - targetWords.size)) {
+                var allWordsClose = true
+                for (offset in targetWords.indices) {
+                    val heardW = phoneticNormalize(textWords[start + offset])
+                    val targetW = phoneticNormalize(targetWords[offset])
+                    val maxDist = when {
+                        targetW.length >= 6 -> 2
+                        targetW.length >= 4 -> 1
+                        else -> 0
+                    }
+                    if (heardW != targetW && levenshtein(heardW, targetW) > maxDist) {
+                        allWordsClose = false
+                        break
+                    }
+                }
+                if (allWordsClose) return customPhrase
+            }
+        }
+
         val nameTokens = buildList {
             addAll(defaultNameVariants)
             val custom = normalize(assistantName)
@@ -97,6 +124,17 @@ object WakePhraseMatcher {
             .replace(Regex("[^a-z0-9\\s]"), " ")
             .replace(Regex("\\s+"), " ")
             .trim()
+
+    private fun phoneticNormalize(word: String): String =
+        word.replace("ph", "f")
+            .replace("sh", "s")
+            .replace("aa", "a")
+            .replace("ee", "i")
+            .replace("oo", "u")
+            .replace("ey", "ay")
+            .replace("ck", "k")
+            .replace("z", "j")
+            .replace("w", "v")
 
     private fun levenshtein(a: String, b: String): Int {
         val dp = IntArray(b.length + 1) { it }

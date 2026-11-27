@@ -1,6 +1,7 @@
 package com.aysha.assistant.floatingassistant
 
 import android.Manifest
+import android.annotation.SuppressLint
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -19,6 +20,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.os.PowerManager
 import android.provider.Settings
 import android.view.Gravity
 import android.view.MotionEvent
@@ -57,6 +59,8 @@ class AyshaForegroundService : Service() {
     private var orbView: View? = null
     private var menuView: View? = null
     private var wakeCollectorJob: Job? = null
+    private var wakeResumeWatchdogJob: Job? = null
+    private var wakeLock: PowerManager.WakeLock? = null
     private var orbParams: WindowManager.LayoutParams? = null
 
     @Volatile
@@ -64,6 +68,9 @@ class AyshaForegroundService : Service() {
 
     @Volatile
     private var wakeActive = false
+
+    @Volatile
+    private var activeWakeHint = "Hey Aysha"
 
     override fun onCreate() {
         super.onCreate()
@@ -78,7 +85,9 @@ class AyshaForegroundService : Service() {
             ACTION_STOP_ALL -> {
                 wakeActive = false
                 orbVisible = false
+                wakeResumeWatchdogJob?.cancel()
                 wakeEngine.stop()
+                releaseWakeLock()
                 removeMenu()
                 removeOrb()
                 scope.launch {
@@ -107,9 +116,11 @@ class AyshaForegroundService : Service() {
             }
             ACTION_START_WAKEWORD -> {
                 wakeActive = true
-                promoteForeground()
+                acquireWakeLock()
                 scope.launch {
                     val s = settingsRepo.settingsFlow.first()
+                    activeWakeHint = firstPhraseFromCsv(s.wakeWordsCsv, s.assistantName)
+                    promoteForeground()
                     wakeEngine.start(
                         wakeWordsCsv = s.wakeWordsCsv,
                         assistantName = s.assistantName,
@@ -119,9 +130,25 @@ class AyshaForegroundService : Service() {
                     )
                 }
             }
+            ACTION_UPDATE_WAKE_CONFIG -> {
+                scope.launch {
+                    val s = settingsRepo.settingsFlow.first()
+                    activeWakeHint = firstPhraseFromCsv(s.wakeWordsCsv, s.assistantName)
+                    wakeEngine.updateConfig(
+                        wakeWordsCsv = s.wakeWordsCsv,
+                        name = s.assistantName,
+                        awareness = s.awarenessEnabled,
+                        sens = s.awarenessSensitivity,
+                        muteMedia = s.muteDuringMedia,
+                    )
+                    if (wakeActive) promoteForeground()
+                }
+            }
             ACTION_STOP_WAKEWORD -> {
                 wakeActive = false
+                wakeResumeWatchdogJob?.cancel()
                 wakeEngine.stop()
+                releaseWakeLock()
                 if (!orbVisible) {
                     runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
                     stopSelf()
@@ -134,18 +161,21 @@ class AyshaForegroundService : Service() {
                 wakeEngine.pauseForActiveSession()
             }
             ACTION_RESUME_WAKEWORD -> {
+                wakeResumeWatchdogJob?.cancel()
                 if (wakeActive) wakeEngine.resumeAfterActiveSession()
             }
             else -> {
                 // Service restarted by Android (START_STICKY): restore persisted wake & orb state
                 scope.launch {
                     val s = settingsRepo.settingsFlow.first()
+                    activeWakeHint = firstPhraseFromCsv(s.wakeWordsCsv, s.assistantName)
                     orbVisible = s.floatingOrbEnabled && Settings.canDrawOverlays(this@AyshaForegroundService)
                     wakeActive = s.wakeWordEnabled &&
                         ContextCompat.checkSelfPermission(this@AyshaForegroundService, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
                     promoteForeground()
                     if (orbVisible) showOrbIfPermitted()
                     if (wakeActive) {
+                        acquireWakeLock()
                         wakeEngine.start(
                             wakeWordsCsv = s.wakeWordsCsv,
                             assistantName = s.assistantName,
@@ -154,6 +184,7 @@ class AyshaForegroundService : Service() {
                             muteMedia = s.muteDuringMedia,
                         )
                     } else if (!orbVisible) {
+                        releaseWakeLock()
                         runCatching { stopForeground(STOP_FOREGROUND_REMOVE) }
                         stopSelf()
                     }
@@ -171,9 +202,43 @@ class AyshaForegroundService : Service() {
                 wakeEngine.pauseForActiveSession()
                 delay(140L) // allow OS AudioRecord release before handoff to STT/Gemini Live
                 WakeWordStatusBus.emitWakeTrigger(matchedPhrase)
+                postWakeActivationAlert(matchedPhrase)
                 launchAssistant(startVoice = true, quickTab = null, wakePhrase = matchedPhrase)
+                // Failsafe: if Android blocked background activity launch and no session claimed mic, auto-resume!
+                wakeResumeWatchdogJob?.cancel()
+                wakeResumeWatchdogJob = scope.launch {
+                    delay(4500L)
+                    if (wakeActive && !wakeEngine.micEnergy.value.isNaN()) {
+                        wakeEngine.resumeAfterActiveSession()
+                    }
+                }
             }
         }
+    }
+
+    private fun firstPhraseFromCsv(csv: String, assistantName: String): String =
+        csv.split(",", "\n", ";")
+            .map { it.trim() }
+            .firstOrNull { it.isNotBlank() }
+            ?: "Hey ${assistantName.ifBlank { "Aysha" }}"
+
+    @SuppressLint("WakelockTimeout")
+    private fun acquireWakeLock() {
+        runCatching {
+            if (wakeLock?.isHeld == true) return
+            val pm = getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return
+            wakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "aysha:wake_word_lock").apply {
+                setReferenceCounted(false)
+                acquire(6 * 60 * 60 * 1000L)
+            }
+        }
+    }
+
+    private fun releaseWakeLock() {
+        runCatching {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        }
+        wakeLock = null
     }
 
     private fun promoteForeground() {
@@ -203,7 +268,45 @@ class AyshaForegroundService : Service() {
         ).apply {
             description = "Keeps AYSHA floating orb and optional on-device wake word ready"
         }
+        val wakeAlertChannel = NotificationChannel(
+            WAKE_ALERT_CHANNEL_ID,
+            "AYSHA Background Wake Alerts",
+            NotificationManager.IMPORTANCE_HIGH,
+        ).apply {
+            description = "Opens AYSHA hands-free voice when wake phrase triggers in background"
+        }
         nm.createNotificationChannel(channel)
+        nm.createNotificationChannel(wakeAlertChannel)
+    }
+
+    private fun postWakeActivationAlert(matchedPhrase: String) {
+        runCatching {
+            val wakeIntent = Intent(ACTION_OPEN_ASSISTANT).apply {
+                setPackage(packageName)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                putExtra(EXTRA_START_VOICE, true)
+                putExtra(EXTRA_WAKE_PHRASE, matchedPhrase)
+            }
+            val wakePi = PendingIntent.getActivity(
+                this,
+                105,
+                wakeIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+            )
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+            val notif = NotificationCompat.Builder(this, WAKE_ALERT_CHANNEL_ID)
+                .setSmallIcon(applicationInfo.icon.takeIf { it != 0 } ?: android.R.drawable.ic_btn_speak_now)
+                .setContentTitle("AYSHA Activated · '$matchedPhrase'")
+                .setContentText("Tap to speak with AYSHA")
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setAutoCancel(true)
+                .setTimeoutAfter(5000L)
+                .setFullScreenIntent(wakePi, true)
+                .setContentIntent(wakePi)
+                .build()
+            nm.notify(WAKE_ALERT_NOTIFICATION_ID, notif)
+        }
     }
 
     private fun buildNotification(): Notification {
@@ -226,12 +329,12 @@ class AyshaForegroundService : Service() {
         )
 
         val title = when {
-            wakeActive && orbVisible -> "AYSHA Active · Mic Wake Word + Floating Orb"
-            wakeActive -> "AYSHA Listening for 'Hey Aysha' (Mic Active)"
+            wakeActive && orbVisible -> "AYSHA Active · '$activeWakeHint' + Orb"
+            wakeActive -> "AYSHA Listening: '$activeWakeHint'"
             orbVisible -> "AYSHA Floating Orb Ready"
             else -> "AYSHA Assistant Ready"
         }
-        val subtitle = if (wakeActive) "On-device wake word active · Tap to talk" else "Tap to open AYSHA"
+        val subtitle = if (wakeActive) "Background wake + noise filter active · Tap to talk" else "Tap to open AYSHA"
 
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(applicationInfo.icon.takeIf { it != 0 } ?: android.R.drawable.ic_btn_speak_now)
@@ -496,8 +599,10 @@ class AyshaForegroundService : Service() {
     }
 
     override fun onDestroy() {
+        wakeResumeWatchdogJob?.cancel()
         wakeCollectorJob?.cancel()
         wakeEngine.destroy()
+        releaseWakeLock()
         removeMenu()
         removeOrb()
         scope.cancel()
@@ -509,7 +614,9 @@ class AyshaForegroundService : Service() {
     companion object {
         private const val TAG = "AyshaFgService"
         const val CHANNEL_ID = "aysha_service_channel"
+        const val WAKE_ALERT_CHANNEL_ID = "aysha_wake_alert_channel"
         const val NOTIFICATION_ID = 909
+        const val WAKE_ALERT_NOTIFICATION_ID = 910
 
         const val ACTION_OPEN_ASSISTANT = "com.aysha.assistant.ACTION_OPEN_ASSISTANT"
         const val EXTRA_START_VOICE = "extra_start_voice"
@@ -519,6 +626,7 @@ class AyshaForegroundService : Service() {
         const val ACTION_SHOW_ORB = "com.aysha.assistant.SHOW_ORB"
         const val ACTION_HIDE_ORB = "com.aysha.assistant.HIDE_ORB"
         const val ACTION_START_WAKEWORD = "com.aysha.assistant.START_WAKEWORD"
+        const val ACTION_UPDATE_WAKE_CONFIG = "com.aysha.assistant.UPDATE_WAKE_CONFIG"
         const val ACTION_STOP_WAKEWORD = "com.aysha.assistant.STOP_WAKEWORD"
         const val ACTION_PAUSE_WAKEWORD = "com.aysha.assistant.PAUSE_WAKEWORD"
         const val ACTION_RESUME_WAKEWORD = "com.aysha.assistant.RESUME_WAKEWORD"

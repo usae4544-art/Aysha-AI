@@ -1,13 +1,18 @@
 package com.aysha.assistant.ai
 
 import android.annotation.SuppressLint
+import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioDeviceInfo
 import android.media.AudioFormat
+import android.media.AudioManager
 import android.media.AudioRecord
 import android.media.AudioTrack
 import android.media.MediaRecorder
 import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
 import android.media.audiofx.NoiseSuppressor
+import android.os.Build
 import android.util.Base64
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.OrbState
@@ -47,7 +52,13 @@ interface LiveCallbacks {
 class GeminiLiveClient(
     private val toolExecutor: ToolExecutor,
     private val callbacks: LiveCallbacks,
+    private val appContext: Context? = null,
 ) {
+    private data class LiveEndpointCandidate(
+        val model: String,
+        val apiVersion: String,
+    )
+
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val http = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -86,18 +97,37 @@ class GeminiLiveClient(
     private var activeSystemInstruction: String = ""
 
     @Volatile
-    private var liveModelCandidates: List<String> = emptyList()
+    private var liveCandidates: List<LiveEndpointCandidate> = emptyList()
 
     @Volatile
-    private var liveModelIdx: Int = 0
+    private var liveCandidateIdx: Int = 0
+
+    @Volatile
+    private var lastServerError: String? = null
+
+    @Volatile
+    private var previousAudioMode: Int? = null
+
+    @Volatile
+    private var previousSpeakerphone: Boolean? = null
 
     private var recordJob: Job? = null
     private var playJob: Job? = null
     private var reconnectJob: Job? = null
+    private var setupTimeoutJob: Job? = null
     private var audioRecord: AudioRecord? = null
     private var audioTrack: AudioTrack? = null
     private var aec: AcousticEchoCanceler? = null
     private var ns: NoiseSuppressor? = null
+    private var agc: AutomaticGainControl? = null
+
+    // Dual-stage DSP noise suppression state
+    private var hpPrevIn = 0f
+    private var hpPrevOut = 0f
+    private var adaptiveNoiseFloor = 0.012f
+    private var voiceGateHangover = 0
+    @Volatile
+    private var playbackActive = false
 
     private val playbackQueue = LinkedBlockingQueue<ByteArray>(220)
     private val userTranscriptBuf = StringBuilder()
@@ -126,17 +156,26 @@ class GeminiLiveClient(
         }
         userStopped = false
         resumeHandle = null
+        lastServerError = null
         activeSettings = settings.copy(geminiApiKey = key)
         activeSystemInstruction = systemInstruction
-        liveModelCandidates = listOf(
-            settings.geminiLiveModel.trim(),
-            "gemini-3.8-live",
-            "gemini-3.1-flash-live-preview",
-            "gemini-2.5-flash-native-audio-preview-09-2025",
-            "gemini-2.0-flash-live-001",
-            "gemini-2.0-flash-exp",
-        ).filter { it.isNotBlank() }.distinct()
-        liveModelIdx = 0
+        val configured = settings.geminiLiveModel.trim().removePrefix("models/")
+        liveCandidates = buildList {
+            if (configured.isNotBlank()) {
+                val primaryVer = if (configured.contains("3.")) "v1alpha" else "v1beta"
+                val altVer = if (primaryVer == "v1alpha") "v1beta" else "v1alpha"
+                add(LiveEndpointCandidate(configured, primaryVer))
+                add(LiveEndpointCandidate(configured, altVer))
+            }
+            add(LiveEndpointCandidate("gemini-3.8-live", "v1alpha"))
+            add(LiveEndpointCandidate("gemini-3.8-live", "v1beta"))
+            add(LiveEndpointCandidate("gemini-3.1-flash-live-preview", "v1alpha"))
+            add(LiveEndpointCandidate("gemini-2.5-flash-native-audio-preview-09-2025", "v1beta"))
+            add(LiveEndpointCandidate("gemini-2.5-flash-native-audio-preview-12-2025", "v1beta"))
+            add(LiveEndpointCandidate("gemini-2.0-flash-live-001", "v1beta"))
+            add(LiveEndpointCandidate("gemini-2.0-flash-exp", "v1alpha"))
+        }.distinct()
+        liveCandidateIdx = 0
         connect(isResume = false)
     }
 
@@ -145,14 +184,16 @@ class GeminiLiveClient(
         val key = s.geminiApiKey.trim().replace(Regex("\\s+"), "")
         if (key.isEmpty() || userStopped) return
 
-        val currentModel = liveModelCandidates.getOrElse(liveModelIdx) {
-            s.geminiLiveModel.trim().ifBlank { "gemini-3.8-live" }
+        val candidate = liveCandidates.getOrElse(liveCandidateIdx) {
+            LiveEndpointCandidate("gemini-3.8-live", "v1alpha")
         }
+        val currentModel = candidate.model
         _orbState.value = OrbState.CONNECTING
         _statusText.value = if (isResume) "Reconnecting live voice..." else "Connecting Gemini Live..."
         setupComplete = false
+        setupTimeoutJob?.cancel()
 
-        val wsUrl = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1beta.GenerativeService.BidiGenerateContent?key=$key"
+        val wsUrl = "wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.${candidate.apiVersion}.GenerativeService.BidiGenerateContent?key=$key"
         val req = Request.Builder().url(wsUrl).build()
 
         webSocket = http.newWebSocket(
@@ -160,8 +201,17 @@ class GeminiLiveClient(
             object : WebSocketListener() {
                 override fun onOpen(ws: WebSocket, response: Response) {
                     val voiceName = VoicePersonalities.byId(s.voicePersonalityId).geminiLiveVoice
-                    val payload = buildSetupPayload(currentModel, voiceName, activeSystemInstruction, resumeHandle)
+                    val payload = buildSetupPayload(currentModel, candidate.apiVersion, voiceName, activeSystemInstruction, resumeHandle)
                     runCatching { ws.send(payload.toString()) }
+                    setupTimeoutJob?.cancel()
+                    setupTimeoutJob = scope.launch {
+                        delay(7000L)
+                        if (!setupComplete && !userStopped && webSocket === ws) {
+                            SafeLogger.w(TAG, "Setup timeout on $currentModel (${candidate.apiVersion})")
+                            lastServerError = "Setup timeout on $currentModel"
+                            runCatching { ws.close(1000, "Setup timeout") }
+                        }
+                    }
                 }
 
                 override fun onMessage(ws: WebSocket, text: String) {
@@ -169,17 +219,18 @@ class GeminiLiveClient(
                 }
 
                 override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                    setupTimeoutJob?.cancel()
                     val detail = SafeLogger.redact(
-                        runCatching { response?.body?.string()?.take(160) }.getOrNull() ?: t.message ?: "Connection failed",
+                        runCatching { response?.body?.string()?.take(160) }.getOrNull() ?: lastServerError ?: t.message ?: "Connection failed",
                     )
                     val wasSetupDone = setupComplete
                     cleanupAudio()
                     webSocket = null
                     setupComplete = false
 
-                    if (!userStopped && !wasSetupDone && liveModelIdx + 1 < liveModelCandidates.size) {
-                        liveModelIdx++
-                        scheduleReconnect(delayMs = 200L, isResume = false)
+                    if (!userStopped && !wasSetupDone && liveCandidateIdx + 1 < liveCandidates.size) {
+                        liveCandidateIdx++
+                        scheduleReconnect(delayMs = 180L, isResume = false)
                         return
                     }
                     if (!userStopped && !resumeHandle.isNullOrBlank()) {
@@ -192,20 +243,28 @@ class GeminiLiveClient(
                 }
 
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                    setupTimeoutJob?.cancel()
                     val wasSetupDone = setupComplete
                     cleanupAudio()
                     webSocket = null
                     setupComplete = false
-                    if (!userStopped && !wasSetupDone && liveModelIdx + 1 < liveModelCandidates.size) {
-                        liveModelIdx++
-                        scheduleReconnect(delayMs = 200L, isResume = false)
+                    if (!userStopped && !wasSetupDone && liveCandidateIdx + 1 < liveCandidates.size) {
+                        liveCandidateIdx++
+                        scheduleReconnect(delayMs = 180L, isResume = false)
                         return
                     }
                     if (!userStopped && !resumeHandle.isNullOrBlank()) {
                         scheduleReconnect()
                         return
                     }
-                    if (_orbState.value != OrbState.ERROR) {
+                    if (_orbState.value != OrbState.ERROR && !userStopped) {
+                        val closeMsg = lastServerError ?: reason.takeIf { it.isNotBlank() && code != 1000 }
+                        if (closeMsg != null && !wasSetupDone) {
+                            _orbState.value = OrbState.ERROR
+                            _statusText.value = "Live connection error"
+                            callbacks.onError("Gemini Live closed ($currentModel): ${SafeLogger.redact(closeMsg)}")
+                            return
+                        }
                         _orbState.value = OrbState.IDLE
                         _statusText.value = "Tap Orb to talk"
                     }
@@ -226,12 +285,14 @@ class GeminiLiveClient(
 
     private fun buildSetupPayload(
         modelName: String,
+        apiVersion: String,
         voiceName: String,
         systemInstruction: String,
         handle: String?,
     ): JSONObject {
         val cleanModel = modelName.removePrefix("models/")
         val isThinking = cleanModel.contains("extended-thinking", ignoreCase = true)
+        val isLegacy20 = cleanModel.startsWith("gemini-2.0")
 
         val setup = JSONObject().apply {
             put("model", "models/$cleanModel")
@@ -246,19 +307,23 @@ class GeminiLiveClient(
                             JSONObject().put("prebuiltVoiceConfig", JSONObject().put("voiceName", voiceName)),
                         ),
                     )
-                    if (isThinking) put("thinkingConfig", JSONObject().put("thinkingLevel", "low"))
+                    if (isThinking) put("thinkingConfig", JSONObject().put("thinkingLevel", "LOW"))
                 },
             )
             put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
-            put("inputAudioTranscription", JSONObject())
-            put("outputAudioTranscription", JSONObject())
-            put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
-            put(
-                "sessionResumption",
-                JSONObject().apply {
-                    if (!handle.isNullOrBlank()) put("handle", handle)
-                },
-            )
+            if (!isLegacy20) {
+                put("inputAudioTranscription", JSONObject())
+                put("outputAudioTranscription", JSONObject())
+                if (apiVersion == "v1alpha" || cleanModel.startsWith("gemini-2.5") || cleanModel.startsWith("gemini-3.")) {
+                    put("contextWindowCompression", JSONObject().put("slidingWindow", JSONObject()))
+                    put(
+                        "sessionResumption",
+                        JSONObject().apply {
+                            if (!handle.isNullOrBlank()) put("handle", handle)
+                        },
+                    )
+                }
+            }
             put(
                 "tools",
                 JSONArray().put(
@@ -271,10 +336,19 @@ class GeminiLiveClient(
 
     private fun handleServerMessage(ws: WebSocket, raw: String) {
         val msg = runCatching { JSONObject(raw) }.getOrNull() ?: return
+        msg.optJSONObject("error")?.let { errObj ->
+            val errTxt = errObj.optString("message").ifBlank { errObj.toString().take(160) }
+            lastServerError = errTxt
+            SafeLogger.w(TAG, "Server error from Live WebSocket: $errTxt")
+            runCatching { ws.close(1000, "Model error fallback") }
+            return
+        }
         if (msg.has("setupComplete")) {
+            setupTimeoutJob?.cancel()
             setupComplete = true
+            lastServerError = null
             _orbState.value = OrbState.LISTENING
-            _statusText.value = "Listening..."
+            _statusText.value = "Listening (Noise Cancel ON)..."
             startAudioLoops()
             return
         }
@@ -410,31 +484,84 @@ class GeminiLiveClient(
     }
 
     @SuppressLint("MissingPermission")
+    private fun createLiveAudioRecordWithFallback(inRate: Int, minRec: Int): AudioRecord? {
+        val sources = listOf(
+            MediaRecorder.AudioSource.VOICE_COMMUNICATION,
+            MediaRecorder.AudioSource.VOICE_RECOGNITION,
+            MediaRecorder.AudioSource.MIC,
+        )
+        for (src in sources) {
+            val ar = runCatching {
+                AudioRecord.Builder()
+                    .setAudioSource(src)
+                    .setAudioFormat(
+                        AudioFormat.Builder()
+                            .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                            .setSampleRate(inRate)
+                            .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
+                            .build(),
+                    )
+                    .setBufferSizeInBytes(minRec.coerceAtLeast(3200) * 2)
+                    .build()
+            }.getOrNull()
+            if (ar != null && ar.state == AudioRecord.STATE_INITIALIZED) return ar
+            runCatching { ar?.release() }
+        }
+        return null
+    }
+
+    @Suppress("DEPRECATION")
+    private fun configureCommunicationAudioRouting() {
+        val am = appContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        runCatching {
+            if (previousAudioMode == null) previousAudioMode = am.mode
+            if (previousSpeakerphone == null) previousSpeakerphone = am.isSpeakerphoneOn
+            am.mode = AudioManager.MODE_IN_COMMUNICATION
+            val hasExternalDevice = am.getDevices(AudioManager.GET_DEVICES_OUTPUTS).any { dev ->
+                dev.type == AudioDeviceInfo.TYPE_WIRED_HEADSET ||
+                    dev.type == AudioDeviceInfo.TYPE_WIRED_HEADPHONES ||
+                    dev.type == AudioDeviceInfo.TYPE_USB_HEADSET ||
+                    dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_SCO ||
+                    dev.type == AudioDeviceInfo.TYPE_BLUETOOTH_A2DP ||
+                    (Build.VERSION.SDK_INT >= 31 && dev.type == AudioDeviceInfo.TYPE_BLE_HEADSET)
+            }
+            if (!hasExternalDevice) {
+                if (Build.VERSION.SDK_INT >= 31) {
+                    val speaker = am.availableCommunicationDevices.firstOrNull { it.type == AudioDeviceInfo.TYPE_BUILTIN_SPEAKER }
+                    if (speaker != null) am.setCommunicationDevice(speaker)
+                }
+                am.isSpeakerphoneOn = true
+            }
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun restoreAudioRouting() {
+        val am = appContext?.getSystemService(Context.AUDIO_SERVICE) as? AudioManager ?: return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= 31) am.clearCommunicationDevice()
+            previousSpeakerphone?.let { am.isSpeakerphoneOn = it }
+            previousAudioMode?.let { am.mode = it }
+        }
+        previousSpeakerphone = null
+        previousAudioMode = null
+    }
+
+    @SuppressLint("MissingPermission")
     private fun startAudioLoops() {
         cleanupAudio()
+        configureCommunicationAudioRouting()
         val inRate = 16000
         val minRec = AudioRecord.getMinBufferSize(inRate, AudioFormat.CHANNEL_IN_MONO, AudioFormat.ENCODING_PCM_16BIT)
         if (minRec <= 0) {
+            restoreAudioRouting()
             _orbState.value = OrbState.ERROR
             callbacks.onError("AudioRecord hardware unavailable.")
             return
         }
-        val recorder = runCatching {
-            AudioRecord.Builder()
-                .setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION)
-                .setAudioFormat(
-                    AudioFormat.Builder()
-                        .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                        .setSampleRate(inRate)
-                        .setChannelMask(AudioFormat.CHANNEL_IN_MONO)
-                        .build(),
-                )
-                .setBufferSizeInBytes(minRec.coerceAtLeast(3200) * 2)
-                .build()
-        }.getOrNull()
-
-        if (recorder == null || recorder.state != AudioRecord.STATE_INITIALIZED) {
-            runCatching { recorder?.release() }
+        val recorder = createLiveAudioRecordWithFallback(inRate, minRec)
+        if (recorder == null) {
+            restoreAudioRouting()
             _orbState.value = OrbState.ERROR
             callbacks.onError("Microphone open nahi ho paya.")
             return
@@ -446,6 +573,14 @@ class GeminiLiveClient(
         if (NoiseSuppressor.isAvailable()) {
             ns = runCatching { NoiseSuppressor.create(recorder.audioSessionId)?.apply { enabled = true } }.getOrNull()
         }
+        if (AutomaticGainControl.isAvailable()) {
+            agc = runCatching { AutomaticGainControl.create(recorder.audioSessionId)?.apply { enabled = true } }.getOrNull()
+        }
+        hpPrevIn = 0f
+        hpPrevOut = 0f
+        adaptiveNoiseFloor = 0.012f
+        voiceGateHangover = 0
+        playbackActive = false
 
         val outRate = 24000
         val minPlay = AudioTrack.getMinBufferSize(outRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(9600)
@@ -497,7 +632,10 @@ class GeminiLiveClient(
                     _audioLevel.value = 0f
                     continue
                 }
-                _audioLevel.value = computeRms(buf, read)
+                val filteredLevel = applyHighPassAndAdaptiveNoiseGate(buf, read)
+                if (!playbackActive) {
+                    _audioLevel.value = filteredLevel
+                }
                 val b64 = Base64.encodeToString(buf, 0, read, Base64.NO_WRAP)
                 val msg = JSONObject().put(
                     "realtimeInput",
@@ -517,9 +655,10 @@ class GeminiLiveClient(
                 val chunk = playbackQueue.poll(180, TimeUnit.MILLISECONDS)
                 if (chunk == null) {
                     startedPlaying = false
+                    playbackActive = false
                     if (_orbState.value == OrbState.SPEAKING) {
                         _orbState.value = OrbState.LISTENING
-                        _statusText.value = "Listening..."
+                        _statusText.value = "Listening (Noise Cancel ON)..."
                     }
                     continue
                 }
@@ -527,9 +666,11 @@ class GeminiLiveClient(
                     applySoftOnsetRamp(chunk)
                 }
                 startedPlaying = true
+                playbackActive = true
                 _audioLevel.value = computeRms(chunk, chunk.size)
                 runCatching { player.write(chunk, 0, chunk.size) }
             }
+            playbackActive = false
         }
     }
 
@@ -553,6 +694,9 @@ class GeminiLiveClient(
     fun stop() {
         userStopped = true
         resumeHandle = null
+        lastServerError = null
+        setupTimeoutJob?.cancel()
+        setupTimeoutJob = null
         reconnectJob?.cancel()
         reconnectJob = null
         flushUserTranscript()
@@ -567,6 +711,7 @@ class GeminiLiveClient(
     }
 
     private fun cleanupAudio() {
+        playbackActive = false
         recordJob?.cancel()
         playJob?.cancel()
         recordJob = null
@@ -574,8 +719,10 @@ class GeminiLiveClient(
         playbackQueue.clear()
         runCatching { aec?.release() }
         runCatching { ns?.release() }
+        runCatching { agc?.release() }
         aec = null
         ns = null
+        agc = null
         runCatching { audioRecord?.stop() }
         runCatching { audioRecord?.release() }
         audioRecord = null
@@ -586,6 +733,64 @@ class GeminiLiveClient(
         }
         runCatching { audioTrack?.release() }
         audioTrack = null
+        restoreAudioRouting()
+    }
+
+    /**
+     * Software dual-stage DSP noise suppression:
+     * 1) 90Hz high-pass filter removes fan/wind/AC rumble & DC offset.
+     * 2) Adaptive noise-floor soft gate cleanly suppresses ambient hum without chopping voice.
+     */
+    private fun applyHighPassAndAdaptiveNoiseGate(pcm: ByteArray, length: Int): Float {
+        if (length < 2) return 0f
+        var prevX = hpPrevIn
+        var prevY = hpPrevOut
+        var sumSq = 0.0
+        var count = 0
+        var i = 0
+        while (i + 1 < length) {
+            val raw = ((pcm[i + 1].toInt() shl 8) or (pcm[i].toInt() and 0xFF)).toShort().toFloat()
+            val hp = 0.96f * (prevY + raw - prevX)
+            prevX = raw
+            prevY = hp
+            val clamped = hp.toInt().coerceIn(-32768, 32767)
+            pcm[i] = (clamped and 0xFF).toByte()
+            pcm[i + 1] = ((clamped shr 8) and 0xFF).toByte()
+            val norm = clamped / 32768.0
+            sumSq += norm * norm
+            count++
+            i += 2
+        }
+        hpPrevIn = prevX
+        hpPrevOut = prevY
+        if (count == 0) return 0f
+
+        val rms = sqrt(sumSq / count).toFloat()
+        if (rms < adaptiveNoiseFloor * 1.4f) {
+            adaptiveNoiseFloor = (adaptiveNoiseFloor * 0.92f + rms * 0.08f).coerceIn(0.004f, 0.045f)
+        }
+        val baseThreshold = (adaptiveNoiseFloor * 2.1f).coerceIn(0.012f, 0.075f)
+        val effectiveThreshold = if (playbackActive) baseThreshold * 2.4f else baseThreshold
+
+        if (rms >= effectiveThreshold) {
+            voiceGateHangover = 7 // ~280ms tail so word endings never chop cleanly
+            return (rms * 4.5f).coerceIn(0f, 1f)
+        }
+        if (voiceGateHangover > 0) {
+            voiceGateHangover--
+            return (rms * 4.5f).coerceIn(0f, 1f)
+        }
+        // Soft-knee attenuation on steady ambient background noise
+        val gain = 0.06f
+        var j = 0
+        while (j + 1 < length) {
+            val sample = ((pcm[j + 1].toInt() shl 8) or (pcm[j].toInt() and 0xFF)).toShort().toFloat()
+            val damped = (sample * gain).toInt()
+            pcm[j] = (damped and 0xFF).toByte()
+            pcm[j + 1] = ((damped shr 8) and 0xFF).toByte()
+            j += 2
+        }
+        return 0f
     }
 
     fun destroy() {

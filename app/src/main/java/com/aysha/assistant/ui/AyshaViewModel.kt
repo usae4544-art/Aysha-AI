@@ -2,15 +2,11 @@ package com.aysha.assistant.ui
 
 import android.Manifest
 import android.app.Application
-import android.app.DownloadManager
-import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Environment
 import android.provider.Settings
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -273,14 +269,19 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     @Volatile
     private var lastWakeTriggerHandledMs = 0L
 
+    @Volatile
+    private var liveAttemptActive = false
+
     private val liveClient = GeminiLiveClient(
         toolExecutor = toolExecutor,
         callbacks = object : LiveCallbacks {
             override fun onUserTranscript(text: String) {
+                liveAttemptActive = false
                 appendMessage(ChatRole.USER, text, "Gemini Live")
             }
 
             override fun onModelTranscript(text: String) {
+                liveAttemptActive = false
                 _lastAssistantReply.value = text
                 appendMessage(ChatRole.ASSISTANT, text, "Gemini Live")
                 refreshData()
@@ -295,11 +296,23 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             }
 
             override fun onError(message: String) {
+                val shouldAutoFallback = liveAttemptActive && hasMicPermission()
+                liveAttemptActive = false
                 appendMessage(ChatRole.SYSTEM, message, "Live")
-                _agentStatusText.value = message
-                resumeWakeWordIfEnabled()
+                if (shouldAutoFallback) {
+                    _agentStatusText.value = "Live offline — Smart Voice active"
+                    viewModelScope.launch {
+                        delay(220L)
+                        continuousVoiceActive = true
+                        startStandardVoiceListen()
+                    }
+                } else {
+                    _agentStatusText.value = message
+                    resumeWakeWordIfEnabled()
+                }
             }
         },
+        appContext = app,
     )
 
     val orbState: StateFlow<OrbState> = combine(
@@ -532,51 +545,48 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk"
         }
         if (!cleanUrl.startsWith("https://")) return
-        val fileName = "AYSHA-update-${System.currentTimeMillis() / 1000}.apk"
-        var queued = false
-        runCatching {
-            val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
-            if (dm != null) {
-                val req = DownloadManager.Request(Uri.parse(cleanUrl))
-                    .setTitle("AYSHA AI Update")
-                    .setDescription("Downloading latest AYSHA APK...")
-                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, fileName)
-                    .setMimeType("application/vnd.android.package-archive")
-                val downloadId = dm.enqueue(req)
-                queued = true
-                Toast.makeText(app, "Update APK download shuru ho gaya — complete hote hi installer khulega", Toast.LENGTH_LONG).show()
-                val receiver = object : BroadcastReceiver() {
-                    override fun onReceive(ctx: Context, intent: Intent) {
-                        val doneId = intent.getLongExtra(DownloadManager.EXTRA_DOWNLOAD_ID, -1L)
-                        if (doneId != downloadId) return
-                        runCatching { app.unregisterReceiver(this) }
-                        val apkUri = runCatching { dm.getUriForDownloadedFile(doneId) }.getOrNull() ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && !app.packageManager.canRequestPackageInstalls()) {
+            Toast.makeText(app, "Pehle AYSHA ke liye 'Install unknown apps' allow karo, phir Update tap karo", Toast.LENGTH_LONG).show()
+            runCatching {
+                app.startActivity(
+                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${app.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }
+            return
+        }
+        if (_checkingUpdate.value) return
+        viewModelScope.launch {
+            _checkingUpdate.value = true
+            _agentStatusText.value = "Update APK download ho raha hai..."
+            Toast.makeText(app, "Latest AYSHA update download ho raha hai...", Toast.LENGTH_SHORT).show()
+            try {
+                val destFile = File(app.filesDir, "updates/AYSHA-latest-release.apk")
+                val res = remoteConfigManager.downloadApkToFile(cleanUrl, destFile)
+                if (res.isSuccess) {
+                    val file = res.getOrThrow()
+                    val uri = FileProvider.getUriForFile(app, "${app.packageName}.fileprovider", file)
+                    val installIntent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "application/vnd.android.package-archive")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    _agentStatusText.value = "Install prompt khul raha hai..."
+                    runCatching {
+                        app.startActivity(installIntent)
+                    }.onFailure {
                         runCatching {
-                            val installIntent = Intent(Intent.ACTION_VIEW).apply {
-                                setDataAndType(apkUri, "application/vnd.android.package-archive")
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                            }
-                            app.startActivity(installIntent)
-                        }.onFailure {
-                            runCatching {
-                                app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                            }
+                            app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                         }
                     }
-                }
-                val filter = IntentFilter(DownloadManager.ACTION_DOWNLOAD_COMPLETE)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                    app.registerReceiver(receiver, filter, Context.RECEIVER_EXPORTED)
                 } else {
-                    @Suppress("UnspecifiedRegisterReceiverFlag")
-                    app.registerReceiver(receiver, filter)
+                    _agentStatusText.value = "Direct download failed — browser khol raha hoon"
+                    Toast.makeText(app, "Browser se update download ho raha hai...", Toast.LENGTH_SHORT).show()
+                    runCatching {
+                        app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    }
                 }
-            }
-        }
-        if (!queued) {
-            runCatching {
-                app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            } finally {
+                _checkingUpdate.value = false
             }
         }
     }
@@ -802,6 +812,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         _followUpSecondsLeft.value = 0
         val current = settings.value
         if (liveClient.isActive()) {
+            liveAttemptActive = false
             liveClient.stop()
             _liveMuted.value = false
             resumeWakeWordIfEnabled()
@@ -886,6 +897,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                 remoteExtraInstruction = liveCfg.systemPromptExtra,
             )
             _liveMuted.value = false
+            liveAttemptActive = true
             liveClient.start(s, sys)
         }
     }
@@ -1593,6 +1605,29 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         }
         runCatching {
             if (enable) ContextCompat.startForegroundService(app, intent) else app.startService(intent)
+        }
+    }
+
+    fun applyWakePhrasesAndRestart(rawCsv: String) {
+        val cleanCsv = rawCsv.ifBlank { "Hey Aysha,Hello Aysha,Wake up Aysha" }
+        val firstHint = cleanCsv.split(",", "\n", ";").map { it.trim() }.firstOrNull { it.isNotBlank() } ?: "Hey Aysha"
+        viewModelScope.launch {
+            val enableNow = hasMicPermission()
+            settingsRepo.update { it.copy(wakeWordsCsv = cleanCsv, wakeWordEnabled = enableNow || it.wakeWordEnabled) }
+            if (enableNow) {
+                _agentStatusText.value = "Background wake listening: '$firstHint'"
+                val startOrUpdate = Intent(app, AyshaForegroundService::class.java).apply {
+                    action = if (WakeWordStatusBus.isRunning.value) {
+                        AyshaForegroundService.ACTION_UPDATE_WAKE_CONFIG
+                    } else {
+                        AyshaForegroundService.ACTION_START_WAKEWORD
+                    }
+                }
+                runCatching { ContextCompat.startForegroundService(app, startOrUpdate) }
+            } else {
+                _pendingMicPermission.value = true
+                _agentStatusText.value = "Wake Word ke liye Microphone permission chahiye"
+            }
         }
     }
 

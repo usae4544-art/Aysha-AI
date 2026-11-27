@@ -1,5 +1,6 @@
 package com.aysha.assistant.ui.screens
 
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -59,6 +61,7 @@ fun WakeWordScreen(
     onBack: () -> Unit,
 ) {
     val c = LocalAyshaColors.current
+    val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
     val wakeRunning by viewModel.wakeRunning.collectAsState()
     val wakeStatus by viewModel.wakeStatusText.collectAsState()
@@ -140,17 +143,13 @@ fun WakeWordScreen(
                 )
                 Button(
                     onClick = {
-                        viewModel.updateSettings {
-                            it.copy(wakeWordsCsv = wakeInput.ifBlank { "Hey Aysha,Hello Aysha,Wake up Aysha" })
-                        }
-                        if (settings.wakeWordEnabled) {
-                            viewModel.toggleWakeWord(false)
-                            viewModel.toggleWakeWord(true)
-                        }
+                        val finalCsv = wakeInput.ifBlank { "Hey Aysha,Hello Aysha,Wake up Aysha" }
+                        viewModel.applyWakePhrasesAndRestart(finalCsv)
+                        Toast.makeText(context, "Wake phrases saved! Background listening updated.", Toast.LENGTH_SHORT).show()
                     },
                     shape = RoundedCornerShape(14.dp),
                     modifier = Modifier.fillMaxWidth(),
-                ) { Text("Save Wake Phrases") }
+                ) { Text("Save Wake Phrases & Activate") }
             }
             }
         }
