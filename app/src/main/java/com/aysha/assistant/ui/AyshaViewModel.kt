@@ -418,7 +418,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             _adminBusy.value = true
             try {
                 val rt = settingsRepo.settingsFlow.first().firebaseRefreshToken
-                val res = licenseManager.adminGrantOrRevokeUserLicense(rt, uid, email, plan)
+                val res = licenseManager.adminGrantOrRevokeLicense(rt, uid, email, plan)
                 if (res.isSuccess) {
                     _adminFeedback.value = if (plan == null || plan == LicensePlan.NONE) {
                         "License revoked."
