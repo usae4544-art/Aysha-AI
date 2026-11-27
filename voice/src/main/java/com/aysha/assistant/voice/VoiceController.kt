@@ -8,9 +8,6 @@ import android.os.Looper
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
-import android.speech.tts.Voice
 import com.aysha.assistant.core.AssistantLanguage
 import com.aysha.assistant.core.SafeLogger
 import com.aysha.assistant.core.VoicePersonalities
@@ -18,14 +15,12 @@ import com.aysha.assistant.core.VoicePersonality
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.Locale
-import java.util.UUID
 
 data class TtsVoiceInfo(
     val name: String,
-    val localeTag: String,
-    val isOffline: Boolean,
-    val quality: Int,
+    val displayName: String,
+    val genderLabel: String,
+    val toneHint: String,
 )
 
 object SpeechTextFormatter {
@@ -37,7 +32,7 @@ object SpeechTextFormatter {
             .trim()
     }
 
-    fun splitChunks(text: String, maxChars: Int = 1200): List<String> {
+    fun splitChunks(text: String, maxChars: Int = 900): List<String> {
         val clean = cleanForSpeech(text)
         if (clean.length <= maxChars) return if (clean.isEmpty()) emptyList() else listOf(clean)
         val out = mutableListOf<String>()
@@ -65,11 +60,13 @@ class VoiceController(context: Context) {
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
     private val bargeInDetector = BargeInDetector(appContext)
+    private val neuralTts = GeminiNeuralTtsEngine()
 
     private var speechRecognizer: SpeechRecognizer? = null
-    private var tts: TextToSpeech? = null
-    private var ttsReady = false
     private var pendingStartRunnable: Runnable? = null
+
+    @Volatile
+    private var geminiApiKey: String = ""
 
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
@@ -83,14 +80,20 @@ class VoiceController(context: Context) {
     private val _rmsLevel = MutableStateFlow(0f)
     val rmsLevel: StateFlow<Float> = _rmsLevel.asStateFlow()
 
-    private val _availableVoices = MutableStateFlow<List<TtsVoiceInfo>>(emptyList())
+    private val _availableVoices = MutableStateFlow<List<TtsVoiceInfo>>(
+        VoicePersonalities.all.map {
+            TtsVoiceInfo(
+                name = it.geminiLiveVoice,
+                displayName = it.name,
+                genderLabel = it.gender.label,
+                toneHint = it.subtitle,
+            )
+        },
+    )
     val availableVoices: StateFlow<List<TtsVoiceInfo>> = _availableVoices.asStateFlow()
 
     private val _ttsAvailable = MutableStateFlow(true)
     val ttsAvailable: StateFlow<Boolean> = _ttsAvailable.asStateFlow()
-
-    @Volatile
-    private var pendingSpeakDone: (() -> Unit)? = null
 
     @Volatile
     private var lastSpokenPayload: SpokenRequest? = null
@@ -103,83 +106,13 @@ class VoiceController(context: Context) {
         val volume: Float,
         val personalityId: String,
         val preferredVoiceName: String,
+        val apiKey: String,
     )
 
-    init {
-        initTts()
-    }
-
-    private fun initTts() {
-        runCatching {
-            tts = TextToSpeech(appContext) { status ->
-                ttsReady = status == TextToSpeech.SUCCESS
-                _ttsAvailable.value = ttsReady
-                if (ttsReady) {
-                    refreshInstalledVoices()
-                    tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
-                        override fun onStart(utteranceId: String?) {
-                            _isSpeaking.value = true
-                            _rmsLevel.value = 0.42f
-                        }
-
-                        override fun onDone(utteranceId: String?) {
-                            val isFinal = utteranceId?.endsWith("_LAST") != false
-                            if (isFinal) {
-                                bargeInDetector.stop()
-                                _isSpeaking.value = false
-                                _rmsLevel.value = 0f
-                                val cb = pendingSpeakDone
-                                pendingSpeakDone = null
-                                if (cb != null) mainHandler.post { cb() }
-                            }
-                        }
-
-                        @Deprecated("Deprecated in Java")
-                        override fun onError(utteranceId: String?) {
-                            bargeInDetector.stop()
-                            _isSpeaking.value = false
-                            _rmsLevel.value = 0f
-                            pendingSpeakDone = null
-                        }
-
-                        override fun onError(utteranceId: String?, errorCode: Int) {
-                            bargeInDetector.stop()
-                            _isSpeaking.value = false
-                            _rmsLevel.value = 0f
-                            pendingSpeakDone = null
-                        }
-                    })
-                }
-            }
-        }.onFailure { err ->
-            SafeLogger.e(TAG, "TTS initialization failed", err)
-            _ttsAvailable.value = false
-        }
-    }
-
-    fun refreshInstalledVoices() {
-        val engine = tts ?: return
-        runCatching {
-            val voices = engine.voices.orEmpty()
-                .filter { v ->
-                    val lang = v.locale.language.lowercase()
-                    lang == "en" || lang == "hi"
-                }
-                .sortedWith(
-                    compareByDescending<Voice> { !it.isNetworkConnectionRequired }
-                        .thenBy { it.locale.toLanguageTag() }
-                        .thenBy { it.name },
-                )
-                .map { v ->
-                    TtsVoiceInfo(
-                        name = v.name,
-                        localeTag = v.locale.toLanguageTag(),
-                        isOffline = !v.isNetworkConnectionRequired,
-                        quality = v.quality,
-                    )
-                }
-            _availableVoices.value = voices
-        }
+    fun setGeminiApiKey(key: String) {
+        val clean = GeminiTtsProtocol.sanitizeKey(key)
+        geminiApiKey = clean
+        _ttsAvailable.value = clean.isNotEmpty()
     }
 
     fun isSpeechRecognitionAvailable(): Boolean =
@@ -203,7 +136,7 @@ class VoiceController(context: Context) {
 
             if (!SpeechRecognizer.isRecognitionAvailable(appContext)) {
                 _isListening.value = false
-                onError("Device Speech Recognition available nahi hai. Google Speech Services check karo ya text chat use karo.")
+                onError("Device Speech Recognition available nahi hai. Gemini Live Orb tap karo ya text chat use karo.")
                 return@post
             }
 
@@ -255,7 +188,7 @@ class VoiceController(context: Context) {
                             SpeechRecognizer.ERROR_AUDIO -> "Audio capture error — mic check karo."
                             SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required hai."
                             SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-                                "Speech network error — offline Hindi/English speech pack download karo ya mic retry karo."
+                                "Speech network error — Gemini Live mode use karo ya mic retry karo."
                             SpeechRecognizer.ERROR_NO_MATCH -> "Awaz clearly samajh nahi aayi. Dobara boliye."
                             SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Kuch sunai nahi diya."
                             SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech recognizer busy hai, ek second me try karo."
@@ -340,6 +273,9 @@ class VoiceController(context: Context) {
         speechRecognizer = null
     }
 
+    /**
+     * Speaks text strictly using Gemini Real Neural TTS (no Android Google TextToSpeech anywhere).
+     */
     fun speak(
         text: String,
         localeTag: String = "en-IN",
@@ -348,8 +284,10 @@ class VoiceController(context: Context) {
         volume: Float = 1.0f,
         personalityId: String = "aysha_natural",
         preferredVoiceName: String = "",
+        apiKey: String = geminiApiKey,
         bargeInEnabled: Boolean = false,
         onBargeIn: (() -> Unit)? = null,
+        onError: ((String) -> Unit)? = null,
         onDone: (() -> Unit)? = null,
     ) {
         val chunks = SpeechTextFormatter.splitChunks(text)
@@ -357,6 +295,7 @@ class VoiceController(context: Context) {
             onDone?.invoke()
             return
         }
+        val activeKey = GeminiTtsProtocol.sanitizeKey(apiKey.ifBlank { geminiApiKey })
         lastSpokenPayload = SpokenRequest(
             text = text,
             localeTag = localeTag,
@@ -365,50 +304,62 @@ class VoiceController(context: Context) {
             volume = volume,
             personalityId = personalityId,
             preferredVoiceName = preferredVoiceName,
+            apiKey = activeKey,
         )
 
-        val engine = tts
-        if (!ttsReady || engine == null) {
+        if (activeKey.isEmpty()) {
+            val msg = "Gemini API Key missing hai — real neural voice sunne ke liye AI Provider me key daalo."
+            SafeLogger.w(TAG, msg)
+            onError?.invoke(msg)
             onDone?.invoke()
             return
         }
 
         val personality = VoicePersonalities.byId(personalityId)
-        val effectiveRate = (rate * personality.rateMultiplier).coerceIn(0.5f, 2.0f)
-        val effectivePitch = (pitch * personality.basePitch).coerceIn(0.5f, 1.8f)
-        val safeVolume = volume.coerceIn(0.0f, 1.0f)
+        val effectiveVoice = preferredVoiceName.trim().ifBlank { personality.geminiLiveVoice }
+        val effectiveRate = (rate * personality.rateMultiplier).coerceIn(0.6f, 1.8f)
+        val styleDirective = GeminiTtsProtocol.buildStyleDirective(personality.toneHint, effectiveRate)
 
-        mainHandler.post {
-            bargeInDetector.stop()
-            pendingSpeakDone = onDone
-            val locale = Locale.forLanguageTag(localeTag)
-            val langRes = engine.setLanguage(locale)
-            if (langRes == TextToSpeech.LANG_MISSING_DATA || langRes == TextToSpeech.LANG_NOT_SUPPORTED) {
-                engine.setLanguage(Locale.forLanguageTag("en-IN"))
-            }
+        bargeInDetector.stop()
+        _isSpeaking.value = true
 
-            selectVoiceIfAvailable(engine, personality, preferredVoiceName, localeTag)
-            engine.setSpeechRate(effectiveRate)
-            engine.setPitch(effectivePitch)
-
-            val params = Bundle().apply {
-                putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, safeVolume)
-            }
-            val baseId = UUID.randomUUID().toString()
-            chunks.forEachIndexed { idx, chunk ->
-                val queueMode = if (idx == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD
-                val suffix = if (idx == chunks.lastIndex) "_LAST" else "_$idx"
-                engine.speak(chunk, queueMode, params, "$baseId$suffix")
-            }
-            if (bargeInEnabled && onBargeIn != null) {
-                bargeInDetector.start {
-                    mainHandler.post {
-                        stopSpeaking()
-                        onBargeIn()
+        neuralTts.speak(
+            apiKey = activeKey,
+            chunks = chunks,
+            voiceName = effectiveVoice,
+            styleHint = styleDirective,
+            rate = effectiveRate,
+            volume = volume,
+            onStarted = {
+                mainHandler.post {
+                    _isSpeaking.value = true
+                    if (bargeInEnabled && onBargeIn != null) {
+                        bargeInDetector.start {
+                            mainHandler.post {
+                                stopSpeaking()
+                                onBargeIn()
+                            }
+                        }
                     }
                 }
-            }
-        }
+            },
+            onRms = { level ->
+                _rmsLevel.value = level
+            },
+            onFinished = {
+                bargeInDetector.stop()
+                _isSpeaking.value = false
+                _rmsLevel.value = 0f
+                if (onDone != null) mainHandler.post { onDone() }
+            },
+            onError = { err ->
+                bargeInDetector.stop()
+                _isSpeaking.value = false
+                _rmsLevel.value = 0f
+                if (onError != null) mainHandler.post { onError(err) }
+                if (onDone != null) mainHandler.post { onDone() }
+            },
+        )
     }
 
     fun previewPersonality(
@@ -418,11 +369,13 @@ class VoiceController(context: Context) {
         pitch: Float,
         volume: Float,
         preferredVoiceName: String = "",
+        apiKey: String = geminiApiKey,
+        onError: ((String) -> Unit)? = null,
     ) {
         val sampleText = when (language) {
-            AssistantLanguage.HINDI -> "नमस्ते! मैं ${personality.name.substringBefore(" ")} हूँ, आपकी पर्सनल AI असिस्टेंट।"
-            AssistantLanguage.HINGLISH -> "Hello! Main ${personality.name.substringBefore(" ")} hoon, aapki personal AI companion. Batao aaj kya help karoon?"
-            AssistantLanguage.ENGLISH -> "Hello! I am ${personality.name.substringBefore(" ")}, your personal AI assistant. How can I help you today?"
+            AssistantLanguage.HINDI -> "नमस्ते! मैं ${personality.name.substringBefore(" ")} हूँ, आपकी रियल एआई असिस्टेंट।"
+            AssistantLanguage.HINGLISH -> "Hello! Main ${personality.name.substringBefore(" ")} hoon, aapki real neural AI companion. Batao aaj kya help karoon?"
+            AssistantLanguage.ENGLISH -> "Hello! I am ${personality.name.substringBefore(" ")}, your real AI assistant. How can I help you today?"
         }
         speak(
             text = sampleText,
@@ -431,7 +384,9 @@ class VoiceController(context: Context) {
             pitch = pitch,
             volume = volume,
             personalityId = personality.id,
-            preferredVoiceName = preferredVoiceName,
+            preferredVoiceName = preferredVoiceName.ifBlank { personality.geminiLiveVoice },
+            apiKey = apiKey,
+            onError = onError,
         )
     }
 
@@ -445,6 +400,7 @@ class VoiceController(context: Context) {
             volume = req.volume,
             personalityId = req.personalityId,
             preferredVoiceName = req.preferredVoiceName,
+            apiKey = req.apiKey.ifBlank { geminiApiKey },
         )
         return true
     }
@@ -453,60 +409,14 @@ class VoiceController(context: Context) {
 
     fun stopSpeaking() {
         bargeInDetector.stop()
-        pendingSpeakDone = null
-        mainHandler.post {
-            _isSpeaking.value = false
-            _rmsLevel.value = 0f
-            runCatching { tts?.stop() }
-        }
-    }
-
-    private fun selectVoiceIfAvailable(
-        engine: TextToSpeech,
-        personality: VoicePersonality,
-        preferredVoiceName: String,
-        localeTag: String,
-    ) {
-        runCatching {
-            val all = engine.voices ?: return
-            if (preferredVoiceName.isNotBlank()) {
-                val explicit = all.firstOrNull { it.name == preferredVoiceName }
-                if (explicit != null) {
-                    engine.voice = explicit
-                    return
-                }
-            }
-            val targetLang = localeTag.substringBefore("-").lowercase()
-            val candidate = all
-                .filter { it.locale.language.equals(targetLang, ignoreCase = true) }
-                .sortedWith(
-                    compareByDescending<Voice> { !it.isNetworkConnectionRequired }
-                        .thenByDescending { v ->
-                            val lower = v.name.lowercase()
-                            val wantsFemale = personality.gender.name == "FEMALE"
-                            when {
-                                wantsFemale && (lower.contains("female") || lower.contains("-f-") || lower.contains("sfg") || lower.contains("iob")) -> 2
-                                !wantsFemale && (lower.contains("male") || lower.contains("-m-") || lower.contains("iom") || lower.contains("gba")) -> 2
-                                else -> 0
-                            }
-                        }
-                        .thenByDescending { it.quality },
-                )
-                .firstOrNull()
-            if (candidate != null) {
-                engine.voice = candidate
-            }
-        }
+        neuralTts.stop()
+        _isSpeaking.value = false
+        _rmsLevel.value = 0f
     }
 
     fun destroy() {
         stopListening()
         stopSpeaking()
-        mainHandler.post {
-            runCatching { tts?.shutdown() }
-            tts = null
-            ttsReady = false
-        }
     }
 
     companion object {

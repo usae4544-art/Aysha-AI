@@ -448,7 +448,7 @@ class GeminiLiveClient(
         }
 
         val outRate = 24000
-        val minPlay = AudioTrack.getMinBufferSize(outRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(4800)
+        val minPlay = AudioTrack.getMinBufferSize(outRate, AudioFormat.CHANNEL_OUT_MONO, AudioFormat.ENCODING_PCM_16BIT).coerceAtLeast(9600)
         val player = runCatching {
             AudioTrack.Builder()
                 .setAudioAttributes(
@@ -464,7 +464,7 @@ class GeminiLiveClient(
                         .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
                         .build(),
                 )
-                .setBufferSizeInBytes(minPlay * 2)
+                .setBufferSizeInBytes(minPlay * 3)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
         }.getOrNull()
@@ -510,22 +510,25 @@ class GeminiLiveClient(
         playJob = scope.launch {
             var startedPlaying = false
             while (isActive && webSocket != null) {
-                // Pre-buffer at least 2 chunks before playing to avoid hardware underrun clicks/stutters ("tuk tuk")
                 if (!startedPlaying && playbackQueue.size < 2) {
-                    delay(30L)
+                    delay(35L)
                     if (playbackQueue.isEmpty()) continue
                 }
-                val chunk = playbackQueue.poll(100, TimeUnit.MILLISECONDS) ?: continue
-                startedPlaying = true
-                _audioLevel.value = computeRms(chunk, chunk.size)
-                runCatching { player.write(chunk, 0, chunk.size) }
-                if (playbackQueue.isEmpty()) {
+                val chunk = playbackQueue.poll(180, TimeUnit.MILLISECONDS)
+                if (chunk == null) {
                     startedPlaying = false
                     if (_orbState.value == OrbState.SPEAKING) {
                         _orbState.value = OrbState.LISTENING
                         _statusText.value = "Listening..."
                     }
+                    continue
                 }
+                if (!startedPlaying && chunk.size >= 4) {
+                    applySoftOnsetRamp(chunk)
+                }
+                startedPlaying = true
+                _audioLevel.value = computeRms(chunk, chunk.size)
+                runCatching { player.write(chunk, 0, chunk.size) }
             }
         }
     }
@@ -588,6 +591,20 @@ class GeminiLiveClient(
     fun destroy() {
         stop()
         scope.cancel()
+    }
+
+    private fun applySoftOnsetRamp(pcm16Le: ByteArray, fadeSamples: Int = 180) {
+        val count = fadeSamples.coerceAtMost(pcm16Le.size / 2)
+        if (count <= 1) return
+        for (i in 0 until count) {
+            val idx = i * 2
+            val lo = pcm16Le[idx].toInt() and 0xFF
+            val hi = pcm16Le[idx + 1].toInt()
+            val sample = ((hi shl 8) or lo).toShort().toInt()
+            val scaled = (sample * i) / count
+            pcm16Le[idx] = (scaled and 0xFF).toByte()
+            pcm16Le[idx + 1] = ((scaled shr 8) and 0xFF).toByte()
+        }
     }
 
     private fun computeRms(pcm: ByteArray, length: Int): Float {

@@ -115,7 +115,14 @@ fun VoiceAndLanguageScreen(
                 cornerRadius = 18.dp,
                 elevated = selected,
                 borderColor = if (selected) c.accentPrimary else null,
-                onClick = { viewModel.updateSettings { it.copy(voicePersonalityId = persona.id) } },
+                onClick = {
+                    viewModel.updateSettings {
+                        it.copy(
+                            voicePersonalityId = persona.id,
+                            selectedTtsVoiceName = "",
+                        )
+                    }
+                },
                 contentPadding = PaddingValues(12.dp),
             ) {
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -128,7 +135,7 @@ fun VoiceAndLanguageScreen(
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(persona.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                        Text("(${persona.subtitle})", color = c.textSecondary, fontSize = 12.sp)
+                        Text("${persona.subtitle} · Real Voice (${persona.geminiLiveVoice})", color = c.textSecondary, fontSize = 11.5.sp)
                     }
                     IconButton(onClick = { viewModel.previewVoicePersonality(persona) }) {
                         Icon(Icons.Rounded.PlayArrow, contentDescription = "Preview", tint = c.accentPrimary)
@@ -246,18 +253,23 @@ fun VoiceAndLanguageScreen(
             }
         }
 
-        if (installedVoices.isNotEmpty()) {
-            Text("Device TTS Voices (${installedVoices.size})", color = c.textSecondary, fontSize = 12.sp)
-            Row(
-                modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                GlassPill("Auto Select", dotColor = if (settings.selectedTtsVoiceName.isBlank()) c.accentPrimary else null) {
-                    viewModel.updateSettings { it.copy(selectedTtsVoiceName = "") }
-                }
-                installedVoices.take(12).forEach { v ->
-                    GlassPill("${v.localeTag}${if (v.isOffline) " (Offline)" else ""}", dotColor = if (settings.selectedTtsVoiceName == v.name) c.accentPrimary else null) {
-                        viewModel.updateSettings { it.copy(selectedTtsVoiceName = v.name) }
+        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16.dp, contentPadding = PaddingValues(12.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Gemini Real Neural Voice Active (24kHz HD)", color = c.accentPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Bold)
+                Text("100% Real Neural Voices — Android Google Text-to-Speech completely removed.", color = c.textSecondary, fontSize = 11.5.sp)
+                if (installedVoices.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        GlassPill("Auto (${com.aysha.assistant.core.VoicePersonalities.byId(settings.voicePersonalityId).geminiLiveVoice})", dotColor = if (settings.selectedTtsVoiceName.isBlank()) c.accentPrimary else null) {
+                            viewModel.updateSettings { it.copy(selectedTtsVoiceName = "") }
+                        }
+                        installedVoices.forEach { v ->
+                            GlassPill("${v.name} · ${v.genderLabel.take(1)}", dotColor = if (settings.selectedTtsVoiceName == v.name) c.accentPrimary else null) {
+                                viewModel.updateSettings { it.copy(selectedTtsVoiceName = v.name) }
+                            }
+                        }
                     }
                 }
             }

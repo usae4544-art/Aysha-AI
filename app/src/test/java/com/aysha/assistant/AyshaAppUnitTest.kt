@@ -47,8 +47,13 @@ class AyshaAppUnitTest {
         assertTrue(names.contains("Aysha Natural"))
         assertTrue(names.contains("Aysha Silk"))
         assertTrue(names.contains("Sara Friendly"))
+        assertTrue(names.contains("Ananya Velvet"))
         assertTrue(names.contains("Aarav Confident"))
         assertTrue(names.contains("Kabir Warm"))
+        assertTrue(names.contains("Rohan Upbeat"))
+        assertTrue(VoicePersonalities.all.size >= 18)
+        assertTrue(VoicePersonalities.all.all { it.geminiLiveVoice.isNotBlank() })
+        assertEquals(VoicePersonalities.all.size, VoicePersonalities.all.map { it.id }.distinct().size)
         assertEquals("aysha_natural", VoicePersonalities.byId("unknown").id)
     }
 

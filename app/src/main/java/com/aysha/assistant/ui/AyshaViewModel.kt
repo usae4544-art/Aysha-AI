@@ -323,6 +323,11 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         observeFiredReminders()
         refreshRemoteConfig()
         viewModelScope.launch {
+            settingsRepo.settingsFlow.collect { s ->
+                voice.setGeminiApiKey(s.geminiApiKey)
+            }
+        }
+        viewModelScope.launch {
             val initial = settingsRepo.settingsFlow.first()
             if (initial.firebaseRefreshToken.isNotBlank()) {
                 refreshLicenseStatus(silent = true)
@@ -614,7 +619,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             val latest = settingsRepo.settingsFlow.first()
             pauseWakeWordForActiveMic()
             consecutiveSilentTimeouts = 0
-            if (latest.geminiApiKey.isNotBlank() && latest.voiceEngineMode != VoiceEngineMode.TEXT_ONLY) {
+            if (latest.geminiApiKey.isNotBlank() && latest.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE) {
                 startGeminiLiveSession()
             } else {
                 continuousVoiceActive = latest.continuousConversation
@@ -918,6 +923,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             volume = s.ttsVolume,
             personalityId = s.voicePersonalityId,
             preferredVoiceName = s.selectedTtsVoiceName,
+            apiKey = s.geminiApiKey,
             bargeInEnabled = s.bargeInEnabled && hasMicPermission(),
             onBargeIn = {
                 continuousVoiceActive = true
@@ -925,6 +931,9 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                     delay(260L)
                     startStandardVoiceListen()
                 }
+            },
+            onError = { err ->
+                _agentStatusText.value = err
             },
             onDone = onDone,
         )
@@ -1179,7 +1188,11 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             rate = s.ttsSpeechRate,
             pitch = s.ttsPitch,
             volume = s.ttsVolume,
-            preferredVoiceName = s.selectedTtsVoiceName,
+            preferredVoiceName = personality.geminiLiveVoice,
+            apiKey = s.geminiApiKey,
+            onError = { err ->
+                _agentStatusText.value = err
+            },
         )
     }
 
