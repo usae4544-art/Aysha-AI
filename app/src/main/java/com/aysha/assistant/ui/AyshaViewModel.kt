@@ -853,18 +853,25 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                 remoteExtraInstruction = liveCfg.systemPromptExtra,
             )
 
-            val turn = aiClient.runTurnWithFallback(
-                settings = effectiveSettings,
-                systemInstruction = sys,
-                history = history,
-                userText = promptText,
-                attachedImageJpeg = imgBytes,
-                toolExecutor = toolExecutor,
-                onToolEvent = { status ->
-                    _agentOrbState.value = OrbState.AUTOMATING
-                    _agentStatusText.value = status
-                },
-            )
+            val turn = runCatching {
+                aiClient.runTurnWithFallback(
+                    settings = effectiveSettings,
+                    systemInstruction = sys,
+                    history = history,
+                    userText = promptText,
+                    attachedImageJpeg = imgBytes,
+                    toolExecutor = toolExecutor,
+                    onToolEvent = { status ->
+                        _agentOrbState.value = OrbState.AUTOMATING
+                        _agentStatusText.value = status
+                    },
+                )
+            }.getOrElse { err ->
+                com.aysha.assistant.ai.AiTurnResult(
+                    text = "API error: ${err.message ?: "Request failed. Internet aur Gemini key check karo."}",
+                    providerTag = "Error",
+                )
+            }
 
             turn.inAppTimerRequest?.let { (secs, label) ->
                 startInAppTimer(secs, label)

@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.7.0",
-  "latestVersionCode": 10,
-  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.7.0/AYSHA-latest-release.apk",
-  "updateNotes": "Fixed Gemini API key reply failure (tool schema 400 fix + Keystore fallback), added real live CameraX Vision Scanner HUD (FLIP/Capture/REC), and added Quick Notes & Journal saving.",
+  "latestVersion": "2.8.0",
+  "latestVersionCode": 11,
+  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.8.0/AYSHA-latest-release.apk",
+  "updateNotes": "100% Pure Gemini API (Offline Mode removed), fixed 'thinking...' hang with instant error surfacing, plus Digital Assistant & Calling support.",
   "forceUpdate": false,
   "announcementBanner": "",
   "geminiTextModel": "gemini-3.8-flash",

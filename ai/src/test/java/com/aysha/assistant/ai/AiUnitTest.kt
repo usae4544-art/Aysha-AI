@@ -58,7 +58,7 @@ class AiUnitTest {
     }
 
     @Test
-    fun `provider fallback chain prioritizes Gemini and excludes local mode`() {
+    fun `provider fallback chain prioritizes Gemini and excludes offline and local mode`() {
         val settings = AppSettings(
             activeProvider = BrainProvider.GEMINI,
             geminiApiKey = "AIzaTest1234",
@@ -68,10 +68,10 @@ class AiUnitTest {
         )
         val client = MultiProviderAiClient()
         val chain = client.buildProviderChain(settings)
-        assertEquals(listOf(BrainProvider.GEMINI, BrainProvider.GROQ, BrainProvider.OFFLINE), chain)
+        assertEquals(listOf(BrainProvider.GEMINI, BrainProvider.GROQ), chain)
 
         val evenIfOldFlag = client.buildProviderChain(settings.copy(offlineOnlyMode = true))
-        assertEquals(listOf(BrainProvider.GEMINI, BrainProvider.GROQ, BrainProvider.OFFLINE), evenIfOldFlag)
+        assertEquals(listOf(BrainProvider.GEMINI, BrainProvider.GROQ), evenIfOldFlag)
     }
 
     @Test

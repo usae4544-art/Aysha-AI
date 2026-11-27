@@ -36,8 +36,8 @@ class MultiProviderAiClient {
     private val http = OkHttpClient.Builder()
         .connectionPool(okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
         .connectTimeout(10, TimeUnit.SECONDS)
-        .readTimeout(35, TimeUnit.SECONDS)
-        .writeTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(18, TimeUnit.SECONDS)
+        .writeTimeout(15, TimeUnit.SECONDS)
         .build()
 
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
@@ -145,8 +145,7 @@ class MultiProviderAiClient {
     }
 
     /**
-     * Builds the ordered list of providers to attempt for a request, prioritizing Google Gemini API
-     * (Local / LAN model mode removed).
+     * Builds the ordered list of cloud providers prioritizing Google Gemini API (100% Online, zero Offline model).
      */
     fun buildProviderChain(settings: AppSettings): List<BrainProvider> {
         val candidates = mutableListOf<BrainProvider>()
@@ -165,7 +164,6 @@ class MultiProviderAiClient {
             listOf(BrainProvider.GEMINI, BrainProvider.GROQ, BrainProvider.OPENAI)
                 .forEach { addIfConfigured(it) }
         }
-        candidates.add(BrainProvider.OFFLINE)
         return candidates
     }
 
@@ -179,23 +177,15 @@ class MultiProviderAiClient {
         onToolEvent: (String) -> Unit = {},
     ): AiTurnResult = withContext(Dispatchers.IO) {
         val chain = buildProviderChain(settings)
+        if (chain.isEmpty()) {
+            return@withContext AiTurnResult(
+                text = "Gemini API Key missing hai — Settings → AI Provider Settings me apni free Google Gemini API key daalo.",
+                providerTag = "Gemini Key Required",
+            )
+        }
+
         var lastFailureNote: String? = null
-
         for (provider in chain) {
-            if (provider == BrainProvider.OFFLINE) {
-                val offline = runOfflineTurn(settings, userText, toolExecutor, onToolEvent)
-                val finalTag = if (lastFailureNote != null) "Offline Fallback" else "Offline Mode"
-                val prefix = if (lastFailureNote != null && offline.confirmationRequired == null && offline.inAppTimerRequest == null) {
-                    "($lastFailureNote — switched to Offline Mode)\n\n"
-                } else {
-                    ""
-                }
-                return@withContext offline.copy(
-                    text = prefix + offline.text,
-                    providerTag = finalTag,
-                )
-            }
-
             val attempt = runCatching {
                 when (provider) {
                     BrainProvider.GEMINI -> runGeminiTurn(
@@ -232,7 +222,7 @@ class MultiProviderAiClient {
                         toolExecutor = toolExecutor,
                         onToolEvent = onToolEvent,
                     )
-                    BrainProvider.OFFLINE -> error("Handled above")
+                    BrainProvider.OFFLINE -> error("Offline mode removed")
                 }
             }
 
@@ -246,11 +236,14 @@ class MultiProviderAiClient {
             } else {
                 val errMsg = SafeLogger.redact(attempt.exceptionOrNull()?.message ?: "${provider.displayName} failed")
                 SafeLogger.w(TAG, "Provider ${provider.displayName} failed: $errMsg")
-                lastFailureNote = "${provider.displayName}: ${errMsg.take(120)}"
+                lastFailureNote = "${provider.displayName}: ${errMsg.take(160)}"
             }
         }
 
-        runOfflineTurn(settings, userText, toolExecutor, onToolEvent)
+        AiTurnResult(
+            text = lastFailureNote ?: "Gemini API se response nahi mila. Internet aur API key check karo.",
+            providerTag = "API Error",
+        )
     }
 
     private suspend fun runOfflineTurn(
