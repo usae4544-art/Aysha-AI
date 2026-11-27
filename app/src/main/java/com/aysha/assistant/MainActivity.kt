@@ -43,16 +43,21 @@ import androidx.compose.material.icons.rounded.Psychology
 import androidx.compose.material.icons.rounded.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -71,16 +76,23 @@ import com.aysha.assistant.core.ui.LocalAyshaColors
 import com.aysha.assistant.floatingassistant.AyshaForegroundService
 import com.aysha.assistant.phonecontrol.ReminderReceiver
 import com.aysha.assistant.ui.AyshaViewModel
+import com.aysha.assistant.ui.components.MayaDrawerSheetContent
+import com.aysha.assistant.ui.components.PrimaryBottomTab
 import com.aysha.assistant.ui.screens.AboutAyshaScreen
+import com.aysha.assistant.ui.screens.AccessibilityFixScreen
 import com.aysha.assistant.ui.screens.AiProvidersScreen
+import com.aysha.assistant.ui.screens.AppLanguageScreen
 import com.aysha.assistant.ui.screens.AppearanceScreen
 import com.aysha.assistant.ui.screens.AutomationScreen
 import com.aysha.assistant.ui.screens.BrowserScreen
 import com.aysha.assistant.ui.screens.ChatScreen
+import com.aysha.assistant.ui.screens.DrawerToolWorkspaceScreen
+import com.aysha.assistant.ui.screens.GamesScreen
 import com.aysha.assistant.ui.screens.HomeOrbScreen
 import com.aysha.assistant.ui.screens.LicenseGateScreen
 import com.aysha.assistant.ui.screens.LicensesScreen
 import com.aysha.assistant.ui.screens.MemoryHistoryScreen
+import com.aysha.assistant.ui.screens.NotificationsScreen
 import com.aysha.assistant.ui.screens.PhoneControlScreen
 import com.aysha.assistant.ui.screens.PrivacyDashboardScreen
 import com.aysha.assistant.ui.screens.RulesAndAgentsScreen
@@ -93,6 +105,7 @@ import com.aysha.assistant.ui.screens.VoiceAndLanguageScreen
 import com.aysha.assistant.ui.screens.WakeWordScreen
 import com.aysha.assistant.ui.screens.WhiteboardScreen
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
 private enum class AppScreenRoute {
@@ -205,8 +218,27 @@ class MainActivity : ComponentActivity() {
                         onSignOut = { viewModel.signOutGoogle() },
                     )
                 } else if (!settings.onboardingCompleted) {
+                    val accConnected by viewModel.accessibilityConnected.collectAsState()
+                    val notifConnected by viewModel.notificationListenerConnected.collectAsState()
                     SplashOnboardingScreen(
                         initialUserName = settings.userName,
+                        initialGeminiKey = settings.geminiApiKey,
+                        accessibilityConnected = accConnected,
+                        notificationConnected = notifConnected,
+                        onRequestPermission = { permId -> handlePermissionRequest(permId) },
+                        onRequestAllRuntimePermissions = {
+                            val reqs = buildList {
+                                add(Manifest.permission.RECORD_AUDIO)
+                                add(Manifest.permission.CAMERA)
+                                add(Manifest.permission.READ_CONTACTS)
+                                add(Manifest.permission.CALL_PHONE)
+                                add(Manifest.permission.SEND_SMS)
+                                if (Build.VERSION.SDK_INT >= 33) add(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                            startupPermissionsLauncher.launch(reqs.toTypedArray())
+                        },
+                        onOpenSystemSettings = { cat -> viewModel.openSystemSettings(cat) },
+                        onSaveGeminiKey = { key -> viewModel.updateSettings { it.copy(geminiApiKey = key) } },
                         onGetStarted = { name, gender, lang, orbStyle ->
                             viewModel.completeOnboardingWithSetup(name, gender, lang, orbStyle)
                         },
@@ -296,10 +328,29 @@ private fun AyshaMainRouter(
     val pendingOverlay by viewModel.pendingOverlayPermission.collectAsState()
     val pendingConfirm by viewModel.pendingConfirmation.collectAsState()
     val requestedTab by viewModel.requestedNavTab.collectAsState()
+    val settings by viewModel.settings.collectAsState()
 
     var currentScreen by remember { mutableStateOf(AppScreenRoute.HOME) }
     var settingsRoute by remember { mutableStateOf(SettingsSubRoute.HUB) }
     var showMoreSheet by remember { mutableStateOf(false) }
+    var noticesCleared by remember { mutableStateOf(false) }
+    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val drawerScope = rememberCoroutineScope()
+
+    val switchBottomTab: (PrimaryBottomTab) -> Unit = { tab ->
+        when (tab) {
+            PrimaryBottomTab.HOME -> currentScreen = AppScreenRoute.HOME
+            PrimaryBottomTab.SCAN -> {
+                settingsRoute = SettingsSubRoute.SCANNER
+                currentScreen = AppScreenRoute.SETTINGS
+            }
+            PrimaryBottomTab.YAADEIN -> {
+                settingsRoute = SettingsSubRoute.MEMORY_HISTORY
+                currentScreen = AppScreenRoute.SETTINGS
+            }
+            PrimaryBottomTab.CHAT -> currentScreen = AppScreenRoute.CHAT
+        }
+    }
 
     LaunchedEffect(pendingMic) {
         if (pendingMic) {
@@ -348,96 +399,207 @@ private fun AyshaMainRouter(
         }
     }
 
-    BackHandler(enabled = currentScreen != AppScreenRoute.HOME) {
-        if (currentScreen == AppScreenRoute.SETTINGS && settingsRoute != SettingsSubRoute.HUB) {
-            settingsRoute = SettingsSubRoute.HUB
-        } else {
-            currentScreen = AppScreenRoute.HOME
+    BackHandler(enabled = drawerState.isOpen || currentScreen != AppScreenRoute.HOME) {
+        when {
+            drawerState.isOpen -> drawerScope.launch { drawerState.close() }
+            currentScreen == AppScreenRoute.SETTINGS && (settingsRoute == SettingsSubRoute.SCANNER || settingsRoute == SettingsSubRoute.MEMORY_HISTORY) -> {
+                currentScreen = AppScreenRoute.HOME
+            }
+            currentScreen == AppScreenRoute.SETTINGS && settingsRoute != SettingsSubRoute.HUB -> {
+                settingsRoute = SettingsSubRoute.HUB
+            }
+            else -> currentScreen = AppScreenRoute.HOME
         }
     }
 
-    LiquidAuroraBackground {
-        Crossfade(
-            targetState = currentScreen to settingsRoute,
-            animationSpec = tween(200),
-            label = "aysha_router",
-        ) { (screen, sub) ->
-            when (screen) {
-                AppScreenRoute.HOME -> HomeOrbScreen(
-                    viewModel = viewModel,
-                    onOpenChat = { currentScreen = AppScreenRoute.CHAT },
-                    onOpenSettings = {
-                        settingsRoute = SettingsSubRoute.HUB
-                        currentScreen = AppScreenRoute.SETTINGS
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        gesturesEnabled = currentScreen == AppScreenRoute.HOME || (currentScreen == AppScreenRoute.SETTINGS && (settingsRoute == SettingsSubRoute.SCANNER || settingsRoute == SettingsSubRoute.MEMORY_HISTORY)),
+        drawerContent = {
+            ModalDrawerSheet(drawerContainerColor = Color.Transparent) {
+                MayaDrawerSheetContent(
+                    assistantName = settings.assistantName,
+                    versionName = BuildConfig.VERSION_NAME,
+                    activeRoute = if (currentScreen == AppScreenRoute.SETTINGS) settingsRoute else null,
+                    isHomeActive = currentScreen == AppScreenRoute.HOME,
+                    unreadNotifications = !noticesCleared,
+                    onSelectHome = {
+                        currentScreen = AppScreenRoute.HOME
+                        drawerScope.launch { drawerState.close() }
                     },
-                    onOpenMoreSheet = { showMoreSheet = true },
-                    onOpenProviders = {
-                        settingsRoute = SettingsSubRoute.AI_PROVIDERS
+                    onSelectRoute = { route ->
+                        settingsRoute = route
                         currentScreen = AppScreenRoute.SETTINGS
-                    },
-                    onOpenAppearance = {
-                        settingsRoute = SettingsSubRoute.APPEARANCE
-                        currentScreen = AppScreenRoute.SETTINGS
-                    },
-                    onOpenScanner = {
-                        settingsRoute = SettingsSubRoute.SCANNER
-                        currentScreen = AppScreenRoute.SETTINGS
-                    },
-                    onOpenWhiteboard = {
-                        settingsRoute = SettingsSubRoute.WHITEBOARD
-                        currentScreen = AppScreenRoute.SETTINGS
-                    },
-                    onOpenBrowser = {
-                        settingsRoute = SettingsSubRoute.BROWSER
-                        currentScreen = AppScreenRoute.SETTINGS
-                    },
-                    onOpenRulesAgents = {
-                        settingsRoute = SettingsSubRoute.RULES_AGENTS
-                        currentScreen = AppScreenRoute.SETTINGS
-                    },
-                    onOpenAutomation = {
-                        settingsRoute = SettingsSubRoute.AUTOMATION
-                        currentScreen = AppScreenRoute.SETTINGS
-                    },
-                    onOpenSecretSettings = {
-                        settingsRoute = SettingsSubRoute.SECRET_SETTINGS
-                        currentScreen = AppScreenRoute.SETTINGS
+                        drawerScope.launch { drawerState.close() }
                     },
                 )
-                AppScreenRoute.CHAT -> ChatScreen(
-                    viewModel = viewModel,
-                    onBack = { currentScreen = AppScreenRoute.HOME },
-                    onSwitchToVoiceOrb = { currentScreen = AppScreenRoute.HOME },
-                )
-                AppScreenRoute.SETTINGS -> when (sub) {
-                    SettingsSubRoute.HUB -> SettingsHubScreen(
+            }
+        },
+    ) {
+        LiquidAuroraBackground {
+            Crossfade(
+                targetState = currentScreen to settingsRoute,
+                animationSpec = tween(200),
+                label = "aysha_router",
+            ) { (screen, sub) ->
+                when (screen) {
+                    AppScreenRoute.HOME -> HomeOrbScreen(
                         viewModel = viewModel,
-                        onBackToOrb = { currentScreen = AppScreenRoute.HOME },
-                        onNavigate = { settingsRoute = it },
+                        unreadNotifications = !noticesCleared,
+                        onOpenDrawer = { drawerScope.launch { drawerState.open() } },
+                        onOpenNotifications = {
+                            settingsRoute = SettingsSubRoute.NOTIFICATIONS
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenChat = { currentScreen = AppScreenRoute.CHAT },
+                        onOpenYaadein = {
+                            settingsRoute = SettingsSubRoute.MEMORY_HISTORY
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenSettings = {
+                            settingsRoute = SettingsSubRoute.HUB
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenMoreSheet = { showMoreSheet = true },
+                        onOpenProviders = {
+                            settingsRoute = SettingsSubRoute.AI_PROVIDERS
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenAppearance = {
+                            settingsRoute = SettingsSubRoute.APPEARANCE
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenScanner = {
+                            settingsRoute = SettingsSubRoute.SCANNER
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenWhiteboard = {
+                            settingsRoute = SettingsSubRoute.WHITEBOARD
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenBrowser = {
+                            settingsRoute = SettingsSubRoute.BROWSER
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenRulesAgents = {
+                            settingsRoute = SettingsSubRoute.RULES_AGENTS
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenAutomation = {
+                            settingsRoute = SettingsSubRoute.AUTOMATION
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenSecretSettings = {
+                            settingsRoute = SettingsSubRoute.SECRET_SETTINGS
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
+                        onOpenLicenseInfo = {
+                            settingsRoute = SettingsSubRoute.LICENSE_INFO
+                            currentScreen = AppScreenRoute.SETTINGS
+                        },
                     )
-                    SettingsSubRoute.AI_PROVIDERS -> AiProvidersScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.VOICE_LANGUAGE -> VoiceAndLanguageScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.APPEARANCE -> AppearanceScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.WAKE_WORD -> WakeWordScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.AUTOMATION -> AutomationScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.MEMORY_HISTORY -> MemoryHistoryScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.PHONE_CONTROL -> PhoneControlScreen(
+                    AppScreenRoute.CHAT -> ChatScreen(
                         viewModel = viewModel,
-                        onRequestRuntimePermission = onRequestSpecificPermission,
-                        onOpenAutomation = { settingsRoute = SettingsSubRoute.AUTOMATION },
-                        onBack = { settingsRoute = SettingsSubRoute.HUB },
+                        onSelectBottomTab = switchBottomTab,
+                        onBack = { currentScreen = AppScreenRoute.HOME },
+                        onSwitchToVoiceOrb = { currentScreen = AppScreenRoute.HOME },
                     )
-                    SettingsSubRoute.PRIVACY_SECURITY -> PrivacyDashboardScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.RULES_AGENTS -> RulesAndAgentsScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.SECRET_SETTINGS -> SecretSettingsScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.SCANNER -> ScannerScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.WHITEBOARD -> WhiteboardScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.BROWSER -> BrowserScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.LICENSES -> LicensesScreen { settingsRoute = SettingsSubRoute.HUB }
-                    SettingsSubRoute.ABOUT -> AboutAyshaScreen(
-                        onOpenLicenses = { settingsRoute = SettingsSubRoute.LICENSES },
-                        onBack = { settingsRoute = SettingsSubRoute.HUB },
-                    )
+                    AppScreenRoute.SETTINGS -> when (sub) {
+                        SettingsSubRoute.HUB -> SettingsHubScreen(
+                            viewModel = viewModel,
+                            onBackToOrb = { currentScreen = AppScreenRoute.HOME },
+                            onNavigate = { settingsRoute = it },
+                        )
+                        SettingsSubRoute.AI_PROVIDERS -> AiProvidersScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.VOICE_LANGUAGE -> VoiceAndLanguageScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.APPEARANCE -> AppearanceScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.WAKE_WORD -> WakeWordScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.AUTOMATION -> AutomationScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.MEMORY_HISTORY -> MemoryHistoryScreen(
+                            viewModel = viewModel,
+                            onOpenDrawer = { drawerScope.launch { drawerState.open() } },
+                            onOpenNotifications = { settingsRoute = SettingsSubRoute.NOTIFICATIONS },
+                            onSelectBottomTab = switchBottomTab,
+                            onBack = { currentScreen = AppScreenRoute.HOME },
+                        )
+                        SettingsSubRoute.PHONE_CONTROL -> PhoneControlScreen(
+                            viewModel = viewModel,
+                            onRequestRuntimePermission = onRequestSpecificPermission,
+                            onOpenAutomation = { settingsRoute = SettingsSubRoute.AUTOMATION },
+                            onBack = { settingsRoute = SettingsSubRoute.HUB },
+                        )
+                        SettingsSubRoute.PRIVACY_SECURITY -> PrivacyDashboardScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.RULES_AGENTS -> RulesAndAgentsScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.SECRET_SETTINGS -> SecretSettingsScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.SCANNER -> ScannerScreen(
+                            viewModel = viewModel,
+                            onOpenDrawer = { drawerScope.launch { drawerState.open() } },
+                            onOpenNotifications = { settingsRoute = SettingsSubRoute.NOTIFICATIONS },
+                            onSelectBottomTab = switchBottomTab,
+                            onBack = { currentScreen = AppScreenRoute.HOME },
+                        )
+                        SettingsSubRoute.WHITEBOARD -> WhiteboardScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.BROWSER -> BrowserScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.LICENSES -> LicensesScreen { settingsRoute = SettingsSubRoute.ABOUT }
+                        SettingsSubRoute.ABOUT -> AboutAyshaScreen(
+                            languageLabel = settings.language.label,
+                            onOpenLanguage = { settingsRoute = SettingsSubRoute.APP_LANGUAGE },
+                            onOpenLicenses = { settingsRoute = SettingsSubRoute.LICENSES },
+                            onNotifications = { settingsRoute = SettingsSubRoute.NOTIFICATIONS },
+                            onBack = { settingsRoute = SettingsSubRoute.HUB },
+                        )
+                        SettingsSubRoute.NOTIFICATIONS -> NotificationsScreen(
+                            viewModel = viewModel,
+                            noticesCleared = noticesCleared,
+                            onClearAll = { noticesCleared = true },
+                            onOpenTarget = { target -> settingsRoute = target },
+                            onBack = { currentScreen = AppScreenRoute.HOME },
+                        )
+                        SettingsSubRoute.GAMES -> GamesScreen(
+                            viewModel = viewModel,
+                            onOpenChat = { currentScreen = AppScreenRoute.CHAT },
+                            onNotifications = { settingsRoute = SettingsSubRoute.NOTIFICATIONS },
+                            onBack = { currentScreen = AppScreenRoute.HOME },
+                        )
+                        SettingsSubRoute.ACCESSIBILITY_FIX -> AccessibilityFixScreen(
+                            viewModel = viewModel,
+                            onNotifications = { settingsRoute = SettingsSubRoute.NOTIFICATIONS },
+                            onBack = { currentScreen = AppScreenRoute.HOME },
+                        )
+                        SettingsSubRoute.APP_LANGUAGE -> AppLanguageScreen(
+                            viewModel = viewModel,
+                            onNotifications = { settingsRoute = SettingsSubRoute.NOTIFICATIONS },
+                            onBack = { settingsRoute = SettingsSubRoute.ABOUT },
+                        )
+                        SettingsSubRoute.DOCUMENTS,
+                        SettingsSubRoute.PHOTOS,
+                        SettingsSubRoute.WEBSITE_CODING,
+                        SettingsSubRoute.TERMINAL,
+                        SettingsSubRoute.SMART_HOME,
+                        SettingsSubRoute.MARKETS,
+                        SettingsSubRoute.MARKETING,
+                        SettingsSubRoute.PC_PHONE,
+                        SettingsSubRoute.LICENSE_INFO -> DrawerToolWorkspaceScreen(
+                            title = when (sub) {
+                                SettingsSubRoute.DOCUMENTS -> "Documents"
+                                SettingsSubRoute.PHOTOS -> "Meri photos"
+                                SettingsSubRoute.WEBSITE_CODING -> "Website / Coding"
+                                SettingsSubRoute.TERMINAL -> "Terminal"
+                                SettingsSubRoute.MARKETS -> "Markets"
+                                SettingsSubRoute.MARKETING -> "Marketing"
+                                SettingsSubRoute.PC_PHONE -> "PC ⇄ Phone"
+                                SettingsSubRoute.LICENSE_INFO -> "License"
+                                else -> "Smart Home"
+                            },
+                            route = sub,
+                            viewModel = viewModel,
+                            onOpenChat = { currentScreen = AppScreenRoute.CHAT },
+                            onOpenScanner = { settingsRoute = SettingsSubRoute.SCANNER },
+                            onOpenMemory = { settingsRoute = SettingsSubRoute.MEMORY_HISTORY },
+                            onNotifications = { settingsRoute = SettingsSubRoute.NOTIFICATIONS },
+                            onBack = { currentScreen = AppScreenRoute.HOME },
+                        )
+                    }
                 }
             }
         }

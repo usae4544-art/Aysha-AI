@@ -315,7 +315,7 @@ fun LiquidAuroraBackground(
                 ),
             ),
     ) {
-        if (!isPureMinimal) {
+        if (!isPureMinimal && c.isDark) {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 val w = size.width
                 val h = size.height
@@ -323,7 +323,7 @@ fun LiquidAuroraBackground(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = if (c.isDark) 0.22f * drift else 0.12f),
+                            c.accentPrimary.copy(alpha = 0.22f * drift),
                             Color.Transparent,
                         ),
                         center = Offset(w * 0.20f, h * 0.18f),
@@ -335,7 +335,7 @@ fun LiquidAuroraBackground(
                 drawCircle(
                     brush = Brush.radialGradient(
                         colors = listOf(
-                            c.accentSecondary.copy(alpha = if (c.isDark) 0.20f else 0.11f),
+                            c.accentSecondary.copy(alpha = 0.20f),
                             Color.Transparent,
                         ),
                         center = Offset(w * 0.86f, h * 0.56f),
@@ -356,9 +356,9 @@ fun LiquidAuroraBackground(
                     path = wave1,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = if (c.isDark) 0.15f else 0.08f),
-                            c.accentSecondary.copy(alpha = if (c.isDark) 0.19f else 0.11f),
-                            c.accentGlow.copy(alpha = if (c.isDark) 0.15f else 0.08f),
+                            c.accentPrimary.copy(alpha = 0.15f),
+                            c.accentSecondary.copy(alpha = 0.19f),
+                            c.accentGlow.copy(alpha = 0.15f),
                         ),
                     ),
                 )
@@ -371,12 +371,27 @@ fun LiquidAuroraBackground(
                     path = ribbonStroke,
                     brush = Brush.horizontalGradient(
                         colors = listOf(
-                            c.accentPrimary.copy(alpha = if (c.isDark) 0.45f else 0.22f),
-                            c.accentSecondary.copy(alpha = if (c.isDark) 0.50f else 0.24f),
-                            c.accentGlow.copy(alpha = if (c.isDark) 0.35f else 0.18f),
+                            c.accentPrimary.copy(alpha = 0.45f),
+                            c.accentSecondary.copy(alpha = 0.50f),
+                            c.accentGlow.copy(alpha = 0.35f),
                         ),
                     ),
                     style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                )
+            }
+        } else if (!isPureMinimal) {
+            // Soft Maya Clay Day ice-blue atmospheric wash
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val w = size.width
+                val h = size.height
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color.White.copy(alpha = 0.55f), Color.Transparent),
+                        center = Offset(w * 0.5f, h * 0.30f),
+                        radius = w * 0.95f * drift,
+                    ),
+                    center = Offset(w * 0.5f, h * 0.30f),
+                    radius = w * 0.95f * drift,
                 )
             }
         }
@@ -400,12 +415,11 @@ fun GlassCard(
     val baseFill = if (elevated) c.glassSurfaceElevated else c.glassSurface
     val fillBrush = when (c.surfaceStyle) {
         SurfaceStyle.FLAT -> Brush.linearGradient(listOf(baseFill, baseFill))
-        SurfaceStyle.CLAY -> Brush.verticalGradient(
-            listOf(
-                baseFill.copy(alpha = 1f),
-                c.backgroundDeep.copy(alpha = if (c.isDark) 0.98f else 0.92f),
-            ),
-        )
+        SurfaceStyle.CLAY -> if (c.isDark) {
+            Brush.verticalGradient(listOf(baseFill.copy(alpha = 1f), c.backgroundDeep.copy(alpha = 0.98f)))
+        } else {
+            Brush.verticalGradient(listOf(Color(0xFFFCFDFF), Color(0xFFEFF4FE)))
+        }
         SurfaceStyle.SOFT -> Brush.verticalGradient(listOf(baseFill, baseFill.copy(alpha = 0.92f)))
         SurfaceStyle.GLASS -> Brush.linearGradient(
             colors = listOf(
@@ -417,20 +431,28 @@ fun GlassCard(
 
     val actualBorder = borderColor ?: c.glassBorder
     val borderWidth = when (c.surfaceStyle) {
-        SurfaceStyle.CLAY -> 1.5.dp
+        SurfaceStyle.CLAY -> 1.4.dp
         SurfaceStyle.FLAT -> 1.dp
         SurfaceStyle.SOFT -> 0.8.dp
         SurfaceStyle.GLASS -> 1.dp
     }
-    val borderBrush = if (c.surfaceStyle == SurfaceStyle.FLAT) {
-        Brush.linearGradient(listOf(actualBorder, actualBorder))
-    } else {
-        Brush.linearGradient(listOf(c.glassHighlight, actualBorder, c.accentSecondary.copy(alpha = 0.22f)))
+    val borderBrush = when {
+        c.surfaceStyle == SurfaceStyle.FLAT -> Brush.linearGradient(listOf(actualBorder, actualBorder))
+        c.surfaceStyle == SurfaceStyle.CLAY && !c.isDark -> Brush.linearGradient(
+            listOf(Color.White.copy(alpha = 0.96f), Color(0x66B7CBEB)),
+        )
+        else -> Brush.linearGradient(listOf(c.glassHighlight, actualBorder, c.accentSecondary.copy(alpha = 0.22f)))
     }
-    val clayShadowMod = if (c.surfaceStyle == SurfaceStyle.CLAY || c.surfaceStyle == SurfaceStyle.SOFT) {
-        Modifier.shadow(elevation = if (c.surfaceStyle == SurfaceStyle.CLAY) 8.dp else 4.dp, shape = shape, clip = false)
-    } else {
-        Modifier
+    val clayShadowMod = when (c.surfaceStyle) {
+        SurfaceStyle.CLAY -> Modifier.shadow(
+            elevation = if (elevated) 14.dp else 10.dp,
+            shape = shape,
+            clip = false,
+            ambientColor = if (c.isDark) Color.Black else Color(0x5A6F8BB8),
+            spotColor = if (c.isDark) Color.Black else Color(0x6B5878AE),
+        )
+        SurfaceStyle.SOFT -> Modifier.shadow(elevation = 4.dp, shape = shape, clip = false)
+        else -> Modifier
     }
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
@@ -509,19 +531,33 @@ fun AuroraGradientButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
-    height: Dp = 50.dp,
-    cornerRadius: Dp = 25.dp,
+    height: Dp = 52.dp,
+    cornerRadius: Dp = 26.dp,
+    enabled: Boolean = true,
 ) {
     val c = LocalAyshaColors.current
     val shape = RoundedCornerShape(cornerRadius)
+    val startCol = if (c.surfaceStyle == SurfaceStyle.CLAY && !c.isDark) Color(0xFF60B2FF) else c.accentPrimary
+    val endCol = if (c.surfaceStyle == SurfaceStyle.CLAY && !c.isDark) Color(0xFF2778FF) else c.accentSecondary
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(height)
+            .shadow(
+                elevation = if (enabled) 12.dp else 2.dp,
+                shape = shape,
+                clip = false,
+                ambientColor = endCol.copy(alpha = 0.45f),
+                spotColor = endCol.copy(alpha = 0.55f),
+            )
             .clip(shape)
-            .background(Brush.horizontalGradient(listOf(c.accentPrimary, c.accentSecondary)), shape)
-            .border(1.dp, Color.White.copy(alpha = 0.28f), shape)
-            .clickable(onClick = onClick),
+            .background(
+                if (enabled) Brush.verticalGradient(listOf(startCol, endCol))
+                else Brush.verticalGradient(listOf(c.glassSurface, c.backgroundDeep)),
+                shape,
+            )
+            .border(1.2.dp, Color.White.copy(alpha = if (enabled) 0.45f else 0.2f), shape)
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Row(
@@ -529,17 +565,108 @@ fun AuroraGradientButton(
             horizontalArrangement = Arrangement.Center,
         ) {
             if (icon != null) {
-                Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    tint = if (enabled) Color.White else c.textSecondary,
+                    modifier = Modifier.size(18.dp),
+                )
                 Spacer(modifier = Modifier.width(8.dp))
             }
             Text(
                 text = text,
-                color = Color.White,
+                color = if (enabled) Color.White else c.textSecondary,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Bold,
             )
         }
     }
+}
+
+@Composable
+fun ClayCircleButton(
+    icon: ImageVector,
+    contentDescription: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    size: Dp = 44.dp,
+    showBadgeDot: Boolean = false,
+    tint: Color? = null,
+) {
+    val c = LocalAyshaColors.current
+    Box(
+        modifier = modifier
+            .size(size)
+            .shadow(
+                elevation = if (c.isDark) 4.dp else 10.dp,
+                shape = CircleShape,
+                clip = false,
+                ambientColor = if (c.isDark) Color.Black else Color(0x55708BB8),
+                spotColor = if (c.isDark) Color.Black else Color(0x665B7AB0),
+            )
+            .clip(CircleShape)
+            .background(
+                if (c.isDark) Brush.verticalGradient(listOf(c.glassSurfaceElevated, c.backgroundDeep))
+                else Brush.verticalGradient(listOf(Color(0xFFFCFDFF), Color(0xFFE7EFFD))),
+                CircleShape,
+            )
+            .border(
+                width = 1.2.dp,
+                brush = Brush.linearGradient(listOf(Color.White.copy(alpha = if (c.isDark) 0.22f else 0.95f), c.glassBorder)),
+                shape = CircleShape,
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = contentDescription,
+            tint = tint ?: c.textPrimary,
+            modifier = Modifier.size(size * 0.48f),
+        )
+        if (showBadgeDot) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 6.dp, end = 6.dp)
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFFEC4899)),
+            )
+        }
+    }
+}
+
+@Composable
+fun ClayRecessedBox(
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = 24.dp,
+    contentPadding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+    content: @Composable BoxScope.() -> Unit,
+) {
+    val c = LocalAyshaColors.current
+    val shape = RoundedCornerShape(cornerRadius)
+    Box(
+        modifier = modifier
+            .clip(shape)
+            .background(
+                if (c.isDark) Brush.verticalGradient(listOf(c.backgroundDeep, c.glassSurface))
+                else Brush.verticalGradient(listOf(Color(0xFFD6E2F6), Color(0xFFEDF3FE))),
+                shape,
+            )
+            .border(
+                width = 1.dp,
+                brush = Brush.verticalGradient(
+                    listOf(
+                        if (c.isDark) Color.Black.copy(alpha = 0.5f) else Color(0x80A8BEE3),
+                        Color.White.copy(alpha = if (c.isDark) 0.12f else 0.85f),
+                    ),
+                ),
+                shape = shape,
+            )
+            .padding(contentPadding),
+        content = content,
+    )
 }
 
 @Composable
@@ -549,18 +676,26 @@ fun ColoredIconBadge(
     modifier: Modifier = Modifier,
     size: Dp = 40.dp,
 ) {
+    val c = LocalAyshaColors.current
     Box(
         modifier = modifier
             .size(size)
             .clip(RoundedCornerShape(12.dp))
             .background(
-                Brush.linearGradient(
-                    listOf(tintColor.copy(alpha = 0.85f), tintColor.copy(alpha = 0.55f)),
-                ),
+                if (c.surfaceStyle == SurfaceStyle.CLAY && !c.isDark) {
+                    Brush.linearGradient(listOf(Color(0xFFEAF2FF), Color(0xFFDCE8FD)))
+                } else {
+                    Brush.linearGradient(listOf(tintColor.copy(alpha = 0.85f), tintColor.copy(alpha = 0.55f)))
+                },
             )
-            .border(1.dp, Color.White.copy(alpha = 0.24f), RoundedCornerShape(12.dp)),
+            .border(1.dp, Color.White.copy(alpha = if (c.isDark) 0.24f else 0.85f), RoundedCornerShape(12.dp)),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = null, tint = Color.White, modifier = Modifier.size(size * 0.54f))
+        Icon(
+            icon,
+            contentDescription = null,
+            tint = if (c.surfaceStyle == SurfaceStyle.CLAY && !c.isDark) tintColor else Color.White,
+            modifier = Modifier.size(size * 0.54f),
+        )
     }
 }

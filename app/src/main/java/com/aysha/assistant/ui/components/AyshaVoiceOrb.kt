@@ -628,7 +628,7 @@ private fun resolveOrbPalette(
     return when (orbStyle) {
         OrbStyle.JARVIS, OrbStyle.JARVIS_3D -> Color(0xFFF59E0B) to Color(0xFFEA580C)
         OrbStyle.FRIDAY -> Color(0xFFFACC15) to Color(0xFFF97316)
-        OrbStyle.RED_HUD -> Color(hudMain.primaryHex) to Color(hudCore.primaryHex)
+        OrbStyle.RED_HUD -> Color(0xFFEF476F) to Color(0xFFF59E0B)
         OrbStyle.ULTRON -> Color(0xFF38BDF8) to Color(0xFF2563EB)
         else -> Color(hudMain.primaryHex) to Color(hudCore.primaryHex)
     }
@@ -862,34 +862,104 @@ private fun DrawScope.drawStyledOrb(
         }
 
         OrbStyle.RED_HUD -> {
-            val rayCount = 24
-            val reach = raysPct.coerceIn(0.35f, 1.25f)
+            // Screenshot-exact Neural Constellation Sphere + Red HUD Equalizer Ticks + Jet-Black Sphere Center
+            val rayCount = 48
+            val reach = raysPct.coerceIn(0.45f, 1.30f)
+            val ringRadius = r * 0.62f * scale
+
+            // Faint outer HUD orbital technical ring
+            drawCircle(
+                color = primary.copy(alpha = 0.22f),
+                center = cPos,
+                radius = r * 0.96f,
+                style = Stroke(width = 1.dp.toPx()),
+            )
+
+            // 48 Crisp radial equalizer rays surrounding the core sphere
             for (i in 0 until rayCount) {
-                val a = (i * (360f / rayCount) + spin * 0.5f) * (PI / 180.0)
-                val len = r * (0.58f + 0.30f * reach * (sin(phase + i).toFloat() * 0.5f + 0.5f) + level * 0.12f)
+                val a = (i * (360f / rayCount) + spin * 0.22f) * (PI / 180.0)
+                val barNoise = 0.35f + 0.65f * (sin(phase * 1.4f + i * 0.7f).toFloat() * 0.5f + 0.5f)
+                val rayLen = r * (0.06f + (if (isActive) 0.24f else 0.15f) * reach * barNoise + level * 0.16f)
+                val startR = ringRadius + 3.dp.toPx()
+                val endR = startR + rayLen
                 drawLine(
-                    color = if (i % 3 == 0) secondary else primary,
-                    start = Offset(cPos.x + (cos(a) * r * 0.32f).toFloat(), cPos.y + (sin(a) * r * 0.32f).toFloat()),
-                    end = Offset(cPos.x + (cos(a) * len).toFloat(), cPos.y + (sin(a) * len).toFloat()),
-                    strokeWidth = if (i % 2 == 0) 2.4.dp.toPx() else 1.4.dp.toPx(),
+                    color = primary.copy(alpha = if (i % 3 == 0) 0.78f else 0.45f),
+                    start = Offset(cPos.x + (cos(a) * startR).toFloat(), cPos.y + (sin(a) * startR).toFloat()),
+                    end = Offset(cPos.x + (cos(a) * endR).toFloat(), cPos.y + (sin(a) * endR).toFloat()),
+                    strokeWidth = if (i % 2 == 0) 2.dp.toPx() else 1.3.dp.toPx(),
                     cap = StrokeCap.Round,
                 )
             }
-            // Core neuron cluster
-            for (n in 0 until 8) {
-                val a = (n * 45f - spin * 0.8f) * (PI / 180.0)
-                val nr = r * 0.24f * (sin(phase + n).toFloat() * 0.35f + 0.75f)
-                drawCircle(
-                    color = secondary,
-                    radius = 2.8.dp.toPx(),
-                    center = Offset(cPos.x + (cos(a) * nr).toFloat(), cPos.y + (sin(a) * nr).toFloat()),
+
+            // Crisp red/pink rim circle around black sphere
+            drawCircle(
+                color = primary.copy(alpha = 0.88f),
+                center = cPos,
+                radius = ringRadius,
+                style = Stroke(width = 2.6.dp.toPx()),
+            )
+
+            // Deep Obsidian Jet-Black Core Sphere
+            drawCircle(
+                brush = Brush.radialGradient(
+                    colors = listOf(Color(0xFF19120F), Color(0xFF070709), Color(0xFF040406)),
+                    center = cPos,
+                    radius = ringRadius - 1.dp.toPx(),
+                ),
+                center = cPos,
+                radius = ringRadius - 1.dp.toPx(),
+            )
+
+            // 3D Gold-Orange Orbital Neuron Ellipses & Connected Constellation Mesh inside Black Sphere
+            val nodeCount = 24
+            val nodes = Array(nodeCount) { idx ->
+                val theta = (idx * 2.39996f) + spin * (PI.toFloat() / 180f) * (if (idx % 2 == 0) 0.7f else -0.45f)
+                val distFactor = 0.22f + 0.58f * (((idx * 7) % 11) / 10f)
+                val nr = ringRadius * 0.78f * distFactor
+                Offset(
+                    cPos.x + cos(theta) * nr,
+                    cPos.y + sin(theta * 0.92f + idx * 0.2f) * nr * 0.86f,
                 )
             }
-            drawCircle(
-                brush = Brush.radialGradient(listOf(Color.White.copy(alpha = 0.72f), secondary, primary.copy(alpha = 0.85f), Color(0xFF140406))),
-                center = cPos,
-                radius = r * 0.44f * scale,
-            )
+
+            // Orbital wireframe rings inside sphere
+            for (orbIdx in 0..2) {
+                rotate(spin * (if (orbIdx % 2 == 0) 0.5f else -0.4f) + orbIdx * 54f, pivot = cPos) {
+                    drawOval(
+                        color = secondary.copy(alpha = 0.34f),
+                        topLeft = Offset(cPos.x - ringRadius * 0.76f, cPos.y - ringRadius * (0.28f + orbIdx * 0.12f)),
+                        size = Size(ringRadius * 1.52f, ringRadius * (0.56f + orbIdx * 0.24f)),
+                        style = Stroke(width = 1.dp.toPx()),
+                    )
+                }
+            }
+
+            // Gold neural filaments between close constellation nodes
+            for (i in 0 until nodeCount) {
+                val n1 = nodes[i]
+                val n2 = nodes[(i + 1) % nodeCount]
+                val n3 = nodes[(i + 5) % nodeCount]
+                drawLine(
+                    color = secondary.copy(alpha = 0.42f),
+                    start = n1,
+                    end = n2,
+                    strokeWidth = 0.9.dp.toPx(),
+                )
+                drawLine(
+                    color = primary.copy(alpha = 0.26f),
+                    start = n1,
+                    end = n3,
+                    strokeWidth = 0.7.dp.toPx(),
+                )
+            }
+            for (i in 0 until nodeCount) {
+                val bright = (sin(phase * 1.5f + i) * 0.5f + 0.5f)
+                drawCircle(
+                    color = if (i % 4 == 0) Color(0xFFFFF3C4) else secondary,
+                    radius = (1.6f + bright * 1.5f + level * 1.1f).dp.toPx(),
+                    center = nodes[i],
+                )
+            }
         }
 
         OrbStyle.PARTICLE_SWARM -> {

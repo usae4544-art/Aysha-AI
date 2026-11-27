@@ -145,7 +145,7 @@ class SettingsRepository(private val context: Context) {
             if (err is IOException) emit(emptyPreferences()) else throw err
         }
         .map { p ->
-            val mayaPal = enumOrDefault(p[Keys.mayaPalette], MayaPalette.OBSIDIAN)
+            val mayaPal = enumOrDefault(p[Keys.mayaPalette], MayaPalette.CLAY_DAY)
             AppSettings(
                 assistantName = p[Keys.assistantName]?.ifBlank { "AYSHA" } ?: "AYSHA",
                 userName = p[Keys.userName]?.ifBlank { "Friend" } ?: "Friend",
@@ -168,15 +168,15 @@ class SettingsRepository(private val context: Context) {
                 themeMode = if (mayaPal.isDark) ThemeMode.DARK else ThemeMode.LIGHT,
                 accentPalette = enumOrDefault(p[Keys.accentPalette], AccentPalette.COSMIC_CYAN),
                 mayaPalette = mayaPal,
-                surfaceStyle = enumOrDefault(p[Keys.surfaceStyle], SurfaceStyle.GLASS),
+                surfaceStyle = enumOrDefault(p[Keys.surfaceStyle], SurfaceStyle.CLAY),
                 cornerStyle = enumOrDefault(p[Keys.cornerStyle], CornerStyle.ROUNDED),
-                uiFont = enumOrDefault(p[Keys.uiFont], UiFontFamily.INTER),
+                uiFont = enumOrDefault(p[Keys.uiFont], UiFontFamily.NUNITO),
                 uiScale = enumOrDefault(p[Keys.uiScale], UiTextScale.NORMAL),
-                orbStyle = enumOrDefault(p[Keys.orbStyle], OrbStyle.AYSHA_2047),
-                hudColor = enumOrDefault(p[Keys.hudColor], HudColorOption.CYAN),
-                hudCoreColor = enumOrDefault(p[Keys.hudCoreColor], HudColorOption.CYAN),
-                hudMainColor = enumOrDefault(p[Keys.hudMainColor], HudColorOption.CYAN),
-                hudRaysLengthPct = (p[Keys.hudRaysLengthPct] ?: 0.72f).coerceIn(0.35f, 1.25f),
+                orbStyle = enumOrDefault(p[Keys.orbStyle], OrbStyle.RED_HUD),
+                hudColor = enumOrDefault(p[Keys.hudColor], HudColorOption.RED),
+                hudCoreColor = enumOrDefault(p[Keys.hudCoreColor], HudColorOption.GOLD),
+                hudMainColor = enumOrDefault(p[Keys.hudMainColor], HudColorOption.RED),
+                hudRaysLengthPct = (p[Keys.hudRaysLengthPct] ?: 0.85f).coerceIn(0.35f, 1.25f),
                 hudRingEnabled = p[Keys.hudRingEnabled] ?: true,
                 orbRenderMode = enumOrDefault(p[Keys.orbRenderMode], OrbRenderMode.HUD_ORB),
                 glassTransparency = (p[Keys.glassTransparency] ?: 0.72f).coerceIn(0.35f, 0.95f),

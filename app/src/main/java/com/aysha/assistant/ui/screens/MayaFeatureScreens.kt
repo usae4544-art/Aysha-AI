@@ -13,8 +13,16 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -35,6 +43,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -44,9 +53,11 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.DeleteOutline
 import androidx.compose.material.icons.rounded.DeleteSweep
+import androidx.compose.material.icons.rounded.FlipCameraAndroid
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.Refresh
+import androidx.compose.material.icons.rounded.Videocam
 import androidx.compose.material.icons.rounded.VolumeUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -67,8 +78,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -86,6 +101,9 @@ import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
 import com.aysha.assistant.ui.AyshaViewModel
+import com.aysha.assistant.ui.components.MayaBottomNavBar
+import com.aysha.assistant.ui.components.MayaTopBar
+import com.aysha.assistant.ui.components.PrimaryBottomTab
 import java.io.ByteArrayOutputStream
 import java.io.File
 
@@ -252,16 +270,30 @@ fun RulesAndAgentsScreen(
 @Composable
 fun ScannerScreen(
     viewModel: AyshaViewModel,
+    onOpenDrawer: (() -> Unit)? = null,
+    onOpenNotifications: () -> Unit = {},
+    onSelectBottomTab: ((PrimaryBottomTab) -> Unit)? = null,
     onBack: () -> Unit,
 ) {
     val c = LocalAyshaColors.current
     val context = LocalContext.current
+    val settings by viewModel.settings.collectAsState()
+    val orbState by viewModel.orbState.collectAsState()
     val scannerReply by viewModel.scannerReply.collectAsState()
     val analyzing by viewModel.scannerAnalyzing.collectAsState()
 
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var imageBytes by remember { mutableStateOf<ByteArray?>(null) }
     var question by remember { mutableStateOf("Is image me kya dikh raha hai? Detail me batao.") }
+    var camLabel by remember { mutableStateOf("BACK CAM") }
+
+    val scanInf = rememberInfiniteTransition(label = "scanner_laser")
+    val sweep by scanInf.animateFloat(
+        initialValue = 0.25f,
+        targetValue = 0.78f,
+        animationSpec = infiniteRepeatable(tween(2200, easing = LinearEasing), RepeatMode.Reverse),
+        label = "sweep",
+    )
 
     val tempUri = remember {
         val file = File(context.cacheDir, "aysha_scan_capture.jpg")
@@ -293,112 +325,207 @@ fun ScannerScreen(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .imePadding(),
     ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
-            }
-            Text("Visual Scanner", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
-        }
+        MayaTopBar(
+            title = "Scanner",
+            showMenuInsteadOfBack = onOpenDrawer != null,
+            onLeadingClick = { onOpenDrawer?.invoke() ?: onBack() },
+            onNotificationsClick = onOpenNotifications,
+        )
 
-        GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            // Screenshot-2 exact Neural Link Viewfinder Stage
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(410.dp)
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Color(0xFF05080F))
+                    .border(1.dp, Color(0xFF1E3A5F), RoundedCornerShape(22.dp)),
+            ) {
                 if (previewBitmap != null) {
                     Image(
                         bitmap = previewBitmap!!.asImageBitmap(),
                         contentDescription = "Captured Scan",
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(220.dp)
-                            .clip(RoundedCornerShape(14.dp)),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
                     )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(160.dp)
-                            .clip(RoundedCornerShape(14.dp))
-                            .background(c.backgroundDeep),
-                        contentAlignment = Alignment.Center,
+                }
+
+                // Neural reticle crosshair + animated horizontal laser sweep
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    val cx = w / 2f
+                    val cy = h * 0.48f
+                    val rad = size.minDimension * 0.28f
+
+                    drawCircle(
+                        color = Color(0xFF4FA3FF).copy(alpha = 0.45f),
+                        radius = rad,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 1.5.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 12f))),
+                    )
+                    drawCircle(
+                        color = Color(0xFF4FA3FF).copy(alpha = 0.78f),
+                        radius = rad * 0.65f,
+                        center = Offset(cx, cy),
+                        style = Stroke(width = 2.dp.toPx()),
+                    )
+                    drawCircle(color = Color(0xFF4FA3FF), radius = 3.dp.toPx(), center = Offset(cx, cy))
+
+                    val lineY = h * sweep
+                    drawRect(
+                        brush = Brush.verticalGradient(listOf(Color.Transparent, Color(0x444FA3FF))),
+                        topLeft = Offset(w * 0.08f, (lineY - 46.dp.toPx()).coerceAtLeast(0f)),
+                        size = androidx.compose.ui.geometry.Size(w * 0.84f, 46.dp.toPx()),
+                    )
+                    drawLine(
+                        color = Color(0xFF60B2FF),
+                        start = Offset(w * 0.08f, lineY),
+                        end = Offset(w * 0.92f, lineY),
+                        strokeWidth = 2.2.dp.toPx(),
+                    )
+                }
+
+                // HUD Header overlay
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(Color(0xFF22C55E)))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("${settings.assistantName.uppercase()} VISION", color = Color(0xFF60B2FF), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                        }
+                        Text(camLabel, color = Color(0xFF60B2FF), fontFamily = FontFamily.Monospace, fontSize = 11.5.sp)
+                    }
+                    Text("> NEURAL LINK ACTIVE — poochho \"kya dikh raha hai?\"", color = Color(0xFF4ADE80), fontFamily = FontFamily.Monospace, fontSize = 11.5.sp)
+                }
+
+                // Telemetry Footer + FLIP / Glowing Capture Orb / GALLERY
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = if (analyzing) "AI-FEED ANALYZING...\nNEURAL VISION LOCK" else "FRM 004128 SIG 30\nAI-FEED 0.8 FPS  LATENCY OK",
+                        color = Color(0xFF4FA3FF),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.5.sp,
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Rounded.CameraAlt, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(36.dp))
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text("STANDBY — Photo capture karo ya gallery se chuno", color = c.textSecondary, fontSize = 12.5.sp)
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable {
+                                camLabel = if (camLabel == "BACK CAM") "FRONT CAM" else "BACK CAM"
+                                Toast.makeText(context, camLabel, Toast.LENGTH_SHORT).show()
+                            },
+                        ) {
+                            Box(
+                                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF162236)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Rounded.FlipCameraAndroid, contentDescription = "Flip", tint = Color(0xFF60B2FF))
+                            }
+                            Text("FLIP", color = Color(0xFF60B2FF), fontFamily = FontFamily.Monospace, fontSize = 10.5.sp)
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(62.dp)
+                                .clip(CircleShape)
+                                .background(Brush.radialGradient(listOf(Color.White, Color(0xFF93C5FD), Color(0xFF2563EB))))
+                                .clickable { cameraLauncher.launch(tempUri) },
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (analyzing) CircularProgressIndicator(color = Color(0xFF1E3A8A), modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
+                            else Icon(Icons.Rounded.CameraAlt, contentDescription = "Capture", tint = Color(0xFF0F172A), modifier = Modifier.size(26.dp))
+                        }
+
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.clickable { galleryLauncher.launch("image/*") },
+                        ) {
+                            Box(
+                                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF162236)),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(Icons.Rounded.PhotoLibrary, contentDescription = "Pick", tint = Color(0xFF94A3B8))
+                            }
+                            Text("PICK", color = Color(0xFF94A3B8), fontFamily = FontFamily.Monospace, fontSize = 10.5.sp)
                         }
                     }
                 }
-
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    OutlinedButton(onClick = { cameraLauncher.launch(tempUri) }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.CameraAlt, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Camera")
-                    }
-                    OutlinedButton(onClick = { galleryLauncher.launch("image/*") }, modifier = Modifier.weight(1f)) {
-                        Icon(Icons.Rounded.PhotoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text("Gallery")
-                    }
-                }
             }
-        }
 
-        OutlinedTextField(
-            value = question,
-            onValueChange = { question = it },
-            label = { Text("AYSHA se kya poochhna hai?") },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp),
-        )
+            OutlinedTextField(
+                value = question,
+                onValueChange = { question = it },
+                label = { Text("${settings.assistantName} se kya poochhna hai?") },
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+            )
 
-        Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GlassPill("Kya dikh raha hai?") { question = "Kya dikh raha hai? Hinglish me explain karo." }
-            GlassPill("Solve Question") { question = "Isme likha sawaal step-by-step solve karo." }
-            GlassPill("Extract Text") { question = "Is image ka saara text read karke do." }
-        }
-
-        if (analyzing) {
-            GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.Center, modifier = Modifier.fillMaxWidth()) {
-                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Text("NEURAL LINK ACTIVE — analyzing image...", color = c.textPrimary)
-                }
+            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GlassPill("Kya dikh raha hai?") { question = "Kya dikh raha hai? Hinglish me explain karo." }
+                GlassPill("Solve Question") { question = "Isme likha sawaal step-by-step solve karo." }
+                GlassPill("Extract Text") { question = "Is image ka saara text read karke do." }
             }
-        } else {
+
             AuroraGradientButton(
-                text = "Analyze with AYSHA Vision",
+                text = "Analyze with ${settings.assistantName} Vision",
                 icon = Icons.Rounded.AutoAwesome,
                 onClick = {
                     val bytes = imageBytes
                     if (bytes == null) {
-                        Toast.makeText(context, "Pehle photo capture ya pick karo", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Pehle camera se photo lo ya gallery se pick karo", Toast.LENGTH_SHORT).show()
                     } else {
                         viewModel.analyzeScannerImage(bytes, question)
                     }
                 },
             )
-        }
 
-        scannerReply?.let { reply ->
-            GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                        Text("AYSHA Vision Analysis", color = c.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-                        IconButton(onClick = { viewModel.speakMessage(reply) }, modifier = Modifier.size(28.dp)) {
-                            Icon(Icons.Rounded.VolumeUp, contentDescription = "Speak", tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+            scannerReply?.let { reply ->
+                GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                            Text("${settings.assistantName} Vision Analysis", color = c.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                            IconButton(onClick = { viewModel.speakMessage(reply) }, modifier = Modifier.size(28.dp)) {
+                                Icon(Icons.Rounded.VolumeUp, contentDescription = "Speak", tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+                            }
                         }
+                        Text(reply, color = c.textPrimary, fontSize = 13.5.sp)
                     }
-                    Text(reply, color = c.textPrimary, fontSize = 13.5.sp)
                 }
             }
+        }
+
+        if (onSelectBottomTab != null) {
+            MayaBottomNavBar(
+                activeTab = PrimaryBottomTab.SCAN,
+                orbState = orbState,
+                onSelectTab = onSelectBottomTab,
+                onMicOrStopClick = { viewModel.onOrbTap() },
+            )
         }
     }
 }

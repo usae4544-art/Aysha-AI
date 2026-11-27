@@ -94,6 +94,19 @@ enum class SettingsSubRoute {
     BROWSER,
     LICENSES,
     ABOUT,
+    NOTIFICATIONS,
+    GAMES,
+    ACCESSIBILITY_FIX,
+    APP_LANGUAGE,
+    DOCUMENTS,
+    PHOTOS,
+    WEBSITE_CODING,
+    TERMINAL,
+    SMART_HOME,
+    MARKETS,
+    MARKETING,
+    PC_PHONE,
+    LICENSE_INFO,
 }
 
 private data class SettingsMenuEntry(
@@ -123,6 +136,8 @@ fun SettingsHubScreen(
     val items = listOf(
         SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.RULES_AGENTS, "Rules, Sub-Agents & Mood", "${settings.activeSubAgent.label} · ${mood.label}", Icons.Rounded.Tune, Color(0xFFEC4899)),
         SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.SECRET_SETTINGS, "Secret settings (Girlfriend mode)", "${settings.companionIntimacy.label} · 18+ safety guard", Icons.Rounded.AutoAwesome, Color(0xFFF43F5E)),
+        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.ACCESSIBILITY_FIX, "Accessibility & One-Tap Fix", "Payment guard, Autostart & ADB fix", Icons.Rounded.PhoneAndroid, Color(0xFF0EA5E9)),
+        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.GAMES, "Games with AYSHA", "Ludo, Chess, Snake & Ladder, Carrom", Icons.Rounded.Bolt, Color(0xFF7C3AED)),
         SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.SCANNER, "Camera Vision Scanner", "\"Kya dikh raha hai?\" visual AI", Icons.Rounded.CameraAlt, Color(0xFF0EA5E9)),
         SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.WHITEBOARD, "Study Whiteboard", "Step-by-step tutor & code notes", Icons.Rounded.EditNote, Color(0xFF10B981)),
         SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.BROWSER, "In-App Mini Browser", "Browse & summarize any page", Icons.Rounded.Language, Color(0xFF3B82F6)),

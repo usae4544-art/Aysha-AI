@@ -1,5 +1,15 @@
 package com.aysha.assistant.ui.screens
 
+import android.Manifest
+import android.content.ClipboardManager
+import android.content.Context
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.os.PowerManager
+import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
@@ -9,7 +19,6 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,20 +36,34 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.CheckCircle
-import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.AccessibilityNew
+import androidx.compose.material.icons.rounded.BatteryChargingFull
+import androidx.compose.material.icons.rounded.Bluetooth
+import androidx.compose.material.icons.rounded.Call
+import androidx.compose.material.icons.rounded.CameraAlt
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material.icons.rounded.Contacts
+import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.rounded.Headset
+import androidx.compose.material.icons.rounded.Key
+import androidx.compose.material.icons.rounded.Layers
+import androidx.compose.material.icons.rounded.LocationOn
+import androidx.compose.material.icons.rounded.Lock
+import androidx.compose.material.icons.rounded.Mic
+import androidx.compose.material.icons.rounded.Notifications
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.OpenInNew
+import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Sms
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,325 +73,459 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.aysha.assistant.R
 import com.aysha.assistant.core.AssistantLanguage
-import com.aysha.assistant.core.HudColorOption
-import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.OrbStyle
 import com.aysha.assistant.core.UserGender
 import com.aysha.assistant.core.ui.AuroraGradientButton
+import com.aysha.assistant.core.ui.ClayRecessedBox
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LiquidAuroraBackground
 import com.aysha.assistant.core.ui.LocalAyshaColors
-import com.aysha.assistant.ui.components.AyshaInfinityLogo
-import com.aysha.assistant.ui.components.AyshaVoiceOrb
 import kotlinx.coroutines.delay
 
 @Composable
 fun SplashOnboardingScreen(
     initialUserName: String = "Friend",
+    initialGeminiKey: String = "",
+    accessibilityConnected: Boolean = false,
+    notificationConnected: Boolean = false,
+    onRequestPermission: (String) -> Unit = {},
+    onRequestAllRuntimePermissions: () -> Unit = {},
+    onOpenSystemSettings: (String) -> Unit = {},
+    onSaveGeminiKey: (String) -> Unit = {},
     onGetStarted: (name: String, gender: UserGender, lang: AssistantLanguage, orbStyle: OrbStyle) -> Unit,
 ) {
     val c = LocalAyshaColors.current
-    // step 0 = Animated splash, 1 = Welcome highlights, 2 = Quick setup (Name/Gender/Lang/Orb)
-    var step by remember { mutableIntStateOf(0) }
-    var progress by remember { mutableFloatStateOf(0.15f) }
+    val context = LocalContext.current
 
-    var nameInput by remember { mutableStateOf(if (initialUserName == "Friend") "" else initialUserName) }
-    var genderInput by remember { mutableStateOf(UserGender.UNSPECIFIED) }
-    var langInput by remember { mutableStateOf(AssistantLanguage.HINGLISH) }
-    var orbInput by remember { mutableStateOf(OrbStyle.AYSHA_2047) }
+    // step 0 = brief splash, step 1 = Apni Gemini key daalo, step 2 = Permissions, step 3 = Background me zinda rakho
+    var step by remember { mutableIntStateOf(0) }
+    var geminiKeyDraft by remember { mutableStateOf(initialGeminiKey) }
+    var nameDraft by remember { mutableStateOf(if (initialUserName == "Friend") "" else initialUserName) }
+    var genderDraft by remember { mutableStateOf(UserGender.UNSPECIFIED) }
+    var permTick by remember { mutableIntStateOf(0) }
 
     LaunchedEffect(Unit) {
-        for (i in 1..10) {
-            delay(110L)
-            progress = i / 10f
-        }
+        delay(950L)
         step = 1
     }
 
     LiquidAuroraBackground {
         AnimatedContent(
             targetState = step,
-            transitionSpec = { fadeIn(tween(380)) togetherWith fadeOut(tween(260)) },
-            label = "splash_onboarding_steps",
-        ) { currentStep ->
-            when (currentStep) {
-                0 -> {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .clickable { step = 1 },
-                    ) {
+            transitionSpec = { fadeIn(tween(300)) togetherWith fadeOut(tween(200)) },
+            label = "setup_wizard_3steps",
+        ) { curStep ->
+            if (curStep == 0) {
+                Box(
+                    modifier = Modifier.fillMaxSize().clickable { step = 1 },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Image(
                             painter = painterResource(id = R.drawable.aysha_portrait),
                             contentDescription = "AYSHA",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .height(480.dp)
-                                .align(Alignment.TopCenter),
+                                .size(144.dp)
+                                .clip(RoundedCornerShape(36.dp))
+                                .border(3.dp, Color.White, RoundedCornerShape(36.dp)),
                         )
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .background(
-                                    Brush.verticalGradient(
-                                        colors = listOf(
-                                            Color.Transparent,
-                                            c.background.copy(alpha = 0.35f),
-                                            c.background.copy(alpha = 0.94f),
-                                            c.background,
-                                        ),
-                                    ),
-                                ),
-                        )
-                        IconButton(
-                            onClick = { step = 1 },
-                            modifier = Modifier
-                                .align(Alignment.TopStart)
-                                .statusBarsPadding()
-                                .padding(8.dp),
-                        ) {
-                            Icon(Icons.Rounded.Close, contentDescription = "Skip", tint = Color.White.copy(alpha = 0.7f))
-                        }
-
-                        Column(
-                            modifier = Modifier
-                                .align(Alignment.BottomCenter)
-                                .navigationBarsPadding()
-                                .padding(horizontal = 28.dp, vertical = 32.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                        ) {
-                            AyshaInfinityLogo(size = 86.dp)
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "AYSHA",
-                                color = Color.White,
-                                fontSize = 42.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                letterSpacing = 5.sp,
-                            )
-                            Text(
-                                text = "Your Personal AI Companion",
-                                color = c.accentPrimary,
-                                fontSize = 17.sp,
-                                fontWeight = FontWeight.SemiBold,
-                            )
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "Ek second… load ho raha hai 💗",
-                                color = c.textSecondary,
-                                fontSize = 13.5.sp,
-                                textAlign = TextAlign.Center,
-                            )
-                            Spacer(modifier = Modifier.height(20.dp))
-                            LinearProgressIndicator(
-                                progress = { progress },
+                        Text("AYSHA", color = c.textPrimary, fontSize = 38.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Ek second… load ho raha hai 💗", color = c.textSecondary, fontSize = 14.sp)
+                    }
+                }
+            } else {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .statusBarsPadding()
+                        .navigationBarsPadding()
+                        .imePadding()
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    // Header matching Screenshots 19–23: App icon + "AYSHA set up karo" + "Step X / 3" + 3-bar progress
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Image(
+                                painter = painterResource(id = R.drawable.aysha_portrait),
+                                contentDescription = "AYSHA",
+                                contentScale = ContentScale.Crop,
                                 modifier = Modifier
-                                    .fillMaxWidth(0.72f)
-                                    .height(6.dp)
-                                    .clip(CircleShape),
-                                color = c.accentPrimary,
-                                trackColor = c.glassBorder,
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .border(1.5.dp, Color.White, RoundedCornerShape(12.dp)),
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Text("AYSHA set up karo", color = c.textPrimary, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
+                                Text("Step $curStep / 3", color = c.textSecondary, fontSize = 12.5.sp)
+                            }
+                        }
+                        if (curStep > 1) {
+                            Icon(Icons.Rounded.GraphicEq, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(26.dp))
+                        }
+                    }
+
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (bar in 1..3) {
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(4.dp)
+                                    .clip(CircleShape)
+                                    .background(if (bar <= curStep) c.accentPrimary else c.glassBorder),
                             )
                         }
                     }
-                }
 
-                1 -> {
-                    val features = listOf(
-                        "Live 3D Orb & Hinglish Voice",
-                        "Smart Chat & Purani Yaadein",
-                        "Phone Control & Automation",
-                        "Companion Modes & Secret Safety",
-                        "Scanner, Whiteboard & Vibes",
-                    )
+                    when (curStep) {
+                        1 -> {
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                Text("Apni Gemini key daalo", color = c.textPrimary, fontSize = 23.sp, fontWeight = FontWeight.ExtraBold)
+                                Text(
+                                    "AYSHA ki awaaz aur dimaag Google ke Gemini par chalte hain. Key free hai aur lagbhag ek minute lagta hai.",
+                                    color = c.textSecondary,
+                                    fontSize = 13.5.sp,
+                                )
+                                SetupStepNumberRow(1, "Neeche \"Free key lo\" dabao. Google AI Studio khulega.")
+                                SetupStepNumberRow(2, "Apne Google account se sign in karo.")
+                                SetupStepNumberRow(3, "\"Create API key\" dabao. Koi bhi project chuno. Phir \"Copy\" dabao.")
+                                SetupStepNumberRow(4, "AYSHA me wapas aao aur \"Paste karo\" dabao.")
 
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .navigationBarsPadding()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 20.dp, vertical = 18.dp),
-                        verticalArrangement = Arrangement.SpaceBetween,
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                    ) {
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        GlassCard(
-                            modifier = Modifier.fillMaxWidth(),
-                            cornerRadius = 26.dp,
-                            elevated = true,
-                            contentPadding = PaddingValues(18.dp),
-                        ) {
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                Box(
+                                GlassCard(
                                     modifier = Modifier.fillMaxWidth(),
-                                    contentAlignment = Alignment.Center,
+                                    cornerRadius = 22.dp,
+                                    elevated = true,
+                                    onClick = {
+                                        runCatching {
+                                            context.startActivity(
+                                                Intent(Intent.ACTION_VIEW, Uri.parse("https://aistudio.google.com/apikey"))
+                                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                                            )
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(vertical = 14.dp),
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(156.dp)
-                                            .clip(CircleShape)
-                                            .border(
-                                                width = 2.5.dp,
-                                                brush = Brush.linearGradient(listOf(c.accentPrimary, c.accentSecondary)),
-                                                shape = CircleShape,
-                                            ),
-                                    ) {
-                                        Image(
-                                            painter = painterResource(id = R.drawable.aysha_portrait),
-                                            contentDescription = "AYSHA",
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize(),
-                                        )
-                                    }
-                                    Box(
-                                        modifier = Modifier
-                                            .align(Alignment.TopEnd)
-                                            .padding(end = 14.dp, top = 6.dp)
-                                            .size(38.dp)
-                                            .clip(CircleShape)
-                                            .background(Brush.linearGradient(listOf(c.accentSecondary, c.accentPrimary))),
-                                        contentAlignment = Alignment.Center,
-                                    ) {
-                                        Icon(Icons.Rounded.Favorite, contentDescription = null, tint = Color.White, modifier = Modifier.size(20.dp))
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.OpenInNew, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Free key lo", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                                     }
                                 }
 
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Text("AYSHA", color = c.textPrimary, fontSize = 32.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 4.sp)
-                                Text("Step 1 / 2 · Tumhari AI dost & assistant", color = c.accentPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                                ClayRecessedBox(modifier = Modifier.fillMaxWidth(), cornerRadius = 22.dp, contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp)) {
+                                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        BasicTextField(
+                                            value = geminiKeyDraft,
+                                            onValueChange = { geminiKeyDraft = it },
+                                            singleLine = true,
+                                            textStyle = TextStyle(color = c.textPrimary, fontSize = 14.5.sp),
+                                            cursorBrush = SolidColor(c.accentPrimary),
+                                            modifier = Modifier.weight(1f),
+                                            decorationBox = { inner ->
+                                                if (geminiKeyDraft.isEmpty()) Text("Apni key yahan daalo", color = c.textSecondary, fontSize = 14.5.sp)
+                                                inner()
+                                            },
+                                        )
+                                        Icon(Icons.Rounded.Lock, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(18.dp))
+                                    }
+                                }
 
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                Column(
-                                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                                    verticalArrangement = Arrangement.spacedBy(9.dp),
+                                GlassCard(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    cornerRadius = 22.dp,
+                                    elevated = true,
+                                    onClick = {
+                                        val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                                        val txt = cb.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
+                                        if (txt.isEmpty()) {
+                                            Toast.makeText(context, "Abhi kuch copy nahi hua hai. Pehle key copy karo.", Toast.LENGTH_SHORT).show()
+                                        } else {
+                                            geminiKeyDraft = txt
+                                        }
+                                    },
+                                    contentPadding = PaddingValues(vertical = 14.dp),
                                 ) {
-                                    features.forEach { item ->
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(Icons.Rounded.CheckCircle, contentDescription = null, tint = c.success, modifier = Modifier.size(19.dp))
-                                            Spacer(modifier = Modifier.width(10.dp))
-                                            Text(item, color = c.textPrimary, fontSize = 14.5.sp, fontWeight = FontWeight.SemiBold)
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(Icons.Rounded.Key, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text("Paste karo", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    }
+                                }
+
+                                Text(
+                                    "Key free hai. Ye encrypted rehti hai aur sirf tumhare liye AYSHA chalane me use hoti hai.",
+                                    color = c.textSecondary,
+                                    fontSize = 12.5.sp,
+                                )
+                            }
+
+                            AuroraGradientButton(
+                                text = "-> Save karke aage badho",
+                                enabled = geminiKeyDraft.isNotBlank(),
+                                onClick = {
+                                    onSaveGeminiKey(geminiKeyDraft.trim())
+                                    step = 2
+                                },
+                            )
+                            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                Text(
+                                    "Maine key pehle hi daal di hai",
+                                    color = c.textPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.clickable { step = 2 }.padding(6.dp),
+                                )
+                                Text(
+                                    "Abhi skip karo",
+                                    color = c.textPrimary,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 13.sp,
+                                    modifier = Modifier.clickable { step = 2 }.padding(6.dp),
+                                )
+                            }
+                        }
+
+                        2 -> {
+                            fun hasPerm(p: String): Boolean {
+                                val unused = permTick
+                                return ContextCompat.checkSelfPermission(context, p) == PackageManager.PERMISSION_GRANTED
+                            }
+                            val micOk = hasPerm(Manifest.permission.RECORD_AUDIO)
+                            val notifOk = if (Build.VERSION.SDK_INT >= 33) hasPerm(Manifest.permission.POST_NOTIFICATIONS) else true
+                            val camOk = hasPerm(Manifest.permission.CAMERA)
+                            val callOk = hasPerm(Manifest.permission.CALL_PHONE)
+                            val contactsOk = hasPerm(Manifest.permission.READ_CONTACTS)
+                            val smsOk = hasPerm(Manifest.permission.SEND_SMS)
+
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text("AYSHA ko apna phone use karne do", color = c.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                                Text(
+                                    "Ek tap — Android ek ek karke sab poochega. Sirf microphone zaroori hai; baaki se wo kaam ki banti hai.",
+                                    color = c.textSecondary,
+                                    fontSize = 13.sp,
+                                )
+                                PermissionSetupCard(Icons.Rounded.Mic, "Microphone", "Taaki tum AYSHA se baat kar sako. Zaroori hai.", micOk) {
+                                    onRequestPermission("mic")
+                                    permTick++
+                                }
+                                PermissionSetupCard(Icons.Rounded.Notifications, "Notifications", "AYSHA ki apni notification, jo use background me chalu rakhti hai.", notifOk) {
+                                    onRequestPermission("notifications")
+                                    permTick++
+                                }
+                                PermissionSetupCard(Icons.Rounded.CameraAlt, "Camera", "Taaki wo photo le sake ya jo tum phone se dikhao wo dekh sake.", camOk) {
+                                    onRequestPermission("camera")
+                                    permTick++
+                                }
+                                PermissionSetupCard(Icons.Rounded.Call, "Phone calls", "Taaki wo tumhare liye call laga sake.", callOk) {
+                                    onRequestPermission("call")
+                                    permTick++
+                                }
+                                PermissionSetupCard(Icons.Rounded.Contacts, "Contacts", "Taaki sirf naam kaafi ho — number wo khud dhoondh legi.", contactsOk) {
+                                    onRequestPermission("contacts")
+                                    permTick++
+                                }
+                                PermissionSetupCard(Icons.Rounded.Sms, "SMS", "Taaki wo text message bhej sake.", smsOk) {
+                                    onRequestPermission("sms")
+                                    permTick++
+                                }
+                                PermissionSetupCard(Icons.Rounded.LocationOn, "Location", "Mausam, raasta, aur tum kahan ho.", false) { onOpenSystemSettings("general") }
+                                PermissionSetupCard(Icons.Rounded.PhotoLibrary, "Gallery aur files", "Taaki wo koi photo ya file dhoondh kar bhej sake.", false) { onOpenSystemSettings("general") }
+                                PermissionSetupCard(Icons.Rounded.Headset, "Call uthana aur sambhalna", "Taaki wo bata sake kaun call kar raha hai aur call utha sake.", callOk) { onRequestPermission("call") }
+                                PermissionSetupCard(Icons.Rounded.Bluetooth, "Bluetooth", "Taaki uski awaaz tumhare earbuds ya speaker par aaye.", true) {}
+                            }
+
+                            AuroraGradientButton(
+                                text = "✓ Sab allow karo",
+                                onClick = {
+                                    onRequestAllRuntimePermissions()
+                                    permTick++
+                                },
+                            )
+                            GlassCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                cornerRadius = 24.dp,
+                                elevated = true,
+                                onClick = { step = 3 },
+                                contentPadding = PaddingValues(vertical = 14.dp),
+                            ) {
+                                Text("-> Aage badho", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp, modifier = Modifier.align(Alignment.Center))
+                            }
+                        }
+
+                        else -> {
+                            val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager
+                            val batteryOk = pm.isIgnoringBatteryOptimizations(context.packageName)
+                            val overlayOk = Settings.canDrawOverlays(context)
+
+                            Column(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .verticalScroll(rememberScrollState()),
+                                verticalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Text("AYSHA ko background me zinda rakho", color = c.textPrimary, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+                                Text(
+                                    "Battery zaroori hai — isi se screen off hone par wo chup nahi hoti. Baaki optional hain.",
+                                    color = c.textSecondary,
+                                    fontSize = 13.sp,
+                                )
+                                PermissionSetupCard(Icons.Rounded.BatteryChargingFull, "Battery — optimisation band", "Zaroori hai. Iske bina phone background me band kar deta hai.", batteryOk) {
+                                    onOpenSystemSettings("battery")
+                                }
+                                PermissionSetupCard(Icons.Rounded.Layers, "Dusre apps ke upar dikhna", "Taaki uska orb tum jo bhi kar rahe ho uske upar tair sake.", overlayOk) {
+                                    onOpenSystemSettings("overlay")
+                                }
+                                PermissionSetupCard(Icons.Rounded.NotificationsActive, "Notification access", "Messages padhne aur kaun call kar raha hai ye jaanne ke liye.", notificationConnected) {
+                                    onOpenSystemSettings("notifications")
+                                }
+                                PermissionSetupCard(Icons.Rounded.AccessibilityNew, "Accessibility service", "Taaki wo apps khol sake, tap kar sake aur screen padh sake.", accessibilityConnected) {
+                                    onOpenSystemSettings("accessibility")
+                                }
+
+                                // Quick Name + Gender card before finishing
+                                GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 20.dp, contentPadding = PaddingValues(14.dp)) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Text("Tumhara naam & pehchan", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                                        ClayRecessedBox(modifier = Modifier.fillMaxWidth(), cornerRadius = 16.dp, contentPadding = PaddingValues(12.dp)) {
+                                            BasicTextField(
+                                                value = nameDraft,
+                                                onValueChange = { nameDraft = it },
+                                                singleLine = true,
+                                                textStyle = TextStyle(color = c.textPrimary, fontSize = 14.sp),
+                                                cursorBrush = SolidColor(c.accentPrimary),
+                                                decorationBox = { inner ->
+                                                    if (nameDraft.isEmpty()) Text("Apna naam likho (e.g. Rahul)", color = c.textSecondary, fontSize = 14.sp)
+                                                    inner()
+                                                },
+                                            )
+                                        }
+                                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                            UserGender.entries.forEach { g ->
+                                                GlassPill(
+                                                    text = g.label,
+                                                    dotColor = if (genderDraft == g) c.accentPrimary else null,
+                                                    onClick = { genderDraft = g },
+                                                    modifier = Modifier.weight(1f),
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
+
+                            AuroraGradientButton(
+                                text = "✓ Ho gaya",
+                                onClick = {
+                                    onGetStarted(
+                                        nameDraft.trim().ifBlank { initialUserName.ifBlank { "Friend" } },
+                                        genderDraft,
+                                        AssistantLanguage.HINGLISH,
+                                        OrbStyle.RED_HUD,
+                                    )
+                                },
+                            )
                         }
-
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        AuroraGradientButton(
-                            text = "AYSHA set up karo ->",
-                            onClick = { step = 2 },
-                            height = 56.dp,
-                            cornerRadius = 28.dp,
-                        )
                     }
                 }
+            }
+        }
+    }
+}
 
-                else -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .statusBarsPadding()
-                            .navigationBarsPadding()
-                            .imePadding()
-                            .verticalScroll(rememberScrollState())
-                            .padding(horizontal = 20.dp, vertical = 18.dp),
-                        verticalArrangement = Arrangement.spacedBy(14.dp),
-                    ) {
-                        Text("Step 2 / 2 · Personal Setup", color = c.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
-                        Text("Thoda apne baare me batao", color = c.textPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+@Composable
+private fun SetupStepNumberRow(num: Int, text: String) {
+    val c = LocalAyshaColors.current
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .clip(CircleShape)
+                .background(c.accentPrimary.copy(alpha = 0.16f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(num.toString(), color = c.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(text, color = c.textPrimary, fontSize = 13.5.sp, modifier = Modifier.weight(1f))
+    }
+}
 
-                        GlassCard(modifier = Modifier.fillMaxWidth(), elevated = true, contentPadding = PaddingValues(14.dp)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                OutlinedTextField(
-                                    value = nameInput,
-                                    onValueChange = { nameInput = it },
-                                    label = { Text("Tumhara naam") },
-                                    placeholder = { Text("jaise Rahul ya Priya") },
-                                    singleLine = true,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                                Text("Aap kaun hain? (Optional)", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    UserGender.entries.forEach { g ->
-                                        val active = genderInput == g
-                                        GlassPill(
-                                            text = g.label,
-                                            dotColor = if (active) c.accentPrimary else null,
-                                            onClick = { genderInput = g },
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                    }
-                                }
-                                Text("Baat karne ki bhasha", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
-                                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    AssistantLanguage.entries.forEach { l ->
-                                        val active = langInput == l
-                                        GlassPill(
-                                            text = l.label.substringBefore(" "),
-                                            dotColor = if (active) c.accentSecondary else null,
-                                            onClick = { langInput = l },
-                                            modifier = Modifier.weight(1f),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        GlassCard(modifier = Modifier.fillMaxWidth(), contentPadding = PaddingValues(14.dp)) {
-                            Column(verticalArrangement = Arrangement.spacedBy(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text("Apna favourite Orb chuno", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp, modifier = Modifier.fillMaxWidth())
-                                AyshaVoiceOrb(
-                                    orbState = OrbState.SPEAKING,
-                                    audioLevel = 0.45f,
-                                    onTap = {},
-                                    orbSize = 98.dp,
-                                    orbStyle = orbInput,
-                                    hudColor = HudColorOption.CYAN,
-                                    showCenterIcon = false,
-                                )
-                                Row(
-                                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    listOf(OrbStyle.AYSHA_2047, OrbStyle.NOVA_3D, OrbStyle.JARVIS_3D, OrbStyle.LIQUID_CORE, OrbStyle.ULTRON).forEach { st ->
-                                        GlassPill(
-                                            text = st.label,
-                                            dotColor = if (orbInput == st) c.accentPrimary else null,
-                                            onClick = { orbInput = st },
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        AuroraGradientButton(
-                            text = "Home par jao",
-                            onClick = {
-                                onGetStarted(
-                                    nameInput.trim().ifBlank { initialUserName.ifBlank { "Friend" } },
-                                    genderInput,
-                                    langInput,
-                                    orbInput,
-                                )
-                            },
-                            height = 56.dp,
-                            cornerRadius = 28.dp,
-                        )
-                    }
+@Composable
+private fun PermissionSetupCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    granted: Boolean,
+    onClick: () -> Unit,
+) {
+    val c = LocalAyshaColors.current
+    GlassCard(
+        modifier = Modifier.fillMaxWidth(),
+        cornerRadius = 22.dp,
+        elevated = true,
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 13.dp),
+    ) {
+        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(CircleShape)
+                    .background(if (granted) Color(0xFFDCFCE7) else Color(0xFFDBEAFE)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = if (granted) Color(0xFF16A34A) else Color(0xFF2563EB),
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(subtitle, color = c.textSecondary, fontSize = 12.sp)
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            if (granted) {
+                Icon(Icons.Rounded.Check, contentDescription = "Allowed", tint = Color(0xFF16A34A), modifier = Modifier.size(22.dp))
+            } else {
+                Box(
+                    modifier = Modifier
+                        .clip(CircleShape)
+                        .background(Color(0xFFF3E4CE))
+                        .padding(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Text("Baaki hai", color = Color(0xFFB46B22), fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
                 }
             }
         }

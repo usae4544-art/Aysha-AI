@@ -67,8 +67,12 @@ import com.aysha.assistant.core.MemoryEntry
 import com.aysha.assistant.core.ui.AuroraGradientButton
 import com.aysha.assistant.core.ui.ColoredIconBadge
 import com.aysha.assistant.core.ui.GlassCard
+import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
 import com.aysha.assistant.ui.AyshaViewModel
+import com.aysha.assistant.ui.components.MayaBottomNavBar
+import com.aysha.assistant.ui.components.MayaTopBar
+import com.aysha.assistant.ui.components.PrimaryBottomTab
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -76,6 +80,9 @@ import java.util.Locale
 @Composable
 fun MemoryHistoryScreen(
     viewModel: AyshaViewModel,
+    onOpenDrawer: (() -> Unit)? = null,
+    onOpenNotifications: () -> Unit = {},
+    onSelectBottomTab: ((PrimaryBottomTab) -> Unit)? = null,
     onBack: () -> Unit,
 ) {
     val c = LocalAyshaColors.current
@@ -84,8 +91,10 @@ fun MemoryHistoryScreen(
     val memories by viewModel.memories.collectAsState()
     val archivedMemories by viewModel.archivedMemories.collectAsState()
     val documents by viewModel.documents.collectAsState()
+    val macros by viewModel.macros.collectAsState()
+    val orbState by viewModel.orbState.collectAsState()
 
-    var tab by remember { mutableIntStateOf(0) }
+    var tab by remember { mutableIntStateOf(1) } // Default directly to Screenshot-17 Yaadein tab!
     var search by remember { mutableStateOf("") }
     var editingMemory by remember { mutableStateOf<MemoryEntry?>(null) }
     var showAddMemory by remember { mutableStateOf(false) }
@@ -110,37 +119,43 @@ fun MemoryHistoryScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .statusBarsPadding()
-            .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+            .statusBarsPadding(),
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+        MayaTopBar(
+            title = "Yaadein",
+            showMenuInsteadOfBack = onOpenDrawer != null,
+            onLeadingClick = { onOpenDrawer?.invoke() ?: onBack() },
+            onNotificationsClick = onOpenNotifications,
+        )
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                IconButton(onClick = onBack) {
-                    Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "Back", tint = c.textPrimary)
-                }
-                Text("Yaadein, Docs & Chats", color = c.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            }
-            Row {
-                IconButton(onClick = { viewModel.exportAndShareChats(asJson = true) }) {
-                    Icon(Icons.Rounded.FileDownload, contentDescription = "Export", tint = c.accentPrimary)
-                }
-                if (tab == 1) {
-                    IconButton(onClick = { showAddMemory = true }) {
-                        Icon(Icons.Rounded.Add, contentDescription = "Add Memory", tint = c.accentPrimary)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Mere baare me & Sikhe hue tasks", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                Row {
+                    IconButton(onClick = { viewModel.exportAndShareChats(asJson = true) }, modifier = Modifier.size(32.dp)) {
+                        Icon(Icons.Rounded.FileDownload, contentDescription = "Export", tint = c.accentPrimary, modifier = Modifier.size(18.dp))
                     }
-                } else if (tab == 2) {
-                    IconButton(onClick = { showAddDoc = true }) {
-                        Icon(Icons.Rounded.Add, contentDescription = "Add Doc", tint = c.accentPrimary)
+                    if (tab == 1) {
+                        IconButton(onClick = { showAddMemory = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.Add, contentDescription = "Add Memory", tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+                        }
+                    } else if (tab == 2) {
+                        IconButton(onClick = { showAddDoc = true }, modifier = Modifier.size(32.dp)) {
+                            Icon(Icons.Rounded.Add, contentDescription = "Add Doc", tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+                        }
                     }
                 }
             }
-        }
 
         // 4 Maya-style tabs: Chats | Yaadein | Docs | Purani
         GlassCard(cornerRadius = 50.dp, contentPadding = PaddingValues(4.dp)) {
@@ -224,33 +239,65 @@ fun MemoryHistoryScreen(
             }
 
             1 -> {
-                GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16.dp, elevated = true, contentPadding = PaddingValues(12.dp)) {
-                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text("Mere baare me · ${settings.userName}", color = c.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
-                        val profileFacts = memories.filter { it.tags.contains("profile") || it.tags.contains("location") || it.tags.contains("preference") }.take(3)
-                        if (profileFacts.isEmpty()) {
-                            Text("Abhi profile details khaali hain — chat me apna naam, shehar ya pasand batao!", color = c.textSecondary, fontSize = 12.sp)
-                        } else {
-                            profileFacts.forEach { f -> Text("• ${f.title}: ${f.content}", color = c.textPrimary, fontSize = 12.5.sp) }
+                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(9.dp)) {
+                    item {
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Text("Mere baare me", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                            val profileFacts = memories.filter { it.tags.contains("profile") || it.tags.contains("location") || it.tags.contains("preference") }.take(3)
+                            if (profileFacts.isEmpty()) {
+                                Text(
+                                    "Abhi khaali hai. Apni details batao ya resume bhejo — main yaad rakhungi.",
+                                    color = c.textSecondary,
+                                    fontSize = 13.sp,
+                                )
+                            } else {
+                                profileFacts.forEach { f -> Text("• ${f.title}: ${f.content}", color = c.textPrimary, fontSize = 13.sp) }
+                            }
                         }
                     }
-                }
 
-                GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16.dp, contentPadding = PaddingValues(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("Auto-Memory in Chat", color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.5.sp)
-                            Text("Baat ke baad khud kaam ki baatein yaad rakhe", color = c.textSecondary, fontSize = 11.sp)
-                        }
-                        Switch(checked = settings.autoMemoryEnabled, onCheckedChange = { on -> viewModel.updateSettings { it.copy(autoMemoryEnabled = on) } })
+                    item {
+                        Text("Sikhe hue tasks", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp, modifier = Modifier.padding(top = 6.dp))
                     }
-                }
 
-                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    items(macros.take(6), key = { "macro_${it.name}" }) { macro ->
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            cornerRadius = 22.dp,
+                            elevated = true,
+                            onClick = { viewModel.runMacro(macro) },
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 14.dp),
+                        ) {
+                            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(macro.name, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
+                                    Text(
+                                        text = "${macro.steps.size} steps · ${macro.triggerPhrase.ifBlank { "task" }} · ${if (macro.isBuiltIn) "built-in" else "${macro.playedCount} baar chala"}",
+                                        color = c.accentPrimary,
+                                        fontSize = 11.5.sp,
+                                    )
+                                }
+                                GlassPill(text = "▶ Chalao", dotColor = c.accentPrimary, onClick = { viewModel.runMacro(macro) })
+                            }
+                        }
+                    }
+
+                    item {
+                        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 22.dp, elevated = true, contentPadding = PaddingValues(14.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("Baat ke baad khud yaad rakhe", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
+                                    Text("Har baat khatam hone par kaam ki baatein khud save karti hai", color = c.textSecondary, fontSize = 12.sp)
+                                }
+                                Switch(checked = settings.autoMemoryEnabled, onCheckedChange = { on -> viewModel.updateSettings { it.copy(autoMemoryEnabled = on) } })
+                            }
+                        }
+                    }
+
                     items(filteredMems, key = { it.id }) { mem ->
                         GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(12.dp)) {
                             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -332,6 +379,16 @@ fun MemoryHistoryScreen(
                     }
                 }
             }
+        }
+        }
+
+        if (onSelectBottomTab != null) {
+            MayaBottomNavBar(
+                activeTab = PrimaryBottomTab.YAADEIN,
+                orbState = orbState,
+                onSelectTab = onSelectBottomTab,
+                onMicOrStopClick = { viewModel.onOrbTap() },
+            )
         }
     }
 

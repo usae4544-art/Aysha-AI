@@ -5,10 +5,15 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -23,7 +28,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -37,28 +41,22 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Send
-import androidx.compose.material.icons.rounded.Apps
-import androidx.compose.material.icons.rounded.AutoAwesome
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.CameraAlt
-import androidx.compose.material.icons.rounded.ChatBubbleOutline
+import androidx.compose.material.icons.rounded.CalendarToday
 import androidx.compose.material.icons.rounded.Close
-import androidx.compose.material.icons.rounded.ColorLens
-import androidx.compose.material.icons.rounded.EditNote
+import androidx.compose.material.icons.rounded.Cloud
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.Favorite
-import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.LockOpen
+import androidx.compose.material.icons.rounded.MenuBook
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.MicOff
 import androidx.compose.material.icons.rounded.MusicNote
 import androidx.compose.material.icons.rounded.Pause
-import androidx.compose.material.icons.rounded.PhotoLibrary
 import androidx.compose.material.icons.rounded.PlayArrow
-import androidx.compose.material.icons.rounded.Replay
-import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Timer
-import androidx.compose.material.icons.rounded.Tune
-import androidx.compose.material.icons.rounded.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
@@ -72,9 +70,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
@@ -86,20 +87,30 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.VoiceEngineMode
+import com.aysha.assistant.core.ui.ClayRecessedBox
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
 import com.aysha.assistant.ui.AyshaViewModel
-import com.aysha.assistant.ui.components.AyshaAvatarRing
 import com.aysha.assistant.ui.components.AyshaVoiceOrb
 import com.aysha.assistant.ui.components.EqualizerWaveformRow
+import com.aysha.assistant.ui.components.MayaBottomNavBar
+import com.aysha.assistant.ui.components.MayaTopBar
+import com.aysha.assistant.ui.components.PrimaryBottomTab
 import java.io.ByteArrayOutputStream
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun HomeOrbScreen(
     viewModel: AyshaViewModel,
+    unreadNotifications: Boolean = true,
+    onOpenDrawer: () -> Unit = {},
+    onOpenNotifications: () -> Unit = {},
     onOpenChat: () -> Unit,
+    onOpenYaadein: () -> Unit = {},
     onOpenSettings: () -> Unit,
     onOpenMoreSheet: () -> Unit,
     onOpenProviders: () -> Unit,
@@ -110,21 +121,21 @@ fun HomeOrbScreen(
     onOpenRulesAgents: () -> Unit = {},
     onOpenAutomation: () -> Unit = {},
     onOpenSecretSettings: () -> Unit = {},
+    onOpenLicenseInfo: () -> Unit = {},
 ) {
     val c = LocalAyshaColors.current
     val context = LocalContext.current
     val settings by viewModel.settings.collectAsState()
+    val license by viewModel.licenseInfo.collectAsState()
     val orbState by viewModel.orbState.collectAsState()
     val audioLevel by viewModel.audioLevel.collectAsState()
     val statusText by viewModel.statusText.collectAsState()
     val lastReply by viewModel.lastAssistantReply.collectAsState()
-    val sessionSeconds by viewModel.sessionElapsedSeconds.collectAsState()
     val followUpLeft by viewModel.followUpSecondsLeft.collectAsState()
     val timerRemaining by viewModel.timerRemainingSeconds.collectAsState()
     val timerRunning by viewModel.timerRunning.collectAsState()
     val timerLabel by viewModel.timerLabel.collectAsState()
     val liveMuted by viewModel.liveMuted.collectAsState()
-    val wakeRunning by viewModel.wakeRunning.collectAsState()
     val mood by viewModel.assistantMood.collectAsState()
     val energy by viewModel.assistantEnergy.collectAsState()
     val pendingImage by viewModel.pendingAttachmentJpeg.collectAsState()
@@ -148,467 +159,388 @@ fun HomeOrbScreen(
         }
     }
 
-    val greeting = remember(settings.userName) {
+    val (greetingTop, greetingName) = remember(settings.userName) {
         val hour = Calendar.getInstance().get(Calendar.HOUR_OF_DAY)
-        when {
-            hour in 5..11 -> "Good morning, ${settings.userName}"
-            hour in 12..16 -> "Good afternoon, ${settings.userName}"
-            hour in 17..21 -> "Good evening, ${settings.userName}"
-            else -> "Abhi tak jaag rahe ho, ${settings.userName}"
+        val prefix = when {
+            hour in 5..11 -> "Good morning,"
+            hour in 12..16 -> "Good afternoon,"
+            hour in 17..21 -> "Good evening,"
+            else -> "Abhi tak jaag rahe ho,"
         }
+        prefix to settings.userName
     }
+    val dayNum = remember { SimpleDateFormat("dd", Locale.getDefault()).format(Date()) }
+    val dayMonth = remember { SimpleDateFormat("EEE, MMM", Locale.getDefault()).format(Date()) }
+
+    val ecgInf = rememberInfiniteTransition(label = "ecg_bg")
+    val ecgPhase by ecgInf.animateFloat(
+        initialValue = 0f,
+        targetValue = 6.28318f,
+        animationSpec = infiniteRepeatable(tween(2600, easing = LinearEasing)),
+        label = "ecg_wave",
+    )
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .imePadding(),
     ) {
-        // Top Header Bar
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+        // Maya-exact Top Header: [☰]  AYSHA  [🔔]
+        MayaTopBar(
+            title = settings.assistantName,
+            showMenuInsteadOfBack = true,
+            unreadNotifications = unreadNotifications,
+            onLeadingClick = onOpenDrawer,
+            onNotificationsClick = onOpenNotifications,
+        )
+
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                modifier = Modifier.weight(1f),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(c.glassSurfaceElevated)
-                        .border(1.dp, c.glassBorder, CircleShape)
-                        .clickable(onClick = onOpenProviders),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Rounded.AutoAwesome, contentDescription = "AI Mode", tint = c.accentPrimary, modifier = Modifier.size(19.dp))
-                }
-                val modePillText = when {
-                    settings.offlineOnlyMode -> "Offline"
-                    settings.activeProvider.requiresApiKey && settings.currentKeyFor(settings.activeProvider).isBlank() -> "100% Free"
-                    else -> settings.activeProvider.displayName
-                }
-                GlassPill(
-                    text = if (wakeRunning) "Wake ON · $modePillText" else "${settings.activeSubAgent.shortTag} · $modePillText",
-                    dotColor = if (wakeRunning) c.success else c.accentPrimary,
-                    onClick = onOpenProviders,
-                )
-                if (sessionSeconds > 0) {
-                    GlassPill(text = viewModel.formatClock(sessionSeconds), dotColor = c.accentSecondary)
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(c.glassSurfaceElevated)
-                        .border(1.dp, c.glassBorder, CircleShape)
-                        .clickable(onClick = onOpenAppearance),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Rounded.ColorLens, contentDescription = "Orbs & Theme", tint = c.accentPrimary, modifier = Modifier.size(19.dp))
-                }
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(c.glassSurfaceElevated)
-                        .border(1.dp, c.glassBorder, CircleShape)
-                        .clickable(onClick = onOpenSettings),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(Icons.Rounded.Settings, contentDescription = "Settings", tint = c.textPrimary, modifier = Modifier.size(19.dp))
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Maya-style Personalized Greeting + Mood/Energy/Level Telemetry Strip
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = greeting,
-                    color = c.textPrimary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = "${settings.orbStyle.label} · ${settings.companionIntimacy.label} · ${mood.caption}",
-                    color = c.textSecondary,
-                    fontSize = 11.5.sp,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                GlassPill(
-                    text = settings.companionIntimacy.label,
-                    dotColor = Color(0xFFEC4899),
-                    onClick = onOpenSecretSettings,
-                )
-                GlassPill(
-                    text = "${mood.label} · $energy%",
-                    dotColor = Color(mood.colorHex),
-                    onClick = onOpenRulesAgents,
-                )
-            }
-        }
-
-        if (timerRemaining > 0L) {
-            Spacer(modifier = Modifier.height(6.dp))
-            GlassCard(
-                modifier = Modifier.fillMaxWidth(),
-                cornerRadius = 16.dp,
-                elevated = true,
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            // Screenshot-exact soft blue License / Companion Banner
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(
+                        if (c.isDark) c.glassSurfaceElevated
+                        else Color(0xFFCDE1FD).copy(alpha = 0.72f),
+                    )
+                    .border(
+                        1.dp,
+                        if (c.isDark) c.glassBorder else Color.White.copy(alpha = 0.65f),
+                        RoundedCornerShape(18.dp),
+                    )
+                    .clickable(onClick = onOpenLicenseInfo)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(Icons.Rounded.Timer, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "$timerLabel · ${viewModel.formatClock(timerRemaining)}",
-                            color = c.textPrimary,
-                            fontSize = 13.sp,
-                            fontWeight = FontWeight.SemiBold,
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.weight(1f)) {
+                        Icon(
+                            imageVector = Icons.Rounded.LockOpen,
+                            contentDescription = null,
+                            tint = c.accentPrimary,
+                            modifier = Modifier.size(18.dp),
                         )
-                    }
-                    Row {
-                        IconButton(onClick = { viewModel.pauseOrResumeTimer() }, modifier = Modifier.size(30.dp)) {
-                            Icon(
-                                imageVector = if (timerRunning) Icons.Rounded.Pause else Icons.Rounded.PlayArrow,
-                                contentDescription = "Pause",
-                                tint = c.accentPrimary,
-                                modifier = Modifier.size(18.dp),
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "${license.plan.label} • ${settings.companionIntimacy.label}",
+                                color = c.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = "Saare tools aur unlimited baat chalu hai",
+                                color = c.textSecondary,
+                                fontSize = 11.5.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
                             )
                         }
-                        IconButton(onClick = { viewModel.resetTimer() }, modifier = Modifier.size(30.dp)) {
-                            Icon(Icons.Rounded.Stop, contentDescription = "Reset", tint = c.error, modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "Secret ->",
+                        color = c.accentPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp,
+                        modifier = Modifier.clickable(onClick = onOpenSecretSettings),
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Screenshot-exact Greeting Left + Energy Tile Right
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = greetingTop,
+                        color = c.textSecondary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = greetingName,
+                        color = c.textPrimary,
+                        fontSize = 27.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    val subtitleLine = when (orbState) {
+                        OrbState.CONNECTING -> "Connect ho rahi hai…"
+                        OrbState.LISTENING -> if (liveMuted) "Mic mute hai" else "Sun rahi hai…"
+                        OrbState.SPEAKING -> "Bol rahi hai…"
+                        OrbState.PROCESSING, OrbState.AUTOMATING -> statusText
+                        OrbState.ERROR -> statusText
+                        else -> if (lastReply.isNotBlank() && lastReply != "Ready") lastReply else "Ready — tap mic to talk"
+                    }
+                    Text(
+                        text = subtitleLine,
+                        color = if (orbState == OrbState.ERROR) c.error else c.textSecondary,
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                // Top-Right Sculpted Clay Energy Tile
+                GlassCard(
+                    cornerRadius = 18.dp,
+                    elevated = true,
+                    onClick = onOpenRulesAgents,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Rounded.Bolt,
+                            contentDescription = null,
+                            tint = Color(0xFFF59E0B),
+                            modifier = Modifier.size(18.dp),
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Column {
+                            Text(
+                                text = energy.toString(),
+                                color = c.textPrimary,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 15.sp,
+                            )
+                            Text(
+                                text = "Energy",
+                                color = c.textSecondary,
+                                fontSize = 11.sp,
+                            )
                         }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Maya-style Quick Action Strip
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            QuickChip("Scanner", Icons.Rounded.CameraAlt, onOpenScanner)
-            QuickChip("Whiteboard", Icons.Rounded.EditNote, onOpenWhiteboard)
-            QuickChip("Browser", Icons.Rounded.Language, onOpenBrowser)
-            QuickChip("Secret", Icons.Rounded.Favorite, onOpenSecretSettings)
-            QuickChip("Rules", Icons.Rounded.Tune, onOpenRulesAgents)
-            QuickChip("Vibes", Icons.Rounded.MusicNote, onOpenRulesAgents)
-            QuickChip("Automation", Icons.Rounded.Bolt, onOpenAutomation)
-            QuickChip("Dil ki baat", Icons.Rounded.ChatBubbleOutline) {
-                viewModel.sendTextMessage("Dil ki baat karni hai — sunogi?")
-                onOpenChat()
-            }
-            QuickChip("SOS", Icons.Rounded.Warning) { viewModel.triggerSosConfirmation() }
-        }
-
-        // Main Center Stage with Smooth Animated Transition
-        Column(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-        ) {
-            AnimatedContent(
-                targetState = orbState,
-                transitionSpec = { fadeIn(tween(240)) togetherWith fadeOut(tween(180)) },
-                label = "orb_stage_transition",
-            ) { stage ->
-                Column(
+            if (timerRemaining > 0L) {
+                Spacer(modifier = Modifier.height(6.dp))
+                GlassCard(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
+                    cornerRadius = 16.dp,
+                    elevated = true,
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
-                    when (stage) {
-                        OrbState.LISTENING, OrbState.CONNECTING -> {
-                            GlassCard(
-                                cornerRadius = 50.dp,
-                                elevated = true,
-                                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 9.dp),
-                            ) {
-                                val label = when {
-                                    stage == OrbState.CONNECTING -> "CONNECT HO RAHI HAI…"
-                                    liveMuted -> "MIC MUTE HAI"
-                                    followUpLeft > 0 -> "Follow-up (${followUpLeft}s) · SUN RAHI HAI…"
-                                    else -> "SUN RAHI HAI…"
-                                }
-                                Text(label, color = c.textPrimary, fontSize = 13.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Timer, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("$timerLabel · ${viewModel.formatClock(timerRemaining)}", color = c.textPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                        }
+                        Row {
+                            IconButton(onClick = { viewModel.pauseOrResumeTimer() }, modifier = Modifier.size(30.dp)) {
+                                Icon(if (timerRunning) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, contentDescription = "Pause", tint = c.accentPrimary, modifier = Modifier.size(18.dp))
                             }
-                            Spacer(modifier = Modifier.height(22.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                EqualizerWaveformRow(active = true, audioLevel = audioLevel, barCount = 7, maxHeight = 56.dp)
-                                Spacer(modifier = Modifier.width(4.dp))
-                                AyshaVoiceOrb(
-                                    orbState = stage,
-                                    audioLevel = audioLevel,
-                                    onTap = { viewModel.stopActiveVoiceOrSpeech() },
-                                    orbSize = 158.dp,
-                                    orbStyle = settings.orbStyle,
-                                    hudColor = settings.hudColor,
-                                    hudCoreColor = settings.hudCoreColor,
-                                    hudMainColor = settings.hudMainColor,
-                                    hudRaysLengthPct = settings.hudRaysLengthPct,
-                                    hudRingEnabled = settings.hudRingEnabled,
-                                    renderMode = settings.orbRenderMode,
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                EqualizerWaveformRow(active = true, audioLevel = audioLevel, barCount = 7, maxHeight = 56.dp)
+                            IconButton(onClick = { viewModel.resetTimer() }, modifier = Modifier.size(30.dp)) {
+                                Icon(Icons.Rounded.Stop, contentDescription = "Reset", tint = c.error, modifier = Modifier.size(18.dp))
                             }
-                            Spacer(modifier = Modifier.height(14.dp))
-                            if (statusText.isNotBlank() && !statusText.contains("Listening", ignoreCase = true)) {
-                                GlassCard(
-                                    modifier = Modifier.fillMaxWidth(0.92f),
-                                    cornerRadius = 18.dp,
-                                    contentPadding = PaddingValues(12.dp),
-                                ) {
-                                    Text(
-                                        text = statusText,
-                                        color = c.textPrimary,
-                                        fontSize = 13.5.sp,
-                                        textAlign = TextAlign.Center,
-                                        modifier = Modifier.fillMaxWidth(),
+                        }
+                    }
+                }
+            }
+
+            // Centerpiece Neural HUD Orb Stage with soft ECG backdrop
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(226.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val w = size.width
+                    val h = size.height
+                    val cy = h * 0.56f
+                    val path = Path().apply {
+                        moveTo(0f, cy)
+                        var x = 0f
+                        while (x <= w) {
+                            val norm = x / w
+                            val spike = when {
+                                norm in 0.14f..0.18f -> kotlin.math.sin((norm - 0.14f) * 78f + ecgPhase) * -32f
+                                norm in 0.80f..0.88f -> kotlin.math.sin((norm - 0.80f) * 65f - ecgPhase) * 28f
+                                else -> kotlin.math.sin(norm * 14f + ecgPhase) * 7f
+                            }
+                            lineTo(x, cy + spike)
+                            x += 12f
+                        }
+                    }
+                    drawPath(
+                        path = path,
+                        color = c.accentPrimary.copy(alpha = if (c.isDark) 0.25f else 0.18f),
+                        style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round),
+                    )
+                    drawCircle(
+                        color = c.accentPrimary.copy(alpha = if (c.isDark) 0.12f else 0.08f),
+                        radius = size.minDimension * 0.48f,
+                        center = Offset(w / 2f, h / 2f),
+                        style = Stroke(width = 1.dp.toPx()),
+                    )
+                }
+
+                AnimatedContent(
+                    targetState = orbState,
+                    transitionSpec = { fadeIn(tween(240)) togetherWith fadeOut(tween(180)) },
+                    label = "home_orb_stage",
+                ) { stage ->
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        AyshaVoiceOrb(
+                            orbState = stage,
+                            audioLevel = if (stage == OrbState.SPEAKING) audioLevel.coerceAtLeast(0.45f) else audioLevel,
+                            onTap = { viewModel.onOrbTap() },
+                            orbSize = 166.dp,
+                            orbStyle = settings.orbStyle,
+                            hudColor = settings.hudColor,
+                            hudCoreColor = settings.hudCoreColor,
+                            hudMainColor = settings.hudMainColor,
+                            hudRaysLengthPct = settings.hudRaysLengthPct,
+                            hudRingEnabled = settings.hudRingEnabled,
+                            renderMode = settings.orbRenderMode,
+                            showCenterIcon = false,
+                        )
+                        if (stage == OrbState.LISTENING || stage == OrbState.SPEAKING) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                EqualizerWaveformRow(active = true, audioLevel = audioLevel, barCount = 10, maxHeight = 20.dp)
+                                if (settings.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE) {
+                                    GlassPill(
+                                        text = if (liveMuted) "Unmute" else "Mute",
+                                        dotColor = if (liveMuted) c.warning else c.success,
+                                        onClick = { viewModel.toggleLiveMute() },
                                     )
                                 }
-                                Spacer(modifier = Modifier.height(14.dp))
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                GlassCard(
-                                    cornerRadius = 50.dp,
-                                    elevated = true,
-                                    onClick = { viewModel.stopActiveVoiceOrSpeech() },
-                                    contentPadding = PaddingValues(horizontal = 26.dp, vertical = 12.dp),
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.Stop, contentDescription = "Stop", tint = c.textPrimary, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Roko", color = c.textPrimary, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                                    }
-                                }
-                                if (settings.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE) {
-                                    GlassCard(
-                                        cornerRadius = 50.dp,
-                                        elevated = true,
-                                        onClick = { viewModel.toggleLiveMute() },
-                                        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                                    ) {
-                                        Icon(
-                                            imageVector = if (liveMuted) Icons.Rounded.MicOff else Icons.Rounded.Mic,
-                                            contentDescription = "Mute",
-                                            tint = if (liveMuted) c.warning else c.accentPrimary,
-                                            modifier = Modifier.size(20.dp),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-
-                        OrbState.SPEAKING -> {
-                            GlassCard(
-                                cornerRadius = 50.dp,
-                                elevated = true,
-                                contentPadding = PaddingValues(horizontal = 20.dp, vertical = 7.dp),
-                            ) {
-                                Text("BOL RAHI HAI…", color = c.accentPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.8.sp)
-                            }
-                            Spacer(modifier = Modifier.height(10.dp))
-                            GlassCard(
-                                modifier = Modifier.fillMaxWidth(0.92f),
-                                cornerRadius = 20.dp,
-                                elevated = true,
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
-                            ) {
-                                Text(
-                                    text = lastReply,
-                                    color = c.textPrimary,
-                                    fontSize = 13.5.sp,
-                                    maxLines = 4,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(14.dp))
-                            AyshaVoiceOrb(
-                                orbState = stage,
-                                audioLevel = audioLevel.coerceAtLeast(0.45f),
-                                onTap = { viewModel.stopActiveVoiceOrSpeech() },
-                                orbSize = 156.dp,
-                                orbStyle = settings.orbStyle,
-                                hudColor = settings.hudColor,
-                                hudCoreColor = settings.hudCoreColor,
-                                hudMainColor = settings.hudMainColor,
-                                hudRaysLengthPct = settings.hudRaysLengthPct,
-                                hudRingEnabled = settings.hudRingEnabled,
-                                renderMode = settings.orbRenderMode,
-                            )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            EqualizerWaveformRow(
-                                active = true,
-                                audioLevel = audioLevel.coerceAtLeast(0.45f),
-                                barCount = 24,
-                                maxHeight = 40.dp,
-                            )
-                            if (settings.bargeInEnabled) {
-                                Text(
-                                    text = "Barge-in ON — beech me bol kar rok sakte ho",
-                                    color = c.textSecondary,
-                                    fontSize = 11.sp,
-                                    modifier = Modifier.padding(top = 6.dp),
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(14.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                GlassCard(
-                                    cornerRadius = 50.dp,
-                                    elevated = true,
-                                    onClick = { viewModel.stopActiveVoiceOrSpeech() },
-                                    contentPadding = PaddingValues(horizontal = 26.dp, vertical = 11.dp),
-                                ) {
-                                    Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Icon(Icons.Rounded.Stop, contentDescription = "Stop", tint = c.textPrimary, modifier = Modifier.size(18.dp))
-                                        Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Roko", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 14.5.sp)
-                                    }
-                                }
-                                GlassCard(
-                                    cornerRadius = 50.dp,
-                                    elevated = true,
-                                    onClick = { viewModel.replayLastResponse() },
-                                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 11.dp),
-                                ) {
-                                    Icon(Icons.Rounded.Replay, contentDescription = "Replay", tint = c.accentPrimary, modifier = Modifier.size(20.dp))
-                                }
-                            }
-                        }
-
-                        else -> {
-                            if (settings.orbRenderMode != com.aysha.assistant.core.OrbRenderMode.ANIMATED_AVATAR) {
-                                AyshaAvatarRing(size = 82.dp, isSpeaking = false)
-                                Spacer(modifier = Modifier.height(8.dp))
-                            }
-
-                            GlassCard(
-                                modifier = Modifier.fillMaxWidth(0.94f),
-                                cornerRadius = 18.dp,
-                                elevated = true,
-                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                            ) {
-                                Text(
-                                    text = when (stage) {
-                                        OrbState.PROCESSING, OrbState.AUTOMATING -> statusText
-                                        OrbState.ERROR -> statusText
-                                        else -> lastReply.ifBlank { "BOLO, KAISE HELP KARUN?" }
-                                    },
-                                    color = if (stage == OrbState.ERROR) c.error else c.textPrimary,
-                                    fontSize = 13.5.sp,
-                                    maxLines = 3,
-                                    overflow = TextOverflow.Ellipsis,
-                                    textAlign = TextAlign.Center,
-                                    modifier = Modifier.fillMaxWidth(),
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(10.dp))
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center,
-                            ) {
-                                EqualizerWaveformRow(
-                                    active = stage == OrbState.PROCESSING || stage == OrbState.AUTOMATING,
-                                    audioLevel = audioLevel,
-                                    barCount = 5,
-                                    maxHeight = 42.dp,
-                                )
-                                AyshaVoiceOrb(
-                                    orbState = stage,
-                                    audioLevel = audioLevel,
-                                    onTap = { viewModel.onOrbTap() },
-                                    orbSize = 138.dp,
-                                    orbStyle = settings.orbStyle,
-                                    hudColor = settings.hudColor,
-                                    hudCoreColor = settings.hudCoreColor,
-                                    hudMainColor = settings.hudMainColor,
-                                    hudRaysLengthPct = settings.hudRaysLengthPct,
-                                    hudRingEnabled = settings.hudRingEnabled,
-                                    renderMode = settings.orbRenderMode,
-                                )
-                                EqualizerWaveformRow(
-                                    active = stage == OrbState.PROCESSING || stage == OrbState.AUTOMATING,
-                                    audioLevel = audioLevel,
-                                    barCount = 5,
-                                    maxHeight = 42.dp,
-                                )
-                            }
-
-                            Spacer(modifier = Modifier.height(6.dp))
-
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly,
-                            ) {
-                                HomeDockCircle("Chat", Icons.Rounded.ChatBubbleOutline, onOpenChat)
-                                HomeDockCircle("Talk start", Icons.Rounded.Mic) { viewModel.onOrbTap() }
-                                HomeDockCircle("Scanner", Icons.Rounded.CameraAlt, onOpenScanner)
-                                HomeDockCircle("Hub", Icons.Rounded.Apps, onOpenMoreSheet)
                             }
                         }
                     }
                 }
             }
-        }
 
-        pendingImage?.let { attached ->
-            Spacer(modifier = Modifier.height(6.dp))
-            GlassPill(
-                text = "Image attached (${attached.size / 1024} KB) · Tap to remove",
-                dotColor = c.success,
-                onClick = { viewModel.attachPendingImage(null) },
-            )
-        }
+            // Exact Screenshot 3-Pill Strip: [Gaane] [Padhai] [Journal]
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                HomeQuickClayPill("Gaane", Icons.Rounded.MusicNote, Modifier.weight(1f), onOpenRulesAgents)
+                HomeQuickClayPill("Padhai", Icons.Rounded.MenuBook, Modifier.weight(1f), onOpenWhiteboard)
+                HomeQuickClayPill("Journal", Icons.Rounded.Edit, Modifier.weight(1f)) {
+                    viewModel.sendTextMessage("Aaj ka chhota journal note likhte hain — puchho mera din kaisa raha?", speakReply = false)
+                    onOpenChat()
+                }
+            }
 
-        Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
-        if (orbState != OrbState.LISTENING && orbState != OrbState.SPEAKING) {
-            GlassCard(
+            // Exact Screenshot 3-Card Telemetry Row: [Mausam] [Aaj] [Mood]
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                GlassCard(
+                    modifier = Modifier.weight(1f).height(94.dp),
+                    cornerRadius = 20.dp,
+                    elevated = true,
+                    onClick = {
+                        viewModel.sendTextMessage("Aaj ka mausam aur weather forecast batao", speakReply = true)
+                        onOpenChat()
+                    },
+                    contentPadding = PaddingValues(12.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.Cloud, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(14.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Mausam", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                        Text("—", color = c.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                        Text("Check live", color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+
+                GlassCard(
+                    modifier = Modifier.weight(1f).height(94.dp),
+                    cornerRadius = 20.dp,
+                    elevated = true,
+                    onClick = onOpenAutomation,
+                    contentPadding = PaddingValues(12.dp),
+                ) {
+                    Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.CalendarToday, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(13.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Aaj", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                        Text(dayNum, color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+                        Text(dayMonth, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                    }
+                }
+
+                GlassCard(
+                    modifier = Modifier.weight(1f).height(94.dp),
+                    cornerRadius = 20.dp,
+                    elevated = true,
+                    onClick = onOpenSecretSettings,
+                    contentPadding = PaddingValues(12.dp),
+                ) {
+                    Box(modifier = Modifier.fillMaxSize()) {
+                        Icon(
+                            imageVector = Icons.Rounded.Favorite,
+                            contentDescription = null,
+                            tint = Color(mood.colorHex).copy(alpha = 0.22f),
+                            modifier = Modifier.size(46.dp).align(Alignment.CenterEnd),
+                        )
+                        Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Mood", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            }
+                            Text(mood.label, color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(mood.caption, color = c.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            pendingImage?.let { attached ->
+                GlassPill(
+                    text = "Photo attached (${attached.size / 1024} KB) · Tap to remove",
+                    dotColor = c.success,
+                    onClick = { viewModel.attachPendingImage(null) },
+                )
+                Spacer(modifier = Modifier.height(6.dp))
+            }
+
+            // Recessed Clay Prompt Bar matching Screenshot 1/3/18
+            ClayRecessedBox(
                 modifier = Modifier.fillMaxWidth(),
                 cornerRadius = 28.dp,
-                elevated = true,
-                contentPadding = PaddingValues(start = 6.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
+                contentPadding = PaddingValues(start = 10.dp, end = 6.dp, top = 5.dp, bottom = 5.dp),
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -616,11 +548,11 @@ fun HomeOrbScreen(
                 ) {
                     IconButton(
                         onClick = { imagePickerLauncher.launch("image/*") },
-                        modifier = Modifier.size(36.dp),
+                        modifier = Modifier.size(34.dp),
                     ) {
                         Icon(
-                            imageVector = if (pendingImage != null) Icons.Rounded.Close else Icons.Rounded.PhotoLibrary,
-                            contentDescription = "Attach image",
+                            imageVector = if (pendingImage != null) Icons.Rounded.Close else Icons.Rounded.AttachFile,
+                            contentDescription = "Attach",
                             tint = if (pendingImage != null) c.warning else c.textSecondary,
                             modifier = Modifier.size(19.dp),
                         )
@@ -645,7 +577,7 @@ fun HomeOrbScreen(
                         ),
                         decorationBox = { inner ->
                             if (draft.isEmpty()) {
-                                Text("${settings.assistantName} se kuchh bhi poochho...", color = c.textSecondary, fontSize = 14.sp)
+                                Text("${settings.assistantName} se kuch bhi poochho...", color = c.textSecondary, fontSize = 14.sp)
                             }
                             inner()
                         },
@@ -653,9 +585,10 @@ fun HomeOrbScreen(
                     Spacer(modifier = Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
-                            .background(Brush.linearGradient(listOf(c.accentPrimary, c.accentSecondary)))
+                            .background(c.glassSurfaceElevated)
+                            .border(1.dp, c.glassBorder, CircleShape)
                             .clickable {
                                 if (draft.isNotBlank() || pendingImage != null) {
                                     viewModel.sendTextMessage(draft)
@@ -667,65 +600,73 @@ fun HomeOrbScreen(
                         contentAlignment = Alignment.Center,
                     ) {
                         Icon(
-                            imageVector = if (draft.isNotBlank() || pendingImage != null) Icons.AutoMirrored.Rounded.Send else Icons.Rounded.Mic,
+                            imageVector = Icons.AutoMirrored.Rounded.Send,
                             contentDescription = "Send",
-                            tint = Color.White,
-                            modifier = Modifier.size(19.dp),
+                            tint = c.textPrimary,
+                            modifier = Modifier.size(17.dp),
                         )
                     }
                 }
             }
+
+            // Slim secondary shortcut pills (Secret, Appearance, Browser, SOS) cleanly below fold
+            Spacer(modifier = Modifier.height(8.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                GlassPill("Orbs & Theme", dotColor = c.accentPrimary, onClick = onOpenAppearance)
+                GlassPill("Secret (18+)", dotColor = Color(0xFFEC4899), onClick = onOpenSecretSettings)
+                GlassPill("Browser", onClick = onOpenBrowser)
+                GlassPill("All Tools", onClick = onOpenMoreSheet)
+                GlassPill("SOS", dotColor = c.error) { viewModel.triggerSosConfirmation() }
+            }
+
+            Spacer(modifier = Modifier.height(6.dp))
         }
+
+        // Exact 5-Slot Bottom Clay Navigation Dock
+        MayaBottomNavBar(
+            activeTab = PrimaryBottomTab.HOME,
+            orbState = orbState,
+            onSelectTab = { tab ->
+                when (tab) {
+                    PrimaryBottomTab.HOME -> Unit
+                    PrimaryBottomTab.SCAN -> onOpenScanner()
+                    PrimaryBottomTab.YAADEIN -> onOpenYaadein()
+                    PrimaryBottomTab.CHAT -> onOpenChat()
+                }
+            },
+            onMicOrStopClick = { viewModel.onOrbTap() },
+        )
     }
 }
 
 @Composable
-private fun QuickChip(
+private fun HomeQuickClayPill(
     label: String,
     icon: ImageVector,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
     val c = LocalAyshaColors.current
-    Row(
-        modifier = Modifier
-            .clip(CircleShape)
-            .background(c.glassSurfaceElevated)
-            .border(1.dp, c.glassBorder, CircleShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    GlassCard(
+        modifier = modifier,
+        cornerRadius = 22.dp,
+        elevated = true,
+        onClick = onClick,
+        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 11.dp),
     ) {
-        Icon(icon, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(15.dp))
-        Spacer(modifier = Modifier.width(6.dp))
-        Text(label, color = c.textPrimary, fontSize = 12.sp, fontWeight = FontWeight.Medium, maxLines = 1)
-    }
-}
-
-@Composable
-private fun HomeDockCircle(
-    label: String,
-    icon: ImageVector,
-    onClick: () -> Unit,
-) {
-    val c = LocalAyshaColors.current
-    Column(
-        horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clip(RoundedCornerShape(14.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 4.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(c.glassSurfaceElevated)
-                .border(1.dp, c.glassBorder, CircleShape),
-            contentAlignment = Alignment.Center,
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Icon(icon, contentDescription = label, tint = c.textPrimary, modifier = Modifier.size(19.dp))
+            Icon(icon, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(16.dp))
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(label, color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1)
         }
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(label, color = c.textSecondary, fontSize = 11.sp, fontWeight = FontWeight.Medium)
     }
 }

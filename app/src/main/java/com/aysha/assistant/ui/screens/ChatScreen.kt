@@ -101,6 +101,8 @@ import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
 import com.aysha.assistant.ui.AyshaViewModel
+import com.aysha.assistant.ui.components.MayaBottomNavBar
+import com.aysha.assistant.ui.components.PrimaryBottomTab
 import java.io.ByteArrayOutputStream
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -110,6 +112,7 @@ import java.util.Locale
 @Composable
 fun ChatScreen(
     viewModel: AyshaViewModel,
+    onSelectBottomTab: ((PrimaryBottomTab) -> Unit)? = null,
     onBack: () -> Unit,
     onSwitchToVoiceOrb: () -> Unit,
 ) {
@@ -153,10 +156,15 @@ fun ChatScreen(
         modifier = Modifier
             .fillMaxSize()
             .statusBarsPadding()
-            .navigationBarsPadding()
-            .imePadding()
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .then(if (onSelectBottomTab == null) Modifier.navigationBarsPadding() else Modifier)
+            .imePadding(),
     ) {
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        ) {
         // Header: <- Avatar + Live Pulse + Level + Past Chats + Voice Call + Export + Clear Confirmation
         GlassCard(
             modifier = Modifier.fillMaxWidth(),
@@ -381,6 +389,16 @@ fun ChatScreen(
                     Icon(Icons.AutoMirrored.Rounded.Send, contentDescription = "Send", tint = Color.White, modifier = Modifier.size(18.dp))
                 }
             }
+        }
+        }
+
+        if (onSelectBottomTab != null) {
+            MayaBottomNavBar(
+                activeTab = PrimaryBottomTab.CHAT,
+                orbState = orbState,
+                onSelectTab = onSelectBottomTab,
+                onMicOrStopClick = { viewModel.onOrbTap() },
+            )
         }
     }
 
