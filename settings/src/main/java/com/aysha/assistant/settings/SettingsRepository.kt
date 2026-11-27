@@ -153,7 +153,7 @@ class SettingsRepository(private val context: Context) {
                 activeProvider = enumOrDefault(p[Keys.activeProvider], BrainProvider.GEMINI),
                 fallbackEnabled = p[Keys.fallbackEnabled] ?: true,
                 offlineOnlyMode = p[Keys.offlineOnlyMode] ?: false,
-                voiceEngineMode = enumOrDefault(p[Keys.voiceEngineMode], VoiceEngineMode.STANDARD_VOICE),
+                voiceEngineMode = enumOrDefault(p[Keys.voiceEngineMode], VoiceEngineMode.GEMINI_LIVE),
                 voicePersonalityId = p[Keys.voicePersonalityId]?.ifBlank { "aysha_natural" } ?: "aysha_natural",
                 selectedTtsVoiceName = p[Keys.selectedTtsVoiceName] ?: "",
                 ttsSpeechRate = (p[Keys.ttsSpeechRate] ?: 1.0f).coerceIn(0.5f, 2.0f),

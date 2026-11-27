@@ -34,12 +34,19 @@ data class ConnectivityCheckResult(
 class MultiProviderAiClient {
 
     private val http = OkHttpClient.Builder()
-        .connectTimeout(20, TimeUnit.SECONDS)
-        .readTimeout(60, TimeUnit.SECONDS)
-        .writeTimeout(30, TimeUnit.SECONDS)
+        .connectionPool(okhttp3.ConnectionPool(5, 5, TimeUnit.MINUTES))
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(35, TimeUnit.SECONDS)
+        .writeTimeout(20, TimeUnit.SECONDS)
         .build()
 
     private val jsonMedia = "application/json; charset=utf-8".toMediaType()
+
+    @Volatile
+    private var cachedWorkingGeminiModel: String? = null
+
+    private fun sanitizeKey(raw: String): String =
+        raw.trim().replace(Regex("\\s+"), "")
 
     suspend fun testConnection(
         provider: BrainProvider,
@@ -55,7 +62,7 @@ class MultiProviderAiClient {
             )
         }
 
-        val cleanKey = apiKey.trim()
+        val cleanKey = sanitizeKey(apiKey)
         if (provider.requiresApiKey && cleanKey.isEmpty()) {
             return@withContext ConnectivityCheckResult(
                 ok = false,
@@ -88,9 +95,14 @@ class MultiProviderAiClient {
                 val models = (0 until arr.length()).mapNotNull { i ->
                     arr.optJSONObject(i)?.optString("name")?.removePrefix("models/")
                 }.sorted()
+                val preferred = listOf("gemini-3.8-flash", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash")
+                    .firstOrNull { cand -> models.any { it.equals(cand, ignoreCase = true) } }
+                if (preferred != null) {
+                    cachedWorkingGeminiModel = preferred
+                }
                 ConnectivityCheckResult(
                     ok = true,
-                    message = "Gemini connected! ${models.size} models verified.",
+                    message = "Gemini connected! ${models.size} models verified${preferred?.let { " · Active: $it" }.orEmpty()}.",
                     models = models,
                 )
             }
@@ -280,12 +292,19 @@ class MultiProviderAiClient {
         toolExecutor: ToolExecutor,
         onToolEvent: (String) -> Unit,
     ): AiTurnResult {
-        val cleanKey = apiKey.trim()
+        val cleanKey = sanitizeKey(apiKey)
         require(cleanKey.isNotEmpty()) { "Gemini API key missing" }
-        val safeModel = model.ifBlank { BrainProvider.GEMINI.defaultModel }
+        val candidateModels = listOfNotNull(
+            model.trim().ifBlank { null },
+            cachedWorkingGeminiModel,
+            BrainProvider.GEMINI.defaultModel,
+            "gemini-3-flash-preview",
+            "gemini-2.5-flash",
+            "gemini-2.0-flash",
+        ).distinct()
 
         val contents = JSONArray()
-        for (msg in history.takeLast(14)) {
+        for (msg in history.takeLast(8)) {
             if (msg.role != ChatRole.USER && msg.role != ChatRole.ASSISTANT) continue
             if (msg.text.isBlank()) continue
             contents.put(
@@ -316,29 +335,61 @@ class MultiProviderAiClient {
 
         val toolsUsed = mutableListOf<String>()
         var pendingConfirm: PendingActionConfirmation? = null
+        var activeModel = candidateModels.first()
 
         for (round in 0 until 5) {
-            val payload = JSONObject().apply {
-                put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
-                put("contents", contents)
-                put("tools", toolsArray)
-            }
+            var respJson: JSONObject? = null
+            var lastErr: IllegalStateException? = null
+            val modelsForRound = if (round == 0) candidateModels else listOf(activeModel)
 
-            val req = Request.Builder()
-                .url("https://generativelanguage.googleapis.com/v1beta/models/$safeModel:generateContent?key=$cleanKey")
-                .post(payload.toString().toRequestBody(jsonMedia))
-                .build()
-
-            val respJson = http.newCall(req).execute().use { resp ->
-                val body = resp.body?.string().orEmpty()
-                if (!resp.isSuccessful) {
-                    val errMsg = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
-                    throw IllegalStateException("Gemini HTTP ${resp.code}: ${errMsg ?: body.take(180)}")
+            for (tryModel in modelsForRound) {
+                val payload = JSONObject().apply {
+                    put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
+                    put("contents", contents)
+                    put("tools", toolsArray)
+                    put(
+                        "generationConfig",
+                        JSONObject()
+                            .put("temperature", 0.7)
+                            .put("maxOutputTokens", 768),
+                    )
                 }
-                JSONObject(body)
+
+                val req = Request.Builder()
+                    .url("https://generativelanguage.googleapis.com/v1beta/models/$tryModel:generateContent?key=$cleanKey")
+                    .post(payload.toString().toRequestBody(jsonMedia))
+                    .build()
+
+                val callOutcome = http.newCall(req).execute().use { resp ->
+                    val body = resp.body?.string().orEmpty()
+                    if (resp.isSuccessful) {
+                        activeModel = tryModel
+                        cachedWorkingGeminiModel = tryModel
+                        Result.success(JSONObject(body))
+                    } else {
+                        val errMsg = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
+                        val ex = IllegalStateException("Gemini HTTP ${resp.code}: ${errMsg ?: body.take(180)}")
+                        val isModelNotSupported = resp.code == 404 || (resp.code == 400 && (errMsg?.contains("model", ignoreCase = true) == true))
+                        Result.failure<JSONObject>(if (isModelNotSupported) UnsupportedModelException(ex.message ?: "") else ex)
+                    }
+                }
+                if (callOutcome.isSuccess) {
+                    respJson = callOutcome.getOrThrow()
+                    break
+                } else {
+                    val err = callOutcome.exceptionOrNull()
+                    if (err is UnsupportedModelException) {
+                        lastErr = IllegalStateException(err.message)
+                        continue
+                    } else {
+                        throw (err as? IllegalStateException ?: IllegalStateException(err?.message ?: "Gemini call failed"))
+                    }
+                }
             }
 
-            val modelContent = respJson.optJSONArray("candidates")
+            val resolvedJson = respJson ?: throw (lastErr ?: IllegalStateException("No supported Gemini model responded"))
+
+            val modelContent = resolvedJson.optJSONArray("candidates")
                 ?.optJSONObject(0)
                 ?.optJSONObject("content")
                 ?: throw IllegalStateException("Gemini returned empty response")
@@ -360,7 +411,7 @@ class MultiProviderAiClient {
             if (functionCalls.isEmpty()) {
                 return AiTurnResult(
                     text = textParts.joinToString("\n").ifBlank { "Done." },
-                    providerTag = "Gemini · $safeModel",
+                    providerTag = "Gemini · $activeModel",
                     toolsUsed = toolsUsed,
                     confirmationRequired = pendingConfirm,
                 )
@@ -506,6 +557,8 @@ class MultiProviderAiClient {
             confirmationRequired = pendingConfirm,
         )
     }
+
+    private class UnsupportedModelException(message: String) : IllegalStateException(message)
 
     companion object {
         private const val TAG = "AyshaMultiAi"

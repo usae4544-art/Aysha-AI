@@ -220,9 +220,22 @@ class MainActivity : ComponentActivity() {
                 } else if (!settings.onboardingCompleted) {
                     val accConnected by viewModel.accessibilityConnected.collectAsState()
                     val notifConnected by viewModel.notificationListenerConnected.collectAsState()
+                    val connTesting by viewModel.connectivityTesting.collectAsState()
+                    val connResult by viewModel.connectivityResult.collectAsState()
                     SplashOnboardingScreen(
                         initialUserName = settings.userName,
                         initialGeminiKey = settings.geminiApiKey,
+                        keyTesting = connTesting,
+                        keyTestResult = connResult?.message,
+                        keyTestOk = connResult?.ok == true,
+                        onTestGeminiKey = { key ->
+                            viewModel.testProviderConnection(
+                                provider = com.aysha.assistant.core.BrainProvider.GEMINI,
+                                apiKey = key,
+                                baseUrl = com.aysha.assistant.core.BrainProvider.GEMINI.defaultBaseUrl,
+                                model = settings.geminiTextModel,
+                            )
+                        },
                         accessibilityConnected = accConnected,
                         notificationConnected = notifConnected,
                         onRequestPermission = { permId -> handlePermissionRequest(permId) },
@@ -238,7 +251,17 @@ class MainActivity : ComponentActivity() {
                             startupPermissionsLauncher.launch(reqs.toTypedArray())
                         },
                         onOpenSystemSettings = { cat -> viewModel.openSystemSettings(cat) },
-                        onSaveGeminiKey = { key -> viewModel.updateSettings { it.copy(geminiApiKey = key) } },
+                        onSaveGeminiKey = { key ->
+                            val clean = key.trim().replace(Regex("\\s+"), "")
+                            viewModel.updateSettings {
+                                it.copy(
+                                    geminiApiKey = clean,
+                                    activeProvider = com.aysha.assistant.core.BrainProvider.GEMINI,
+                                    offlineOnlyMode = false,
+                                    voiceEngineMode = com.aysha.assistant.core.VoiceEngineMode.GEMINI_LIVE,
+                                )
+                            }
+                        },
                         onGetStarted = { name, gender, lang, orbStyle ->
                             viewModel.completeOnboardingWithSetup(name, gender, lang, orbStyle)
                         },

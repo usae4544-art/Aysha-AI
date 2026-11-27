@@ -85,6 +85,12 @@ class GeminiLiveClient(
     @Volatile
     private var activeSystemInstruction: String = ""
 
+    @Volatile
+    private var liveModelCandidates: List<String> = emptyList()
+
+    @Volatile
+    private var liveModelIdx: Int = 0
+
     private var recordJob: Job? = null
     private var playJob: Job? = null
     private var reconnectJob: Job? = null
@@ -111,7 +117,7 @@ class GeminiLiveClient(
 
     fun start(settings: AppSettings, systemInstruction: String) {
         stop()
-        val key = settings.geminiApiKey.trim()
+        val key = settings.geminiApiKey.trim().replace(Regex("\\s+"), "")
         if (key.isEmpty()) {
             _orbState.value = OrbState.ERROR
             _statusText.value = "Gemini API key missing"
@@ -120,16 +126,28 @@ class GeminiLiveClient(
         }
         userStopped = false
         resumeHandle = null
-        activeSettings = settings
+        activeSettings = settings.copy(geminiApiKey = key)
         activeSystemInstruction = systemInstruction
+        liveModelCandidates = listOf(
+            settings.geminiLiveModel.trim(),
+            "gemini-3.8-live",
+            "gemini-3.1-flash-live-preview",
+            "gemini-2.5-flash-native-audio-preview-09-2025",
+            "gemini-2.0-flash-live-001",
+            "gemini-2.0-flash-exp",
+        ).filter { it.isNotBlank() }.distinct()
+        liveModelIdx = 0
         connect(isResume = false)
     }
 
     private fun connect(isResume: Boolean) {
         val s = activeSettings ?: return
-        val key = s.geminiApiKey.trim()
+        val key = s.geminiApiKey.trim().replace(Regex("\\s+"), "")
         if (key.isEmpty() || userStopped) return
 
+        val currentModel = liveModelCandidates.getOrElse(liveModelIdx) {
+            s.geminiLiveModel.trim().ifBlank { "gemini-3.8-live" }
+        }
         _orbState.value = OrbState.CONNECTING
         _statusText.value = if (isResume) "Reconnecting live voice..." else "Connecting Gemini Live..."
         setupComplete = false
@@ -141,9 +159,8 @@ class GeminiLiveClient(
             req,
             object : WebSocketListener() {
                 override fun onOpen(ws: WebSocket, response: Response) {
-                    val modelId = s.geminiLiveModel.trim().ifBlank { "gemini-3.8-live" }
                     val voiceName = VoicePersonalities.byId(s.voicePersonalityId).geminiLiveVoice
-                    val payload = buildSetupPayload(modelId, voiceName, activeSystemInstruction, resumeHandle)
+                    val payload = buildSetupPayload(currentModel, voiceName, activeSystemInstruction, resumeHandle)
                     runCatching { ws.send(payload.toString()) }
                 }
 
@@ -155,23 +172,35 @@ class GeminiLiveClient(
                     val detail = SafeLogger.redact(
                         runCatching { response?.body?.string()?.take(160) }.getOrNull() ?: t.message ?: "Connection failed",
                     )
+                    val wasSetupDone = setupComplete
                     cleanupAudio()
                     webSocket = null
                     setupComplete = false
 
+                    if (!userStopped && !wasSetupDone && liveModelIdx + 1 < liveModelCandidates.size) {
+                        liveModelIdx++
+                        scheduleReconnect(delayMs = 200L, isResume = false)
+                        return
+                    }
                     if (!userStopped && !resumeHandle.isNullOrBlank()) {
                         scheduleReconnect()
                         return
                     }
                     _orbState.value = OrbState.ERROR
                     _statusText.value = "Live connection error"
-                    callbacks.onError("Gemini Live failed: $detail")
+                    callbacks.onError("Gemini Live failed ($currentModel): $detail")
                 }
 
                 override fun onClosed(ws: WebSocket, code: Int, reason: String) {
+                    val wasSetupDone = setupComplete
                     cleanupAudio()
                     webSocket = null
                     setupComplete = false
+                    if (!userStopped && !wasSetupDone && liveModelIdx + 1 < liveModelCandidates.size) {
+                        liveModelIdx++
+                        scheduleReconnect(delayMs = 200L, isResume = false)
+                        return
+                    }
                     if (!userStopped && !resumeHandle.isNullOrBlank()) {
                         scheduleReconnect()
                         return
@@ -185,13 +214,13 @@ class GeminiLiveClient(
         )
     }
 
-    private fun scheduleReconnect() {
+    private fun scheduleReconnect(delayMs: Long = 650L, isResume: Boolean = true) {
         if (userStopped || reconnectJob?.isActive == true) return
         reconnectJob = scope.launch {
             _orbState.value = OrbState.CONNECTING
-            _statusText.value = "Refreshing live session..."
-            delay(650L)
-            if (!userStopped) connect(isResume = true)
+            _statusText.value = if (isResume) "Refreshing live session..." else "Connecting Gemini Live..."
+            delay(delayMs)
+            if (!userStopped) connect(isResume = isResume)
         }
     }
 

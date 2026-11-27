@@ -99,6 +99,10 @@ import kotlinx.coroutines.delay
 fun SplashOnboardingScreen(
     initialUserName: String = "Friend",
     initialGeminiKey: String = "",
+    keyTesting: Boolean = false,
+    keyTestResult: String? = null,
+    keyTestOk: Boolean = false,
+    onTestGeminiKey: (String) -> Unit = {},
     accessibilityConnected: Boolean = false,
     notificationConnected: Boolean = false,
     onRequestPermission: (String) -> Unit = {},
@@ -260,11 +264,12 @@ fun SplashOnboardingScreen(
                                     elevated = true,
                                     onClick = {
                                         val cb = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                                        val txt = cb.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
+                                        val txt = cb.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim()?.replace(Regex("\\s+"), "").orEmpty()
                                         if (txt.isEmpty()) {
                                             Toast.makeText(context, "Abhi kuch copy nahi hua hai. Pehle key copy karo.", Toast.LENGTH_SHORT).show()
                                         } else {
                                             geminiKeyDraft = txt
+                                            onTestGeminiKey(txt)
                                         }
                                     },
                                     contentPadding = PaddingValues(vertical = 14.dp),
@@ -272,7 +277,33 @@ fun SplashOnboardingScreen(
                                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                                         Icon(Icons.Rounded.Key, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(18.dp))
                                         Spacer(modifier = Modifier.width(8.dp))
-                                        Text("Paste karo", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                        Text("Paste & Connect karo", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                                    }
+                                }
+
+                                if (geminiKeyDraft.isNotBlank()) {
+                                    GlassCard(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        cornerRadius = 20.dp,
+                                        borderColor = if (keyTestOk) c.success else null,
+                                        onClick = { onTestGeminiKey(geminiKeyDraft.trim().replace(Regex("\\s+"), "")) },
+                                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                                    ) {
+                                        Text(
+                                            text = when {
+                                                keyTesting -> "Gemini API verify ho rahi hai..."
+                                                keyTestResult != null -> keyTestResult
+                                                else -> "Tap karke API key test aur connect karo"
+                                            },
+                                            color = when {
+                                                keyTesting -> c.accentPrimary
+                                                keyTestResult == null -> c.textSecondary
+                                                keyTestOk -> c.success
+                                                else -> c.error
+                                            },
+                                            fontSize = 12.5.sp,
+                                            fontWeight = FontWeight.SemiBold,
+                                        )
                                     }
                                 }
 
@@ -287,7 +318,8 @@ fun SplashOnboardingScreen(
                                 text = "-> Save karke aage badho",
                                 enabled = geminiKeyDraft.isNotBlank(),
                                 onClick = {
-                                    onSaveGeminiKey(geminiKeyDraft.trim())
+                                    val clean = geminiKeyDraft.trim().replace(Regex("\\s+"), "")
+                                    onSaveGeminiKey(clean)
                                     step = 2
                                 },
                             )

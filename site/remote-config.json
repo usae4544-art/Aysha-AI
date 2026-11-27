@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.5.0",
-  "latestVersionCode": 8,
-  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.5.0/AYSHA-latest-release.apk",
-  "updateNotes": "In-App Auto Update Checker, 1-Tap Dark Mode, Pure Gemini API (Local Mode removed), Live OTA Config",
+  "latestVersion": "2.6.0",
+  "latestVersionCode": 9,
+  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.6.0/AYSHA-latest-release.apk",
+  "updateNotes": "Real Gemini Live voice default on Mic tap, zero mic OFF/ON flicker, faster Gemini reply speed, auto model fallback on API key connect, and smooth site animations.",
   "forceUpdate": false,
   "announcementBanner": "",
   "geminiTextModel": "gemini-3.8-flash",

@@ -771,7 +771,7 @@ data class AppSettings(
     val activeProvider: BrainProvider = BrainProvider.GEMINI,
     val fallbackEnabled: Boolean = true,
     val offlineOnlyMode: Boolean = false,
-    val voiceEngineMode: VoiceEngineMode = VoiceEngineMode.STANDARD_VOICE,
+    val voiceEngineMode: VoiceEngineMode = VoiceEngineMode.GEMINI_LIVE,
     val voicePersonalityId: String = "aysha_natural",
     val selectedTtsVoiceName: String = "",
     val ttsSpeechRate: Float = 1.0f,

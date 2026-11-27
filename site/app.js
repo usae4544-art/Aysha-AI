@@ -214,65 +214,161 @@ function discountedPrice(planId) {
   return { base, final, discountPercent: pct, code: c.code };
 }
 
-/* --- Subtle monochrome/cyan HUD Orb Canvas --- */
+/* --- Animated Neural Constellation + Cyber HUD Orb Canvas --- */
 function startOrbLoop() {
   const canvas = $("orb-canvas");
   if (!canvas) return;
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
 
+  let hoverBoost = 0;
+  let pointerX = 0;
+  let pointerY = 0;
+  canvas.addEventListener("pointermove", (e) => {
+    const rect = canvas.getBoundingClientRect();
+    pointerX = ((e.clientX - rect.left) / rect.width - 0.5) * 14;
+    pointerY = ((e.clientY - rect.top) / rect.height - 0.5) * 14;
+    hoverBoost = 1;
+  });
+  canvas.addEventListener("pointerleave", () => {
+    pointerX = 0;
+    pointerY = 0;
+    hoverBoost = 0;
+  });
+
+  // 3D golden constellation vertices
+  const pts = Array.from({ length: 34 }, (_, i) => {
+    const phi = Math.acos(1 - (2 * (i + 0.5)) / 34);
+    const theta = Math.PI * (1 + Math.sqrt(5)) * i;
+    return {
+      x: Math.cos(theta) * Math.sin(phi),
+      y: Math.sin(theta) * Math.sin(phi),
+      z: Math.cos(phi),
+    };
+  });
+
   let t = 0;
+  let curBoost = 0;
   const draw = () => {
+    curBoost += (hoverBoost - curBoost) * 0.08;
     const w = canvas.width;
     const h = canvas.height;
-    const cx = w / 2;
-    const cy = h / 2;
+    const cx = w / 2 + pointerX * 0.25;
+    const cy = h / 2 + pointerY * 0.25;
     ctx.clearRect(0, 0, w, h);
 
     const active = state.isAdmin || isLicenseActive(state.license);
-    const accent = active ? "#10b981" : state.user ? "#22d3ee" : "#52525b";
+    const accent = active ? "#10b981" : state.user ? "#22d3ee" : "#fb7185";
+    const gold = "#f59e0b";
 
-    // Outer calibrated rings
-    ctx.strokeStyle = "rgba(255,255,255,0.08)";
-    ctx.lineWidth = 1;
+    // Ambient halo glow
+    const halo = ctx.createRadialGradient(cx, cy, 18, cx, cy, 94);
+    halo.addColorStop(0, active ? "rgba(16,185,129,0.22)" : "rgba(34,211,238,0.22)");
+    halo.addColorStop(0.65, "rgba(245,158,11,0.06)");
+    halo.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = halo;
     ctx.beginPath();
-    ctx.arc(cx, cy, 82, 0, Math.PI * 2);
-    ctx.stroke();
+    ctx.arc(cx, cy, 94, 0, Math.PI * 2);
+    ctx.fill();
 
-    ctx.strokeStyle = accent;
-    ctx.lineWidth = 1.6;
-    for (let i = 0; i < 3; i++) {
-      const a0 = t * (0.4 + i * 0.25) + (i * Math.PI * 2) / 3;
-      ctx.beginPath();
-      ctx.arc(cx, cy, 62 + i * 10, a0, a0 + 1.35);
-      ctx.stroke();
-    }
-
-    // Inner waveform ticks
-    const tickCount = 36;
+    // 48 Radial frequency ticks
+    const tickCount = 48;
     for (let i = 0; i < tickCount; i++) {
-      const ang = (i / tickCount) * Math.PI * 2 + t * 0.15;
-      const amp = 4 + Math.sin(t * 2.4 + i * 0.65) * (active ? 6 : 3);
-      const r1 = 38;
-      const r2 = r1 + amp;
-      ctx.strokeStyle = i % 3 === 0 ? accent : "rgba(237,237,237,0.35)";
-      ctx.lineWidth = 1.4;
+      const ang = (i / tickCount) * Math.PI * 2 + t * 0.22;
+      const wave = Math.sin(t * 3.1 + i * 0.52) * 0.5 + 0.5;
+      const len = 5 + wave * (10 + curBoost * 6);
+      const r1 = 56;
+      const r2 = r1 + len;
+      ctx.strokeStyle = i % 4 === 0 ? accent : "rgba(244, 63, 94, 0.55)";
+      ctx.lineWidth = i % 4 === 0 ? 1.8 : 1.1;
       ctx.beginPath();
       ctx.moveTo(cx + Math.cos(ang) * r1, cy + Math.sin(ang) * r1);
       ctx.lineTo(cx + Math.cos(ang) * r2, cy + Math.sin(ang) * r2);
       ctx.stroke();
     }
 
-    // Core dot
-    ctx.fillStyle = accent;
+    // Outer calibrated rotating HUD arcs
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < 3; i++) {
+      const a0 = t * (0.45 + i * 0.28) + (i * Math.PI * 2) / 3;
+      ctx.beginPath();
+      ctx.arc(cx, cy, 74 + i * 8, a0, a0 + 1.25);
+      ctx.stroke();
+    }
+
+    // Inner Obsidian core sphere
+    ctx.fillStyle = "#06070a";
     ctx.beginPath();
-    ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+    ctx.arc(cx, cy, 46, 0, Math.PI * 2);
     ctx.fill();
+    ctx.strokeStyle = "rgba(255,255,255,0.14)";
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Project & connect 3D neural constellation nodes
+    const rotY = t * (0.7 + curBoost * 0.5);
+    const rotX = t * 0.42;
+    const proj = pts.map((p) => {
+      const x1 = p.x * Math.cos(rotY) - p.z * Math.sin(rotY);
+      const z1 = p.x * Math.sin(rotY) + p.z * Math.cos(rotY);
+      const y2 = p.y * Math.cos(rotX) - z1 * Math.sin(rotX);
+      const z2 = p.y * Math.sin(rotX) + z1 * Math.cos(rotX);
+      const scale = 32 * (1 + z2 * 0.25);
+      return { x: cx + x1 * scale, y: cy + y2 * scale, z: z2 };
+    });
+
+    ctx.strokeStyle = "rgba(245, 158, 11, 0.36)";
+    ctx.lineWidth = 0.85;
+    for (let i = 0; i < proj.length; i++) {
+      for (let j = i + 1; j < proj.length; j++) {
+        const dx = proj[i].x - proj[j].x;
+        const dy = proj[i].y - proj[j].y;
+        if (dx * dx + dy * dy < 380) {
+          ctx.beginPath();
+          ctx.moveTo(proj[i].x, proj[i].y);
+          ctx.lineTo(proj[j].x, proj[j].y);
+          ctx.stroke();
+        }
+      }
+    }
+
+    proj.forEach((p, idx) => {
+      ctx.fillStyle = idx % 5 === 0 ? accent : gold;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.z > 0 ? 2.1 : 1.3, 0, Math.PI * 2);
+      ctx.fill();
+    });
 
     t += 0.016;
     requestAnimationFrame(draw);
   };
   requestAnimationFrame(draw);
+}
+
+function initScrollAnimations() {
+  const targets = document.querySelectorAll(".section-head, .card, .redeem-panel, .download-box, .faq-item");
+  if (!targets.length) return;
+  if (!("IntersectionObserver" in window)) {
+    targets.forEach((el) => el.classList.add("reveal", "is-visible"));
+    return;
+  }
+  const obs = new IntersectionObserver(
+    (entries) => {
+      entries.forEach((entry) => {
+        if (entry.isIntersecting) {
+          entry.target.classList.add("is-visible");
+          obs.unobserve(entry.target);
+        }
+      });
+    },
+    { threshold: 0.12, rootMargin: "0px 0px -30px 0px" },
+  );
+  targets.forEach((el, idx) => {
+    el.classList.add("reveal");
+    el.style.transitionDelay = `${(idx % 6) * 55}ms`;
+    obs.observe(el);
+  });
 }
 
 /* --- Render functions --- */
@@ -1502,6 +1598,7 @@ function setQuickExpiry(minutesFromNow) {
 /* --- Init --- */
 async function init() {
   startOrbLoop();
+  initScrollAnimations();
   startCountdowns();
   renderPlans();
   setQuickExpiry(1440);

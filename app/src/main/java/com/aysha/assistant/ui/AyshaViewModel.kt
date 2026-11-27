@@ -248,6 +248,9 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     @Volatile
     private var continuousVoiceActive = false
 
+    @Volatile
+    private var consecutiveSilentTimeouts = 0
+
     private val liveClient = GeminiLiveClient(
         toolExecutor = toolExecutor,
         callbacks = object : LiveCallbacks {
@@ -608,10 +611,11 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         pauseWakeWordForActiveMic()
-        if (current.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE && current.geminiApiKey.isNotBlank()) {
+        consecutiveSilentTimeouts = 0
+        if (current.geminiApiKey.isNotBlank() && current.voiceEngineMode != VoiceEngineMode.TEXT_ONLY) {
             startGeminiLiveSession()
         } else {
-            continuousVoiceActive = current.continuousConversation || current.followUpWindowSeconds > 0
+            continuousVoiceActive = current.continuousConversation
             startStandardVoiceListen()
         }
     }
@@ -720,21 +724,29 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
 
         voice.startListening(
             localeTag = s.language.sttLocaleTag,
+            keepContinuousStateOnSoftTimeout = continuousVoiceActive || _followUpSecondsLeft.value > 0,
             onPartialResult = { partial ->
                 _agentStatusText.value = partial
             },
             onFinalResult = { spoken ->
+                consecutiveSilentTimeouts = 0
                 followUpJob?.cancel()
                 _followUpSecondsLeft.value = 0
                 sendTextMessage(spoken, speakReply = true)
             },
             onSoftTimeout = if (continuousVoiceActive || _followUpSecondsLeft.value > 0) {
                 {
-                    if ((continuousVoiceActive && settings.value.continuousConversation) || _followUpSecondsLeft.value > 0) {
+                    consecutiveSilentTimeouts++
+                    val withinLimit = consecutiveSilentTimeouts <= 3
+                    if (withinLimit && ((continuousVoiceActive && settings.value.continuousConversation) || _followUpSecondsLeft.value > 0)) {
                         startStandardVoiceListen()
                     } else {
                         continuousVoiceActive = false
+                        followUpJob?.cancel()
+                        _followUpSecondsLeft.value = 0
+                        voice.stopListening()
                         _agentOrbState.value = OrbState.IDLE
+                        _agentStatusText.value = "Tap Orb to talk"
                         resumeWakeWordIfEnabled()
                     }
                 }
@@ -805,7 +817,14 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             _agentStatusText.value = "${s.assistantName} is thinking..."
 
             val (mems, history, activeRules, docSnippets) = withContext(Dispatchers.IO) {
-                if (s.autoMemoryEnabled) {
+                val ranked = (memoryRepo.searchMemories(promptText, 4) + memoryRepo.getAllMemories().take(3)).distinctBy { it.id }
+                val hist = memoryRepo.getRecentMessages(10)
+                val allRules = memoryRepo.getAllRules()
+                val snippets = memoryRepo.searchDocumentSnippets(promptText, 2)
+                Quadruple(ranked, hist, allRules, snippets)
+            }
+            if (s.autoMemoryEnabled) {
+                viewModelScope.launch(Dispatchers.IO) {
                     SmartMemoryExtractor.extractAutoFacts(promptText).forEach { f ->
                         memoryRepo.saveMemory(f.title, f.content, f.tags, approvedByUser = true, source = "baaton se samjha")
                     }
@@ -813,11 +832,6 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                         memoryRepo.saveRule(autoRule, enabled = true)
                     }
                 }
-                val ranked = (memoryRepo.searchMemories(promptText, 6) + memoryRepo.getAllMemories().take(4)).distinctBy { it.id }
-                val hist = memoryRepo.getRecentMessages(20)
-                val allRules = memoryRepo.getAllRules()
-                val snippets = memoryRepo.searchDocumentSnippets(promptText, 3)
-                Quadruple(ranked, hist, allRules, snippets)
             }
 
             val liveCfg = _remoteConfig.value
@@ -897,7 +911,10 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             bargeInEnabled = s.bargeInEnabled && hasMicPermission(),
             onBargeIn = {
                 continuousVoiceActive = true
-                startStandardVoiceListen()
+                viewModelScope.launch {
+                    delay(260L)
+                    startStandardVoiceListen()
+                }
             },
             onDone = onDone,
         )
@@ -1094,14 +1111,35 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     // ---- Provider Tests & Voice Previews ----
 
     fun testProviderConnection(provider: BrainProvider, apiKey: String, baseUrl: String, model: String) {
+        val cleanKey = apiKey.trim().replace(Regex("\\s+"), "")
         viewModelScope.launch {
             _connectivityTesting.value = true
             _connectivityResult.value = null
-            val res = aiClient.testConnection(provider, apiKey, baseUrl, model)
+            val res = aiClient.testConnection(provider, cleanKey, baseUrl, model)
             _connectivityTesting.value = false
             _connectivityResult.value = res
-            if (res.ok && res.models.isNotEmpty()) {
-                settingsRepo.setDiscoveredModels(res.models)
+            if (res.ok) {
+                if (res.models.isNotEmpty()) {
+                    settingsRepo.setDiscoveredModels(res.models)
+                }
+                if (provider == BrainProvider.GEMINI && cleanKey.isNotEmpty()) {
+                    settingsRepo.update { cur ->
+                        val pickedFlash = listOf("gemini-3.8-flash", "gemini-3-flash-preview", "gemini-2.5-flash", "gemini-2.0-flash")
+                            .firstOrNull { cand -> res.models.any { it.equals(cand, ignoreCase = true) } }
+                            ?: cur.geminiTextModel
+                        val pickedLive = listOf("gemini-3.8-live", "gemini-3.1-flash-live-preview", "gemini-2.5-flash-native-audio-preview-09-2025", "gemini-2.0-flash-live-001")
+                            .firstOrNull { cand -> res.models.any { it.equals(cand, ignoreCase = true) } }
+                            ?: cur.geminiLiveModel
+                        cur.copy(
+                            geminiApiKey = cleanKey,
+                            activeProvider = BrainProvider.GEMINI,
+                            offlineOnlyMode = false,
+                            voiceEngineMode = if (cur.voiceEngineMode == VoiceEngineMode.TEXT_ONLY) VoiceEngineMode.TEXT_ONLY else VoiceEngineMode.GEMINI_LIVE,
+                            geminiTextModel = pickedFlash,
+                            geminiLiveModel = pickedLive,
+                        )
+                    }
+                }
             }
         }
     }

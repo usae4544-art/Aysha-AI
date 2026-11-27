@@ -69,6 +69,7 @@ class VoiceController(context: Context) {
     private var speechRecognizer: SpeechRecognizer? = null
     private var tts: TextToSpeech? = null
     private var ttsReady = false
+    private var pendingStartRunnable: Runnable? = null
 
     private val _isListening = MutableStateFlow(false)
     val isListening: StateFlow<Boolean> = _isListening.asStateFlow()
@@ -186,12 +187,17 @@ class VoiceController(context: Context) {
 
     fun startListening(
         localeTag: String = "en-IN",
+        keepContinuousStateOnSoftTimeout: Boolean = false,
         onPartialResult: (String) -> Unit = {},
         onFinalResult: (String) -> Unit,
         onSoftTimeout: (() -> Unit)? = null,
         onError: (String) -> Unit,
     ) {
         mainHandler.post {
+            pendingStartRunnable?.let { mainHandler.removeCallbacks(it) }
+            pendingStartRunnable = null
+
+            val hadActiveRecognizer = speechRecognizer != null
             stopSpeaking()
             destroyRecognizerOnMain()
 
@@ -201,104 +207,126 @@ class VoiceController(context: Context) {
                 return@post
             }
 
-            val recognizer = runCatching { SpeechRecognizer.createSpeechRecognizer(appContext) }.getOrNull()
-            if (recognizer == null) {
-                _isListening.value = false
-                onError("SpeechRecognizer initialize nahi ho paya.")
-                return@post
-            }
-            speechRecognizer = recognizer
-
-            recognizer.setRecognitionListener(object : RecognitionListener {
-                override fun onReadyForSpeech(params: Bundle?) {
-                    _isListening.value = true
-                    _partialText.value = ""
-                }
-
-                override fun onBeginningOfSpeech() {
-                    _isListening.value = true
-                }
-
-                override fun onRmsChanged(rmsdB: Float) {
-                    _rmsLevel.value = ((rmsdB + 2f) / 12f).coerceIn(0.05f, 1f)
-                }
-
-                override fun onBufferReceived(buffer: ByteArray?) {}
-
-                override fun onEndOfSpeech() {
-                    _rmsLevel.value = 0f
-                }
-
-                override fun onError(error: Int) {
+            val startAction = Runnable {
+                pendingStartRunnable = null
+                val recognizer = runCatching { SpeechRecognizer.createSpeechRecognizer(appContext) }.getOrNull()
+                if (recognizer == null) {
                     _isListening.value = false
-                    _rmsLevel.value = 0f
-                    _partialText.value = ""
-                    destroyRecognizerOnMain()
-                    if ((error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) && onSoftTimeout != null) {
-                        onSoftTimeout()
-                        return
-                    }
-                    val msg = when (error) {
-                        SpeechRecognizer.ERROR_AUDIO -> "Audio capture error — mic check karo."
-                        SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required hai."
-                        SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
-                            "Speech network error — offline Hindi/English speech pack download karo ya mic retry karo."
-                        SpeechRecognizer.ERROR_NO_MATCH -> "Awaz clearly samajh nahi aayi. Dobara boliye."
-                        SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Kuch sunai nahi diya."
-                        SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech recognizer busy hai, ek second me try karo."
-                        else -> "Speech recognition error ($error)"
-                    }
-                    onError(msg)
+                    onError("SpeechRecognizer initialize nahi ho paya.")
+                    return@Runnable
                 }
+                speechRecognizer = recognizer
 
-                override fun onResults(results: Bundle?) {
+                recognizer.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        _isListening.value = true
+                        _partialText.value = ""
+                    }
+
+                    override fun onBeginningOfSpeech() {
+                        _isListening.value = true
+                    }
+
+                    override fun onRmsChanged(rmsdB: Float) {
+                        _rmsLevel.value = ((rmsdB + 2f) / 12f).coerceIn(0.05f, 1f)
+                    }
+
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+
+                    override fun onEndOfSpeech() {
+                        _rmsLevel.value = 0f
+                    }
+
+                    override fun onError(error: Int) {
+                        _rmsLevel.value = 0f
+                        _partialText.value = ""
+                        destroyRecognizerOnMain()
+                        val isSoftTimeout = error == SpeechRecognizer.ERROR_NO_MATCH ||
+                            error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT
+                        if (isSoftTimeout && onSoftTimeout != null) {
+                            if (!keepContinuousStateOnSoftTimeout) {
+                                _isListening.value = false
+                            }
+                            onSoftTimeout()
+                            return
+                        }
+                        _isListening.value = false
+                        val msg = when (error) {
+                            SpeechRecognizer.ERROR_AUDIO -> "Audio capture error — mic check karo."
+                            SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Microphone permission required hai."
+                            SpeechRecognizer.ERROR_NETWORK, SpeechRecognizer.ERROR_NETWORK_TIMEOUT ->
+                                "Speech network error — offline Hindi/English speech pack download karo ya mic retry karo."
+                            SpeechRecognizer.ERROR_NO_MATCH -> "Awaz clearly samajh nahi aayi. Dobara boliye."
+                            SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Kuch sunai nahi diya."
+                            SpeechRecognizer.ERROR_RECOGNIZER_BUSY -> "Speech recognizer busy hai, ek second me try karo."
+                            else -> "Speech recognition error ($error)"
+                        }
+                        onError(msg)
+                    }
+
+                    override fun onResults(results: Bundle?) {
+                        _rmsLevel.value = 0f
+                        val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        val best = list?.firstOrNull().orEmpty().trim()
+                        _partialText.value = ""
+                        destroyRecognizerOnMain()
+                        if (best.isNotEmpty()) {
+                            _isListening.value = false
+                            onFinalResult(best)
+                        } else if (onSoftTimeout != null) {
+                            if (!keepContinuousStateOnSoftTimeout) _isListening.value = false
+                            onSoftTimeout()
+                        } else {
+                            _isListening.value = false
+                            onError("Kuch text recognize nahi hua.")
+                        }
+                    }
+
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                            ?.firstOrNull().orEmpty()
+                        if (partial.isNotBlank()) {
+                            _partialText.value = partial
+                            onPartialResult(partial)
+                        }
+                    }
+
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE, localeTag)
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, localeTag)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 5000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 4000L)
+                    putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 1500L)
+                }
+                runCatching {
+                    _isListening.value = true
+                    recognizer.startListening(intent)
+                }.onFailure { err ->
                     _isListening.value = false
-                    _rmsLevel.value = 0f
-                    val list = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                    val best = list?.firstOrNull().orEmpty().trim()
-                    _partialText.value = ""
                     destroyRecognizerOnMain()
-                    if (best.isNotEmpty()) {
-                        onFinalResult(best)
-                    } else if (onSoftTimeout != null) {
-                        onSoftTimeout()
-                    } else {
-                        onError("Kuch text recognize nahi hua.")
-                    }
+                    onError("Voice listening start nahi ho paya: ${err.message}")
                 }
-
-                override fun onPartialResults(partialResults: Bundle?) {
-                    val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
-                        ?.firstOrNull().orEmpty()
-                    if (partial.isNotBlank()) {
-                        _partialText.value = partial
-                        onPartialResult(partial)
-                    }
-                }
-
-                override fun onEvent(eventType: Int, params: Bundle?) {}
-            })
-
-            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE, localeTag)
-                putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, localeTag)
-                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
             }
-            runCatching {
-                _isListening.value = true
-                recognizer.startListening(intent)
-            }.onFailure { err ->
-                _isListening.value = false
-                destroyRecognizerOnMain()
-                onError("Voice listening start nahi ho paya: ${err.message}")
+
+            if (hadActiveRecognizer) {
+                pendingStartRunnable = startAction
+                mainHandler.postDelayed(startAction, 450L)
+            } else {
+                startAction.run()
             }
         }
     }
 
     fun stopListening() {
         mainHandler.post {
+            pendingStartRunnable?.let { mainHandler.removeCallbacks(it) }
+            pendingStartRunnable = null
             _isListening.value = false
             _rmsLevel.value = 0f
             _partialText.value = ""
