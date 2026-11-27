@@ -15,3 +15,14 @@
 - Preserve 100% of existing working features (Firebase Google Login, Unique License Keys, Coupons, UPI checkout, Secret 18+ age verification & `"normal baat karo"` reset guard).
 - Keep `PromptBuilder.kt` strictly `AYSHA`-branded.
 - Never leave `// TODO` placeholders; always verify unit tests, lint, and signed release APK before finishing.
+
+## 4. On-Demand Multi-Agent Team (Dormant = 0 Tokens Until Triggered)
+Never wake up an agent that isn't needed for the current step. Keep all inter-agent handoff notes under 5 lines.
+
+| Agent | Assigned Skill | Trigger (When Active) | Role |
+|---|---|---|---|
+| `@Boss-Atlas` | `oh-my-antigravity` / `/swarm` | Multi-agent task coordination | Splits complex tasks, calls only required specialist, verifies final output |
+| `@Pixel-UI` | `ui-ux-pro-max-skill` | UI, theme, HUD orb, Compose screens, animations | Builds responsive modern UI & animations |
+| `@Rea-Cloner` | `REA_Skill` | Reverse engineering or copying app/APK features | Inspects codebase/APK and rebuilds with parity |
+| `@Brain-Deep` | `ultrathink` / `Gravitas` | Complex bugs, crashes, multi-file architecture | Deep planning & zero-bug implementation |
+| `@Shield-Sec` | `security-core` + `ai-security-testing-agent` | Pre-release checks or security audits | Fixes API keys, WebView, and APK vulnerabilities |

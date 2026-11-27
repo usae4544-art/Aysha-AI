@@ -20,6 +20,7 @@ class RemoteConfigManager(
         .build(),
 ) {
     companion object {
+        const val FIREBASE_PROJECT_ID = "gemini-494602"
         const val PAGES_REMOTE_CONFIG_URL = "https://usae4544-art.github.io/Aysha-AI/remote-config.json"
         const val GITHUB_LATEST_RELEASE_URL = "https://api.github.com/repos/usae4544-art/Aysha-AI/releases/latest"
 
@@ -64,8 +65,7 @@ class RemoteConfigManager(
     }
 
     private fun fetchFromFirestore(): LiveRemoteConfig? = runCatching {
-        val projectId = AyshaLicenseManager.FIREBASE_PROJECT_ID
-        val url = "https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/config/app_live"
+        val url = "https://firestore.googleapis.com/v1/projects/$FIREBASE_PROJECT_ID/databases/(default)/documents/config/app_live"
         val req = Request.Builder().url(url).get().build()
         http.newCall(req).execute().use { resp ->
             if (!resp.isSuccessful) return@runCatching null
