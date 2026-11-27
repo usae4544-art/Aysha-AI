@@ -666,7 +666,12 @@ fun BrowserScreen(
                 shape = RoundedCornerShape(14.dp),
             )
             IconButton(onClick = {
-                val target = if (urlInput.startsWith("http")) urlInput else "https://$urlInput"
+                val trimmed = urlInput.trim()
+                val target = when {
+                    trimmed.startsWith("https://", ignoreCase = true) || trimmed.startsWith("http://", ignoreCase = true) -> trimmed
+                    trimmed.contains("://") -> "https://duckduckgo.com"
+                    else -> "https://$trimmed"
+                }
                 webViewRef?.loadUrl(target)
             }) {
                 Icon(Icons.Rounded.Refresh, contentDescription = "Go", tint = c.accentPrimary)
@@ -712,7 +717,17 @@ fun BrowserScreen(
                 WebView(ctx).apply {
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.allowFileAccess = false
+                    settings.allowContentAccess = false
                     webViewClient = object : WebViewClient() {
+                        override fun shouldOverrideUrlLoading(
+                            view: WebView?,
+                            request: android.webkit.WebResourceRequest?,
+                        ): Boolean {
+                            val scheme = request?.url?.scheme?.lowercase().orEmpty()
+                            return scheme != "https" && scheme != "http"
+                        }
+
                         override fun onPageFinished(view: WebView?, url: String?) {
                             if (!url.isNullOrBlank()) urlInput = url
                         }
