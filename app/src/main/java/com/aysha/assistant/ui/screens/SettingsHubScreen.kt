@@ -23,6 +23,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
+import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material.icons.rounded.CameraAlt
@@ -75,6 +76,7 @@ import com.aysha.assistant.core.ui.ColoredIconBadge
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
+import com.aysha.assistant.core.ui.StaggeredAnimatedEntry
 import com.aysha.assistant.ui.AyshaViewModel
 
 enum class SettingsSubRoute {
@@ -107,6 +109,7 @@ enum class SettingsSubRoute {
     MARKETING,
     PC_PHONE,
     LICENSE_INFO,
+    OWNER_ADMIN,
 }
 
 private data class SettingsMenuEntry(
@@ -133,27 +136,46 @@ fun SettingsHubScreen(
     var search by remember { mutableStateOf("") }
     var showProfileDialog by remember { mutableStateOf(false) }
 
-    val items = listOf(
-        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.RULES_AGENTS, "Rules, Sub-Agents & Mood", "${settings.activeSubAgent.label} · ${mood.label}", Icons.Rounded.Tune, Color(0xFFEC4899)),
-        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.SECRET_SETTINGS, "Secret settings (Girlfriend mode)", "${settings.companionIntimacy.label} · 18+ safety guard", Icons.Rounded.AutoAwesome, Color(0xFFF43F5E)),
-        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.ACCESSIBILITY_FIX, "Accessibility & One-Tap Fix", "Payment guard, Autostart & ADB fix", Icons.Rounded.PhoneAndroid, Color(0xFF0EA5E9)),
-        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.GAMES, "Games with AYSHA", "Ludo, Chess, Snake & Ladder, Carrom", Icons.Rounded.Bolt, Color(0xFF7C3AED)),
-        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.SCANNER, "Camera Vision Scanner", "\"Kya dikh raha hai?\" visual AI", Icons.Rounded.CameraAlt, Color(0xFF0EA5E9)),
-        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.WHITEBOARD, "Study Whiteboard", "Step-by-step tutor & code notes", Icons.Rounded.EditNote, Color(0xFF10B981)),
-        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.BROWSER, "In-App Mini Browser", "Browse & summarize any page", Icons.Rounded.Language, Color(0xFF3B82F6)),
-        SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.AUTOMATION, "Automation & Macros", "Voice workflows & trained tasks", Icons.Rounded.Bolt, Color(0xFFEA580C)),
+    val isOwnerAdmin = license.status == LicenseStatus.ADMIN_ACTIVE &&
+        license.email.equals(com.aysha.assistant.ai.AyshaLicenseManager.ADMIN_EMAIL, ignoreCase = true)
 
-        SettingsMenuEntry("Brain & Voice", SettingsSubRoute.AI_PROVIDERS, "AI Provider Settings", "Gemini, Groq, OpenAI & Offline", Icons.Rounded.Psychology, Color(0xFF7C3AED)),
-        SettingsMenuEntry("Brain & Voice", SettingsSubRoute.VOICE_LANGUAGE, "Voice, Barge-In & Awareness", "Personas, Follow-up & Sensitivity", Icons.Rounded.VolumeUp, Color(0xFFF97316)),
-        SettingsMenuEntry("Brain & Voice", SettingsSubRoute.WAKE_WORD, "Wake Word & Decision Log", settings.wakeWordsCsv, Icons.Rounded.Mic, Color(0xFF06B6D4)),
-        SettingsMenuEntry("Brain & Voice", SettingsSubRoute.MEMORY_HISTORY, "Memory, Documents & Chats", "Semantic recall, Docs & Purani yaadein", Icons.Rounded.History, Color(0xFF6366F1)),
+    val items = buildList {
+        if (isOwnerAdmin) {
+            add(
+                SettingsMenuEntry(
+                    "Owner Control",
+                    SettingsSubRoute.OWNER_ADMIN,
+                    "Owner Admin Console",
+                    "All logged-in users, Block/Unblock & Live Prices",
+                    Icons.Rounded.AdminPanelSettings,
+                    Color(0xFFEF4444),
+                ),
+            )
+        }
+        addAll(
+            listOf(
+                SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.RULES_AGENTS, "Rules, Sub-Agents & Mood", "${settings.activeSubAgent.label} · ${mood.label}", Icons.Rounded.Tune, Color(0xFFEC4899)),
+                SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.SECRET_SETTINGS, "Secret settings (Girlfriend mode)", "${settings.companionIntimacy.label} · 18+ safety guard", Icons.Rounded.AutoAwesome, Color(0xFFF43F5E)),
+                SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.ACCESSIBILITY_FIX, "Accessibility & One-Tap Fix", "Payment guard, Autostart & ADB fix", Icons.Rounded.PhoneAndroid, Color(0xFF0EA5E9)),
+                SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.GAMES, "Games with AYSHA", "Ludo, Chess, Snake & Ladder, Carrom", Icons.Rounded.Bolt, Color(0xFF7C3AED)),
+                SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.SCANNER, "Camera Vision Scanner", "\"Kya dikh raha hai?\" visual AI", Icons.Rounded.CameraAlt, Color(0xFF0EA5E9)),
+                SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.WHITEBOARD, "Study Whiteboard", "Step-by-step tutor & code notes", Icons.Rounded.EditNote, Color(0xFF10B981)),
+                SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.BROWSER, "In-App Mini Browser", "Browse & summarize any page", Icons.Rounded.Language, Color(0xFF3B82F6)),
+                SettingsMenuEntry("Kaam-kaaj", SettingsSubRoute.AUTOMATION, "Automation & Macros", "Voice workflows & trained tasks", Icons.Rounded.Bolt, Color(0xFFEA580C)),
 
-        SettingsMenuEntry("System & Safety", SettingsSubRoute.APPEARANCE, "Theme, Surface & Orbs", "${settings.mayaPalette.label} · ${settings.orbStyle.label}", Icons.Rounded.ColorLens, Color(0xFF10B981)),
-        SettingsMenuEntry("System & Safety", SettingsSubRoute.PHONE_CONTROL, "Phone Control & Floating Orb", "Apps, Calls, SMS & Overlay", Icons.Rounded.PhoneAndroid, Color(0xFF14B8A6)),
-        SettingsMenuEntry("System & Safety", SettingsSubRoute.PRIVACY_SECURITY, "Privacy, Backup & SOS", "AES-256 Vault, Restore & Emergency", Icons.Rounded.Lock, Color(0xFF8B5CF6)),
-        SettingsMenuEntry("System & Safety", SettingsSubRoute.LICENSES, "Open-Source Licenses", "MIT License & Third-Party Credits", Icons.Rounded.Description, Color(0xFF64748B)),
-        SettingsMenuEntry("System & Safety", SettingsSubRoute.ABOUT, "About AYSHA", "Version ${BuildConfig.VERSION_NAME} · MIT Licensed", Icons.Rounded.Info, Color(0xFF2563EB)),
-    )
+                SettingsMenuEntry("Brain & Voice", SettingsSubRoute.AI_PROVIDERS, "AI Provider Settings", "Gemini, Groq & OpenAI/OpenRouter", Icons.Rounded.Psychology, Color(0xFF7C3AED)),
+                SettingsMenuEntry("Brain & Voice", SettingsSubRoute.VOICE_LANGUAGE, "Voice, Barge-In & Awareness", "22 Real Gemini Voices & Sensitivity", Icons.Rounded.VolumeUp, Color(0xFFF97316)),
+                SettingsMenuEntry("Brain & Voice", SettingsSubRoute.WAKE_WORD, "Wake Word & Decision Log", settings.wakeWordsCsv, Icons.Rounded.Mic, Color(0xFF06B6D4)),
+                SettingsMenuEntry("Brain & Voice", SettingsSubRoute.MEMORY_HISTORY, "Memory, Documents & Chats", "Semantic recall, Docs & Purani yaadein", Icons.Rounded.History, Color(0xFF6366F1)),
+
+                SettingsMenuEntry("System & Safety", SettingsSubRoute.APPEARANCE, "Theme, Surface & Orbs", "${settings.mayaPalette.label} · ${settings.orbStyle.label}", Icons.Rounded.ColorLens, Color(0xFF10B981)),
+                SettingsMenuEntry("System & Safety", SettingsSubRoute.PHONE_CONTROL, "Phone Control & Floating Orb", "Apps, Calls, SMS & Overlay", Icons.Rounded.PhoneAndroid, Color(0xFF14B8A6)),
+                SettingsMenuEntry("System & Safety", SettingsSubRoute.PRIVACY_SECURITY, "Privacy, Backup & SOS", "AES-256 Vault, Restore & Emergency", Icons.Rounded.Lock, Color(0xFF8B5CF6)),
+                SettingsMenuEntry("System & Safety", SettingsSubRoute.LICENSES, "Open-Source Licenses", "MIT License & Third-Party Credits", Icons.Rounded.Description, Color(0xFF64748B)),
+                SettingsMenuEntry("System & Safety", SettingsSubRoute.ABOUT, "About AYSHA", "Version ${BuildConfig.VERSION_NAME} · MIT Licensed", Icons.Rounded.Info, Color(0xFF2563EB)),
+            ),
+        )
+    }
 
     val filtered = items.filter {
         search.isBlank() ||
@@ -278,23 +300,27 @@ fun SettingsHubScreen(
         }
 
         val grouped = filtered.groupBy { it.category }
+        var animIdx = 0
         grouped.forEach { (cat, entries) ->
             Text(cat, color = c.accentPrimary, fontSize = 12.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp, start = 4.dp))
             entries.forEach { entry ->
-                GlassCard(
-                    modifier = Modifier.fillMaxWidth(),
-                    cornerRadius = 18.dp,
-                    onClick = { onNavigate(entry.route) },
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
-                ) {
-                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        ColoredIconBadge(icon = entry.icon, tintColor = entry.iconBg, size = 38.dp)
-                        Spacer(modifier = Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(entry.title, color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp)
-                            Text(entry.subtitle, color = c.textSecondary, fontSize = 12.sp)
+                val curIdx = animIdx++
+                StaggeredAnimatedEntry(index = curIdx) {
+                    GlassCard(
+                        modifier = Modifier.fillMaxWidth(),
+                        cornerRadius = 18.dp,
+                        onClick = { onNavigate(entry.route) },
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 11.dp),
+                    ) {
+                        Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            ColoredIconBadge(icon = entry.icon, tintColor = entry.iconBg, size = 38.dp)
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(entry.title, color = c.textPrimary, fontWeight = FontWeight.SemiBold, fontSize = 14.5.sp)
+                                Text(entry.subtitle, color = c.textSecondary, fontSize = 12.sp)
+                            }
+                            Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
                         }
-                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
                     }
                 }
             }

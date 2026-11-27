@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.10.0",
-  "latestVersionCode": 13,
-  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.10.0/AYSHA-latest-release.apk",
-  "updateNotes": "100% Real Gemini Neural Voice (Google Android Text-to-Speech completely removed), 22 real Female & Male Studio Voices, zero-click 24kHz HD AudioTrack playback, and fast Gemini 2.5 Flash.",
+  "latestVersion": "2.11.0",
+  "latestVersionCode": 14,
+  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.11.0/AYSHA-latest-release.apk",
+  "updateNotes": "Smooth spring animations across all AYSHA screens, live Owner Admin Console (all logged-in users, block/unblock, dynamic INR pricing sync), hardened Firestore security rules, and mobile-fixed QR checkout.",
   "forceUpdate": false,
   "announcementBanner": "",
   "geminiTextModel": "gemini-2.5-flash",

@@ -1,9 +1,21 @@
 package com.aysha.assistant.ui.components
 
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,6 +38,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.AccessibilityNew
+import androidx.compose.material.icons.rounded.AdminPanelSettings
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.ChevronRight
@@ -210,13 +223,26 @@ fun MayaBottomNavBar(
             }
         }
 
-        // Protruding Glowing Sky-Blue Center Mic / Stop FAB Orb
+        // Protruding Glowing Sky-Blue Center Mic / Stop FAB Orb with animated pulse halo
+        val micInf = rememberInfiniteTransition(label = "mic_fab_pulse")
+        val micPulse by micInf.animateFloat(
+            initialValue = 1.0f,
+            targetValue = if (isVoiceActive) 1.14f else 1.03f,
+            animationSpec = infiniteRepeatable(tween(if (isVoiceActive) 700 else 2200, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+            label = "mic_pulse",
+        )
+        val fabScale by animateFloatAsState(
+            targetValue = if (isVoiceActive) 1.06f else 1f,
+            animationSpec = spring(dampingRatio = 0.6f, stiffness = 450f),
+            label = "fab_scale",
+        )
         Box(
             modifier = Modifier
                 .padding(bottom = 14.dp)
+                .scale(fabScale * if (isVoiceActive) micPulse else 1f)
                 .size(64.dp)
                 .shadow(
-                    elevation = 14.dp,
+                    elevation = if (isVoiceActive) 20.dp else 14.dp,
                     shape = CircleShape,
                     clip = false,
                     ambientColor = Color(0xFF2E85FF),
@@ -264,8 +290,14 @@ private fun DockTabItem(
     onClick: () -> Unit,
 ) {
     val c = LocalAyshaColors.current
+    val itemScale by animateFloatAsState(
+        targetValue = if (selected) 1.06f else 1f,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = 460f),
+        label = "dock_tab_scale",
+    )
     Column(
         modifier = modifier
+            .scale(itemScale)
             .clip(RoundedCornerShape(18.dp))
             .background(
                 if (selected) {
@@ -313,6 +345,7 @@ fun MayaDrawerSheetContent(
     isHomeActive: Boolean,
     unreadNotifications: Boolean,
     isDarkMode: Boolean = false,
+    isOwnerAdmin: Boolean = false,
     onToggleDarkMode: (Boolean) -> Unit = {},
     onSelectHome: () -> Unit,
     onSelectRoute: (SettingsSubRoute) -> Unit,
@@ -320,30 +353,37 @@ fun MayaDrawerSheetContent(
     val c = LocalAyshaColors.current
     var search by remember { mutableStateOf("") }
 
-    val allEntries = listOf(
-        MayaDrawerEntry("HOME", "Home", Icons.Rounded.Home, isHome = true, activeHighlight = isHomeActive),
-        MayaDrawerEntry("HOME", "$assistantName Home", Icons.Rounded.HomeWork, route = SettingsSubRoute.SMART_HOME),
+    val allEntries = buildList {
+        if (isOwnerAdmin) {
+            add(MayaDrawerEntry("OWNER ADMIN", "Owner Admin Control", Icons.Rounded.AdminPanelSettings, route = SettingsSubRoute.OWNER_ADMIN))
+        }
+        addAll(
+            listOf(
+                MayaDrawerEntry("HOME", "Home", Icons.Rounded.Home, isHome = true, activeHighlight = isHomeActive),
+                MayaDrawerEntry("HOME", "$assistantName Home", Icons.Rounded.HomeWork, route = SettingsSubRoute.SMART_HOME),
 
-        MayaDrawerEntry("KAAM-KAAJ", "Markets", Icons.Rounded.TrendingUp, route = SettingsSubRoute.MARKETS),
-        MayaDrawerEntry("KAAM-KAAJ", "Marketing", Icons.Rounded.Storefront, route = SettingsSubRoute.MARKETING),
-        MayaDrawerEntry("KAAM-KAAJ", "Documents", Icons.Rounded.Description, route = SettingsSubRoute.DOCUMENTS),
-        MayaDrawerEntry("KAAM-KAAJ", "Meri photos", Icons.Rounded.PhotoLibrary, route = SettingsSubRoute.PHOTOS),
-        MayaDrawerEntry("KAAM-KAAJ", "Website / Coding", Icons.Rounded.Code, route = SettingsSubRoute.WEBSITE_CODING),
-        MayaDrawerEntry("KAAM-KAAJ", "Terminal", Icons.Rounded.Terminal, route = SettingsSubRoute.TERMINAL),
-        MayaDrawerEntry("KAAM-KAAJ", "Games with $assistantName", Icons.Rounded.SportsEsports, route = SettingsSubRoute.GAMES),
-        MayaDrawerEntry("KAAM-KAAJ", "Browser", Icons.Rounded.Language, route = SettingsSubRoute.BROWSER),
-        MayaDrawerEntry("KAAM-KAAJ", "Accessibility", Icons.Rounded.AccessibilityNew, route = SettingsSubRoute.ACCESSIBILITY_FIX),
+                MayaDrawerEntry("KAAM-KAAJ", "Markets", Icons.Rounded.TrendingUp, route = SettingsSubRoute.MARKETS),
+                MayaDrawerEntry("KAAM-KAAJ", "Marketing", Icons.Rounded.Storefront, route = SettingsSubRoute.MARKETING),
+                MayaDrawerEntry("KAAM-KAAJ", "Documents", Icons.Rounded.Description, route = SettingsSubRoute.DOCUMENTS),
+                MayaDrawerEntry("KAAM-KAAJ", "Meri photos", Icons.Rounded.PhotoLibrary, route = SettingsSubRoute.PHOTOS),
+                MayaDrawerEntry("KAAM-KAAJ", "Website / Coding", Icons.Rounded.Code, route = SettingsSubRoute.WEBSITE_CODING),
+                MayaDrawerEntry("KAAM-KAAJ", "Terminal", Icons.Rounded.Terminal, route = SettingsSubRoute.TERMINAL),
+                MayaDrawerEntry("KAAM-KAAJ", "Games with $assistantName", Icons.Rounded.SportsEsports, route = SettingsSubRoute.GAMES),
+                MayaDrawerEntry("KAAM-KAAJ", "Browser", Icons.Rounded.Language, route = SettingsSubRoute.BROWSER),
+                MayaDrawerEntry("KAAM-KAAJ", "Accessibility", Icons.Rounded.AccessibilityNew, route = SettingsSubRoute.ACCESSIBILITY_FIX),
 
-        MayaDrawerEntry("SYSTEM", "Settings", Icons.Rounded.Settings, route = SettingsSubRoute.HUB),
-        MayaDrawerEntry("SYSTEM", "$assistantName ke rules", Icons.Rounded.Shield, route = SettingsSubRoute.RULES_AGENTS),
-        MayaDrawerEntry("SYSTEM", "Secret settings (18+)", Icons.Rounded.Favorite, route = SettingsSubRoute.SECRET_SETTINGS),
-        MayaDrawerEntry("SYSTEM", "PC ⇄ Phone", Icons.Rounded.SwapHoriz, route = SettingsSubRoute.PC_PHONE),
+                MayaDrawerEntry("SYSTEM", "Settings", Icons.Rounded.Settings, route = SettingsSubRoute.HUB),
+                MayaDrawerEntry("SYSTEM", "$assistantName ke rules", Icons.Rounded.Shield, route = SettingsSubRoute.RULES_AGENTS),
+                MayaDrawerEntry("SYSTEM", "Secret settings (18+)", Icons.Rounded.Favorite, route = SettingsSubRoute.SECRET_SETTINGS),
+                MayaDrawerEntry("SYSTEM", "PC ⇄ Phone", Icons.Rounded.SwapHoriz, route = SettingsSubRoute.PC_PHONE),
 
-        MayaDrawerEntry("AUR", "Privacy & SOS", Icons.Rounded.Lock, route = SettingsSubRoute.PRIVACY_SECURITY),
-        MayaDrawerEntry("AUR", "About", Icons.Rounded.Info, route = SettingsSubRoute.ABOUT),
-        MayaDrawerEntry("AUR", "License / Upgrade", Icons.Rounded.Star, route = SettingsSubRoute.LICENSE_INFO),
-        MayaDrawerEntry("AUR", "Notifications", Icons.Rounded.Notifications, route = SettingsSubRoute.NOTIFICATIONS, hasBadge = unreadNotifications),
-    )
+                MayaDrawerEntry("AUR", "Privacy & SOS", Icons.Rounded.Lock, route = SettingsSubRoute.PRIVACY_SECURITY),
+                MayaDrawerEntry("AUR", "About", Icons.Rounded.Info, route = SettingsSubRoute.ABOUT),
+                MayaDrawerEntry("AUR", "License / Upgrade", Icons.Rounded.Star, route = SettingsSubRoute.LICENSE_INFO),
+                MayaDrawerEntry("AUR", "Notifications", Icons.Rounded.Notifications, route = SettingsSubRoute.NOTIFICATIONS, hasBadge = unreadNotifications),
+            ),
+        )
+    }
 
     val filtered = allEntries.filter {
         search.isBlank() || it.title.contains(search, ignoreCase = true) || it.section.contains(search, ignoreCase = true)

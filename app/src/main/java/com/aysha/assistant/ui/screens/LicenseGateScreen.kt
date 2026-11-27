@@ -99,7 +99,7 @@ fun LicenseGateScreen(
 
             val statusDot = when (license.status) {
                 LicenseStatus.ACTIVE, LicenseStatus.ADMIN_ACTIVE -> c.success
-                LicenseStatus.EXPIRED, LicenseStatus.REVOKED -> c.error
+                LicenseStatus.EXPIRED, LicenseStatus.REVOKED, LicenseStatus.BLOCKED -> c.error
                 LicenseStatus.UNCONFIGURED -> c.warning
                 else -> c.accentPrimary
             }
@@ -110,9 +110,11 @@ fun LicenseGateScreen(
                 LicenseStatus.ADMIN_ACTIVE -> "Admin Active"
                 LicenseStatus.EXPIRED -> "License Required / Expired"
                 LicenseStatus.REVOKED -> "License Revoked"
+                LicenseStatus.BLOCKED -> "Account Blocked"
                 LicenseStatus.UNCONFIGURED -> "Firebase Setup Pending"
                 LicenseStatus.NETWORK_ERROR -> "Verification Offline"
             }
+            val isAccountBlocked = license.blocked || license.status == LicenseStatus.BLOCKED
 
             GlassCard(
                 modifier = Modifier.fillMaxWidth(),
@@ -181,7 +183,7 @@ fun LicenseGateScreen(
                         icon = Icons.AutoMirrored.Rounded.OpenInNew,
                     )
 
-                    if (license.email.isNotBlank()) {
+                    if (license.email.isNotBlank() && !isAccountBlocked) {
                         OutlinedTextField(
                             value = licenseKeyInput,
                             onValueChange = { licenseKeyInput = it.uppercase() },
@@ -210,7 +212,23 @@ fun LicenseGateScreen(
                             Spacer(modifier = Modifier.width(8.dp))
                             Text("Buy Plan or Redeem Coupon on Site")
                         }
+                    } else if (isAccountBlocked) {
+                        GlassCard(
+                            modifier = Modifier.fillMaxWidth(),
+                            cornerRadius = 14.dp,
+                            borderColor = c.error.copy(alpha = 0.7f),
+                            contentPadding = PaddingValues(12.dp),
+                        ) {
+                            Text(
+                                text = "Access suspended by administrator. Contact owner support to request unblock review.",
+                                color = c.error,
+                                fontSize = 12.5.sp,
+                                fontWeight = FontWeight.Medium,
+                            )
+                        }
+                    }
 
+                    if (license.email.isNotBlank()) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),

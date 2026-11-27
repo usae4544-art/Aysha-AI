@@ -1,6 +1,71 @@
 rules_version = '2';
+
+// ===============================================================
+// Assumed Data Model
+// ===============================================================
+//
+// Collection: config
+// Document ID: store | app_live
+// Fields (store):
+//   - upiId: string (optional, <= 120 chars)
+//   - upiName: string (optional, <= 120 chars)
+//   - currency: string (optional, <= 16 chars)
+//   - prices: map (optional, keys in ONE_MONTH..LIFETIME, values 0..10000000)
+//   - updatedAt: timestamp (optional)
+//   - updatedBy: string (optional)
+//
+// Collection: users
+// Document ID: {uid}
+// Fields:
+//   - uid: string (required, immutable, == uid)
+//   - email: string (optional, <= 254 chars, matches auth token email)
+//   - emailVerified: bool (optional, cannot spoof true when token is unverified)
+//   - displayName: string (optional, <= 120 chars)
+//   - photoUrl: string (optional, <= 512 chars, '' or http/https URL)
+//   - lastLoginAt: timestamp (required)
+//   - lastLoginSource: string (required, 'web' | 'android')
+//   - deviceModel: string (optional, <= 120 chars)
+//   - appVersion: string (optional, <= 40 chars)
+//   - blocked, blockedAt, blockedBy, blockedReason: admin-only fields (denied for non-admin writes)
+//
+// Collection: licenses
+// Document ID: {uid}
+// Fields:
+//   - uid, email, planId, status, isLifetime, expiresAt, expiresAtMs,
+//     source, couponCode, licenseKey, note, updatedAt, updatedBy
+//
+// Collection: license_keys
+// Document ID: {keyId} (12..64 chars)
+// Fields:
+//   - key, uid, email, planId, status, active, isLifetime, expiresAt, expiresAtMs,
+//     note, createdAt, updatedBy, claimedByUid, claimedByEmail, claimedAt
+//
+// Collection: coupons
+// Document ID: {code} (3..64 chars)
+// Fields:
+//   - code, rewardType, rewardPlanId, discountPercent, maxUses, usedCount,
+//     active, expiresAt, expiresAtMs, createdAt, createdBy
+//
+// Collection: redemptions
+// Document ID: {code}_{uid}
+// Fields:
+//   - code, uid, email, rewardType, rewardPlanId, discountPercent,
+//     paymentRequestId (for paid coupons), redeemedAt
+//
+// Collection: payment_requests
+// Document ID: {reqId} (5..128 chars)
+// Fields:
+//   - uid, email, displayName, planId, basePriceInr, discountPercent,
+//     finalPriceInr, couponCode, utr, status, createdAt
+//
+// ===============================================================
+
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // ===============================================================
+    // Helper Functions
+    // ===============================================================
 
     function isSignedIn() {
       return request.auth != null && request.auth.uid != null;
@@ -16,6 +81,32 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == uid;
     }
 
+    function isUserBlocked(uid) {
+      return exists(/databases/$(database)/documents/users/$(uid))
+        && get(/databases/$(database)/documents/users/$(uid)).data.get('blocked', false) == true;
+    }
+
+    function isValidUrl(url) {
+      return url is string
+        && (url.matches('^https://.*') || url.matches('^http://.*'));
+    }
+
+    function hasOnlyAllowedFields(fields) {
+      return request.resource.data.keys().hasOnly(fields);
+    }
+
+    function areImmutableFieldsUnchanged(fields) {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(fields);
+    }
+
+    function isValidEmailField(val) {
+      return val is string
+        && val.size() <= 254
+        && ('email' in request.auth.token)
+        && request.auth.token.email is string
+        && val.lower() == request.auth.token.email.lower();
+    }
+
     function isValidPlan(planId) {
       return planId in ['ONE_MONTH', 'TWO_MONTHS', 'ONE_YEAR', 'TWO_YEARS', 'LIFETIME'];
     }
@@ -28,9 +119,95 @@ service cloud.firestore {
         : duration.value(0, 's');
     }
 
+    function isValidExpiryPair(d, maxAllowedTime) {
+      return d.planId == 'LIFETIME'
+        ? ((!('expiresAt' in d) || d.expiresAt == null)
+           && (!('expiresAtMs' in d) || d.expiresAtMs == 0))
+        : (d.expiresAt is timestamp
+           && d.expiresAt > request.time
+           && d.expiresAt <= maxAllowedTime
+           && (!('expiresAtMs' in d)
+               || (d.expiresAtMs is int
+                   && d.expiresAtMs >= 0
+                   && d.expiresAtMs <= d.expiresAt.toMillis() + 1000)));
+    }
+
+    function isValidStorePrice(val) {
+      return (val is int || val is float) && val >= 0 && val <= 10000000;
+    }
+
+    function isValidConfigWrite(docId) {
+      let d = request.resource.data;
+      return docId != 'store' || (
+        (!('upiId' in d) || (d.upiId is string && d.upiId.size() <= 120))
+        && (!('upiName' in d) || (d.upiName is string && d.upiName.size() <= 120))
+        && (!('currency' in d) || (d.currency is string && d.currency.size() <= 16))
+        && (!('prices' in d) || (
+          d.prices is map
+          && d.prices.keys().hasOnly(['ONE_MONTH', 'TWO_MONTHS', 'ONE_YEAR', 'TWO_YEARS', 'LIFETIME'])
+          && (!('ONE_MONTH' in d.prices) || isValidStorePrice(d.prices.ONE_MONTH))
+          && (!('TWO_MONTHS' in d.prices) || isValidStorePrice(d.prices.TWO_MONTHS))
+          && (!('ONE_YEAR' in d.prices) || isValidStorePrice(d.prices.ONE_YEAR))
+          && (!('TWO_YEARS' in d.prices) || isValidStorePrice(d.prices.TWO_YEARS))
+          && (!('LIFETIME' in d.prices) || isValidStorePrice(d.prices.LIFETIME))
+        ))
+      );
+    }
+
+    function isValidUserTelemetry(uid) {
+      let d = request.resource.data;
+      return d.keys().hasAll(['uid', 'lastLoginAt', 'lastLoginSource'])
+        && d.uid is string
+        && d.uid == uid
+        && d.uid == request.auth.uid
+        && d.lastLoginAt is timestamp
+        && d.lastLoginSource is string
+        && d.lastLoginSource in ['web', 'android']
+        && (!('email' in d) || isValidEmailField(d.email))
+        && (!('emailVerified' in d) || (
+             d.emailVerified is bool
+             && (d.emailVerified == false || request.auth.token.email_verified == true)
+           ))
+        && (!('displayName' in d) || (d.displayName is string && d.displayName.size() <= 120))
+        && (!('photoUrl' in d) || (
+             d.photoUrl is string
+             && d.photoUrl.size() <= 512
+             && (d.photoUrl == '' || isValidUrl(d.photoUrl))
+           ))
+        && (!('deviceModel' in d) || (d.deviceModel is string && d.deviceModel.size() <= 120))
+        && (!('appVersion' in d) || (d.appVersion is string && d.appVersion.size() <= 40));
+    }
+
+    function isValidUserSelfCreate(uid) {
+      return hasOnlyAllowedFields([
+          'uid', 'email', 'emailVerified', 'displayName', 'photoUrl',
+          'lastLoginAt', 'lastLoginSource', 'deviceModel', 'appVersion'
+        ])
+        && isValidUserTelemetry(uid);
+    }
+
+    function isValidUserSelfUpdate(uid) {
+      return resource.data.get('blocked', false) != true
+        && areImmutableFieldsUnchanged([
+          'blocked', 'blockedAt', 'blockedBy', 'blockedReason', 'role', 'isAdmin'
+        ])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'uid', 'email', 'emailVerified', 'displayName', 'photoUrl',
+          'lastLoginAt', 'lastLoginSource', 'deviceModel', 'appVersion'
+        ])
+        && hasOnlyAllowedFields([
+          'uid', 'email', 'emailVerified', 'displayName', 'photoUrl',
+          'lastLoginAt', 'lastLoginSource', 'deviceModel', 'appVersion',
+          'blocked', 'blockedAt', 'blockedBy', 'blockedReason'
+        ])
+        && (!('uid' in resource.data) || request.resource.data.uid == resource.data.uid)
+        && isValidUserTelemetry(uid);
+    }
+
     function couponExists(code) {
       return code is string
         && code.size() >= 3
+        && code.size() <= 64
         && exists(/databases/$(database)/documents/coupons/$(code));
     }
 
@@ -39,46 +216,63 @@ service cloud.firestore {
     }
 
     function couponValidForUser(code, uid) {
-      return couponData(code).active == true
-        && couponData(code).expiresAt is timestamp
-        && request.time < couponData(code).expiresAt
-        && couponData(code).maxUses is int
-        && couponData(code).usedCount is int
-        && couponData(code).usedCount < couponData(code).maxUses
+      let c = couponData(code);
+      return c.active == true
+        && c.expiresAt is timestamp
+        && request.time < c.expiresAt
+        && c.maxUses is int
+        && c.usedCount is int
+        && c.usedCount < c.maxUses
         && !exists(/databases/$(database)/documents/redemptions/$(code + '_' + uid))
         && existsAfter(/databases/$(database)/documents/redemptions/$(code + '_' + uid))
-        && getAfter(/databases/$(database)/documents/coupons/$(code)).data.usedCount == couponData(code).usedCount + 1;
+        && getAfter(/databases/$(database)/documents/coupons/$(code)).data.usedCount == c.usedCount + 1;
     }
 
     function isFreeCoupon(code) {
-      return couponData(code).rewardType == 'free_license'
-        || (couponData(code).rewardType == 'percent_off' && couponData(code).discountPercent == 100);
+      let c = couponData(code);
+      return c.rewardType == 'free_license'
+        || (c.rewardType == 'percent_off' && c.discountPercent == 100);
+    }
+
+    function isValidUserLicenseShape(d, uid, baseTime) {
+      return hasOnlyAllowedFields([
+          'uid', 'email', 'planId', 'status', 'isLifetime', 'expiresAt', 'expiresAtMs',
+          'source', 'couponCode', 'licenseKey', 'note', 'updatedAt', 'updatedBy'
+        ])
+        && d.uid is string
+        && d.uid == uid
+        && d.uid == request.auth.uid
+        && (!('email' in d) || isValidEmailField(d.email))
+        && d.status == 'active'
+        && isValidPlan(d.planId)
+        && d.isLifetime is bool
+        && d.isLifetime == (d.planId == 'LIFETIME')
+        && d.updatedAt is timestamp
+        && d.updatedBy is string
+        && d.updatedBy == uid
+        && (!('note' in d) || (d.note is string && d.note.size() <= 300))
+        && (!('licenseKey' in d) || (d.licenseKey is string && d.licenseKey.size() >= 12 && d.licenseKey.size() <= 64))
+        && (!('couponCode' in d) || d.couponCode == null || (d.couponCode is string && d.couponCode.size() >= 3 && d.couponCode.size() <= 64))
+        && isValidExpiryPair(d, baseTime + planDuration(d.planId) + duration.value(2, 'm'));
     }
 
     function licenseMatchesFreeCoupon(d, uid, baseTime) {
-      let code = d.couponCode;
-      let c = couponData(code);
       return isOwner(uid)
-        && d.uid == uid
+        && isValidUserLicenseShape(d, uid, baseTime)
         && d.source == 'coupon'
-        && d.status == 'active'
-        && couponExists(code)
-        && couponValidForUser(code, uid)
-        && isFreeCoupon(code)
-        && isValidPlan(d.planId)
-        && (c.rewardPlanId == 'ANY' || d.planId == c.rewardPlanId)
-        && d.isLifetime == (d.planId == 'LIFETIME')
-        && (
-          d.planId == 'LIFETIME'
-          || (d.expiresAt is timestamp
-              && d.expiresAt > request.time
-              && d.expiresAt <= baseTime + planDuration(d.planId) + duration.value(2, 'm'))
-        );
+        && 'couponCode' in d
+        && d.couponCode is string
+        && couponExists(d.couponCode)
+        && couponValidForUser(d.couponCode, uid)
+        && isFreeCoupon(d.couponCode)
+        && (couponData(d.couponCode).rewardPlanId == 'ANY'
+            || d.planId == couponData(d.couponCode).rewardPlanId);
     }
 
     function keyExists(keyId) {
       return keyId is string
         && keyId.size() >= 12
+        && keyId.size() <= 64
         && exists(/databases/$(database)/documents/license_keys/$(keyId));
     }
 
@@ -87,25 +281,132 @@ service cloud.firestore {
     }
 
     function licenseMatchesKeyClaim(d, uid, baseTime) {
-      let kId = d.licenseKey;
-      let k = keyData(kId);
       return isOwner(uid)
-        && d.uid == uid
+        && isValidUserLicenseShape(d, uid, baseTime)
         && d.source == 'license_key'
-        && d.status == 'active'
-        && keyExists(kId)
-        && k.active == true
-        && k.status == 'available'
-        && getAfter(/databases/$(database)/documents/license_keys/$(kId)).data.status == 'claimed'
-        && getAfter(/databases/$(database)/documents/license_keys/$(kId)).data.claimedByUid == uid
+        && 'licenseKey' in d
+        && d.licenseKey is string
+        && keyExists(d.licenseKey)
+        && keyData(d.licenseKey).active == true
+        && keyData(d.licenseKey).status == 'available'
+        && d.planId == keyData(d.licenseKey).planId
+        && getAfter(/databases/$(database)/documents/license_keys/$(d.licenseKey)).data.status == 'claimed'
+        && getAfter(/databases/$(database)/documents/license_keys/$(d.licenseKey)).data.claimedByUid == uid;
+    }
+
+    function activeLicenseBaseTime() {
+      return (resource.data.status == 'active'
+        && resource.data.expiresAt is timestamp
+        && resource.data.expiresAt > request.time)
+        ? resource.data.expiresAt
+        : request.time;
+    }
+
+    function isValidUserLicenseKeyCreate(keyId) {
+      let d = request.resource.data;
+      let licAfter = getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data;
+      return keyId.size() >= 12
+        && keyId.size() <= 64
+        && hasOnlyAllowedFields([
+          'key', 'uid', 'email', 'planId', 'status', 'active',
+          'isLifetime', 'expiresAt', 'expiresAtMs', 'createdAt', 'updatedBy'
+        ])
+        && d.key is string
+        && d.key == keyId
+        && d.uid is string
+        && d.uid == request.auth.uid
+        && (!('email' in d) || isValidEmailField(d.email))
         && isValidPlan(d.planId)
-        && d.planId == k.planId
+        && d.status == 'active'
+        && d.active == true
+        && d.isLifetime is bool
         && d.isLifetime == (d.planId == 'LIFETIME')
+        && d.createdAt == request.time
+        && d.updatedBy is string
+        && d.updatedBy == request.auth.uid
+        && isValidExpiryPair(d, request.time + planDuration(d.planId) + duration.value(2, 'm'))
+        && licAfter.licenseKey == keyId
+        && licAfter.source == 'coupon'
+        && licAfter.planId == d.planId
+        && licAfter.status == 'active';
+    }
+
+    function isValidUserLicenseKeyClaim(keyId) {
+      let d = request.resource.data;
+      let licAfter = getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data;
+      return keyId.size() >= 12
+        && keyId.size() <= 64
+        && resource.data.active == true
+        && resource.data.status == 'available'
+        && d.diff(resource.data).affectedKeys().hasOnly([
+          'status', 'claimedByUid', 'claimedByEmail', 'claimedAt'
+        ])
+        && d.status == 'claimed'
+        && d.claimedByUid is string
+        && d.claimedByUid == request.auth.uid
+        && (!('claimedByEmail' in d) || isValidEmailField(d.claimedByEmail))
+        && d.claimedAt is timestamp
+        && licAfter.licenseKey == keyId
+        && licAfter.source == 'license_key'
+        && licAfter.status == 'active';
+    }
+
+    function isValidUserCouponIncrement(code) {
+      let rAfter = getAfter(/databases/$(database)/documents/redemptions/$(code + '_' + request.auth.uid)).data;
+      return code.size() >= 3
+        && code.size() <= 64
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedCount'])
+        && resource.data.active == true
+        && resource.data.expiresAt is timestamp
+        && request.time < resource.data.expiresAt
+        && resource.data.maxUses is int
+        && resource.data.usedCount is int
+        && resource.data.usedCount < resource.data.maxUses
+        && request.resource.data.usedCount is int
+        && request.resource.data.usedCount == resource.data.usedCount + 1
+        && !exists(/databases/$(database)/documents/redemptions/$(code + '_' + request.auth.uid))
+        && existsAfter(/databases/$(database)/documents/redemptions/$(code + '_' + request.auth.uid))
+        && rAfter.uid == request.auth.uid
+        && rAfter.code == code;
+    }
+
+    function validUserRedemptionCreate(redemptionId) {
+      let r = request.resource.data;
+      return hasOnlyAllowedFields([
+          'code', 'uid', 'email', 'rewardType', 'rewardPlanId',
+          'discountPercent', 'paymentRequestId', 'redeemedAt'
+        ])
+        && r.uid is string
+        && r.uid == request.auth.uid
+        && r.code is string
+        && r.code.size() >= 3
+        && r.code.size() <= 64
+        && redemptionId == (r.code + '_' + request.auth.uid)
+        && (!('email' in r) || isValidEmailField(r.email))
+        && couponExists(r.code)
+        && couponValidForUser(r.code, request.auth.uid)
+        && r.rewardType is string
+        && r.rewardType == couponData(r.code).rewardType
+        && r.rewardPlanId is string
+        && isValidPlan(r.rewardPlanId)
+        && (couponData(r.code).rewardPlanId == 'ANY'
+            || r.rewardPlanId == couponData(r.code).rewardPlanId)
+        && (r.discountPercent is int || r.discountPercent is float)
+        && r.discountPercent >= 0
+        && r.discountPercent <= 100
+        && r.redeemedAt == request.time
         && (
-          d.planId == 'LIFETIME'
-          || (d.expiresAt is timestamp
-              && d.expiresAt > request.time
-              && d.expiresAt <= baseTime + planDuration(d.planId) + duration.value(2, 'm'))
+          isFreeCoupon(r.code)
+            ? (getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data.couponCode == r.code
+               && getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data.source == 'coupon')
+            : ('paymentRequestId' in r
+               && r.paymentRequestId is string
+               && r.paymentRequestId.size() >= 5
+               && r.paymentRequestId.size() <= 128
+               && existsAfter(/databases/$(database)/documents/payment_requests/$(r.paymentRequestId))
+               && getAfter(/databases/$(database)/documents/payment_requests/$(r.paymentRequestId)).data.uid == request.auth.uid
+               && getAfter(/databases/$(database)/documents/payment_requests/$(r.paymentRequestId)).data.couponCode == r.code
+               && getAfter(/databases/$(database)/documents/payment_requests/$(r.paymentRequestId)).data.status == 'pending')
         );
     }
 
@@ -118,40 +419,83 @@ service cloud.firestore {
     }
 
     function paymentAmountMatchesStore(d) {
-      let base = storePriceFor(d.planId);
       let hasCoupon = ('couponCode' in d) && d.couponCode is string && d.couponCode.size() >= 3;
-      let c = hasCoupon ? couponData(d.couponCode) : {'discountPercent': 0, 'rewardPlanId': 'ANY', 'rewardType': 'percent_off'};
-      let pct = hasCoupon ? c.discountPercent : 0;
-      let minFinal = (base * (100 - pct)) / 100;
       return storeConfigExists()
         && isValidPlan(d.planId)
-        && d.basePriceInr == base
-        && d.discountPercent == pct
-        && d.finalPriceInr >= minFinal
-        && d.finalPriceInr <= base
-        && (
-          !hasCoupon || (
-            couponExists(d.couponCode)
-            && couponValidForUser(d.couponCode, request.auth.uid)
-            && (c.rewardPlanId == 'ANY' || c.rewardPlanId == d.planId)
-          )
+        && (d.planId in get(/databases/$(database)/documents/config/store).data.prices)
+        && (!hasCoupon || (
+          couponExists(d.couponCode)
+          && couponValidForUser(d.couponCode, request.auth.uid)
+          && (couponData(d.couponCode).rewardPlanId == 'ANY'
+              || couponData(d.couponCode).rewardPlanId == d.planId)
+          && couponData(d.couponCode).discountPercent is int
+          && couponData(d.couponCode).discountPercent >= 0
+          && couponData(d.couponCode).discountPercent <= 100
+        ))
+        && paymentPriceChecks(
+          d,
+          storePriceFor(d.planId),
+          hasCoupon ? couponData(d.couponCode).discountPercent : 0
         );
     }
 
-    // Public catalog pricing & UPI config
-    match /config/{docId} {
-      allow read: if true;
-      allow write: if isAdmin();
+    function paymentPriceChecks(d, base, pct) {
+      return (base is int || base is float)
+        && base >= 0
+        && d.basePriceInr == base
+        && d.discountPercent == pct
+        && (d.finalPriceInr is int || d.finalPriceInr is float)
+        && d.finalPriceInr >= 0
+        && d.finalPriceInr >= math.floor((base * (100 - pct)) / 100.0)
+        && d.finalPriceInr <= base;
     }
 
-    // User profile directory
+    function isValidPaymentRequestCreate(reqId) {
+      let d = request.resource.data;
+      return reqId.size() >= 5
+        && reqId.size() <= 128
+        && hasOnlyAllowedFields([
+          'uid', 'email', 'displayName', 'planId', 'basePriceInr', 'discountPercent',
+          'finalPriceInr', 'couponCode', 'utr', 'status', 'createdAt'
+        ])
+        && d.uid is string
+        && d.uid == request.auth.uid
+        && (!('email' in d) || isValidEmailField(d.email))
+        && (!('displayName' in d) || (d.displayName is string && d.displayName.size() <= 120))
+        && d.status == 'pending'
+        && d.utr is string
+        && d.utr.size() >= 6
+        && d.utr.size() <= 40
+        && d.createdAt == request.time
+        && (!('couponCode' in d) || d.couponCode == null || (d.couponCode is string && d.couponCode.size() >= 3 && d.couponCode.size() <= 64))
+        && paymentAmountMatchesStore(d);
+    }
+
+    // ===============================================================
+    // Collection Rules
+    // ===============================================================
+
+    // Public catalog pricing & UPI config + OTA live config
+    match /config/{docId} {
+      allow read: if true;
+      allow create, update: if isAdmin() && isValidConfigWrite(docId);
+      allow delete: if isAdmin();
+    }
+
+    // User profile directory (strictly private; block/role fields admin-only)
     match /users/{uid} {
-      allow read: if isOwner(uid) || isAdmin();
-      allow create, update: if isAdmin() || (
+      allow get: if isOwner(uid) || isAdmin();
+      allow list: if isAdmin();
+      allow create: if isAdmin() || (
         isOwner(uid)
-        && request.resource.data.uid == request.auth.uid
-        && (!('email' in request.resource.data)
-            || request.resource.data.email.lower() == request.auth.token.email.lower())
+        && !isUserBlocked(request.auth.uid)
+        && isValidUserSelfCreate(uid)
+      );
+      allow update: if isAdmin() || (
+        isOwner(uid)
+        && resource.data.get('blocked', false) != true
+        && !isUserBlocked(request.auth.uid)
+        && isValidUserSelfUpdate(uid)
       );
       allow delete: if isAdmin();
     }
@@ -160,28 +504,22 @@ service cloud.firestore {
     match /licenses/{uid} {
       allow get: if isOwner(uid) || isAdmin();
       allow list: if isAdmin();
-      allow create: if isAdmin()
-        || licenseMatchesFreeCoupon(request.resource.data, uid, request.time)
-        || licenseMatchesKeyClaim(request.resource.data, uid, request.time);
-      allow update: if isAdmin()
-        || licenseMatchesFreeCoupon(
-          request.resource.data,
-          uid,
-          (resource.data.status == 'active'
-            && resource.data.expiresAt is timestamp
-            && resource.data.expiresAt > request.time)
-            ? resource.data.expiresAt
-            : request.time
+      allow create: if isAdmin() || (
+        isOwner(uid)
+        && !isUserBlocked(request.auth.uid)
+        && (
+          licenseMatchesFreeCoupon(request.resource.data, uid, request.time)
+          || licenseMatchesKeyClaim(request.resource.data, uid, request.time)
         )
-        || licenseMatchesKeyClaim(
-          request.resource.data,
-          uid,
-          (resource.data.status == 'active'
-            && resource.data.expiresAt is timestamp
-            && resource.data.expiresAt > request.time)
-            ? resource.data.expiresAt
-            : request.time
-        );
+      );
+      allow update: if isAdmin() || (
+        isOwner(uid)
+        && !isUserBlocked(request.auth.uid)
+        && (
+          licenseMatchesFreeCoupon(request.resource.data, uid, activeLicenseBaseTime())
+          || licenseMatchesKeyClaim(request.resource.data, uid, activeLicenseBaseTime())
+        )
+      );
       allow delete: if isAdmin();
     }
 
@@ -191,19 +529,13 @@ service cloud.firestore {
       allow list, delete: if isAdmin();
       allow create: if isAdmin() || (
         isSignedIn()
-        && request.resource.data.key == keyId
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.status == 'active'
-        && getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data.licenseKey == keyId
+        && !isUserBlocked(request.auth.uid)
+        && isValidUserLicenseKeyCreate(keyId)
       );
       allow update: if isAdmin() || (
         isSignedIn()
-        && resource.data.active == true
-        && resource.data.status == 'available'
-        && request.resource.data.status == 'claimed'
-        && request.resource.data.claimedByUid == request.auth.uid
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'claimedByUid', 'claimedByEmail', 'claimedAt'])
-        && getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data.licenseKey == keyId
+        && !isUserBlocked(request.auth.uid)
+        && isValidUserLicenseKeyClaim(keyId)
       );
     }
 
@@ -213,54 +545,38 @@ service cloud.firestore {
       allow list, create, delete: if isAdmin();
       allow update: if isAdmin() || (
         isSignedIn()
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['usedCount'])
-        && request.resource.data.usedCount == resource.data.usedCount + 1
-        && resource.data.active == true
-        && resource.data.expiresAt is timestamp
-        && request.time < resource.data.expiresAt
-        && resource.data.usedCount < resource.data.maxUses
-        && !exists(/databases/$(database)/documents/redemptions/$(code + '_' + request.auth.uid))
-        && existsAfter(/databases/$(database)/documents/redemptions/$(code + '_' + request.auth.uid))
+        && !isUserBlocked(request.auth.uid)
+        && isValidUserCouponIncrement(code)
       );
     }
 
     // Redemption records: document ID must equal {CODE}_{UID}
     match /redemptions/{redemptionId} {
-      allow get: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow get: if isAdmin() || (isSignedIn() && (
+        (resource != null && resource.data.uid == request.auth.uid)
+        || (resource == null && redemptionId.matches('^.*_' + request.auth.uid + '$'))
+      ));
       allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
-      allow create: if isAdmin() || validUserRedemptionCreate(redemptionId);
+      allow create: if isAdmin() || (
+        isSignedIn()
+        && !isUserBlocked(request.auth.uid)
+        && validUserRedemptionCreate(redemptionId)
+      );
       allow update, delete: if isAdmin();
-    }
-
-    function validUserRedemptionCreate(redemptionId) {
-      let r = request.resource.data;
-      return isSignedIn()
-        && r.uid == request.auth.uid
-        && r.code is string
-        && redemptionId == (r.code + '_' + request.auth.uid)
-        && couponExists(r.code)
-        && couponValidForUser(r.code, request.auth.uid)
-        && r.redeemedAt == request.time
-        && (
-          isFreeCoupon(r.code)
-            ? getAfter(/databases/$(database)/documents/licenses/$(request.auth.uid)).data.couponCode == r.code
-            : (r.paymentRequestId is string
-               && existsAfter(/databases/$(database)/documents/payment_requests/$(r.paymentRequestId)))
-        );
     }
 
     // UPI UTR manual payment submissions (server-validated price against /config/store + coupon)
     match /payment_requests/{reqId} {
-      allow get: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
-      allow list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
+      allow get, list: if isAdmin() || (isSignedIn() && resource.data.uid == request.auth.uid);
       allow create: if isSignedIn()
-        && request.resource.data.uid == request.auth.uid
-        && request.resource.data.status == 'pending'
-        && request.resource.data.utr is string
-        && request.resource.data.utr.size() >= 6
-        && request.resource.data.utr.size() <= 40
-        && paymentAmountMatchesStore(request.resource.data);
+        && !isUserBlocked(request.auth.uid)
+        && isValidPaymentRequestCreate(reqId);
       allow update, delete: if isAdmin();
+    }
+
+    // Default deny any other paths
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }

@@ -833,9 +833,40 @@ enum class LicenseStatus {
     ADMIN_ACTIVE,
     EXPIRED,
     REVOKED,
+    BLOCKED,
     UNCONFIGURED,
     NETWORK_ERROR,
 }
+
+data class StorePricingConfig(
+    val upiId: String = "shivansh7dubey91@okhdfcbank",
+    val upiName: String = "Shivansh Pandit",
+    val currency: String = "INR",
+    val prices: Map<LicensePlan, Int> = mapOf(
+        LicensePlan.ONE_MONTH to 149,
+        LicensePlan.TWO_MONTHS to 249,
+        LicensePlan.ONE_YEAR to 999,
+        LicensePlan.TWO_YEARS to 1599,
+        LicensePlan.LIFETIME to 2999,
+    ),
+)
+
+data class AdminUserRecord(
+    val uid: String,
+    val email: String,
+    val displayName: String,
+    val lastLoginSource: String = "unknown",
+    val deviceModel: String = "",
+    val appVersion: String = "",
+    val lastLoginAtMs: Long = 0L,
+    val blocked: Boolean = false,
+    val blockedReason: String = "",
+    val plan: LicensePlan = LicensePlan.NONE,
+    val licenseStatus: String = "",
+    val isLifetime: Boolean = false,
+    val expiresAtMs: Long = 0L,
+    val licenseKey: String = "",
+)
 
 data class LicenseInfo(
     val uid: String = "",
@@ -851,6 +882,8 @@ data class LicenseInfo(
     val licenseKey: String = "",
     val message: String = "",
     val firebaseConfigured: Boolean = false,
+    val blocked: Boolean = false,
+    val blockedReason: String = "",
 ) {
     fun estimatedServerNowMs(nowDeviceMs: Long = System.currentTimeMillis()): Long {
         return if (lastServerNowMs > 0L && lastVerifiedDeviceMs > 0L) {
@@ -861,6 +894,9 @@ data class LicenseInfo(
     }
 
     fun remainingMs(nowDeviceMs: Long = System.currentTimeMillis()): Long {
+        if (blocked || status == LicenseStatus.BLOCKED || status == LicenseStatus.REVOKED) {
+            return 0L
+        }
         if (status == LicenseStatus.ADMIN_ACTIVE || (status == LicenseStatus.ACTIVE && isLifetime)) {
             return Long.MAX_VALUE
         }
@@ -869,6 +905,7 @@ data class LicenseInfo(
     }
 
     fun isUnlocked(nowDeviceMs: Long = System.currentTimeMillis()): Boolean {
+        if (blocked) return false
         if (uid.isBlank() || email.isBlank()) return false
         return when (status) {
             LicenseStatus.ADMIN_ACTIVE -> true
@@ -974,20 +1011,33 @@ data class AppSettings(
     val cachedLicenseVerifiedDeviceMs: Long = 0L,
     val cachedLicenseCouponCode: String = "",
     val cachedLicenseKey: String = "",
+    val cachedAccountBlocked: Boolean = false,
+    val cachedBlockedReason: String = "",
 ) {
-    fun currentLicenseInfo(): LicenseInfo = LicenseInfo(
-        uid = authUid,
-        email = authEmail,
-        displayName = authDisplayName,
-        plan = cachedLicensePlan,
-        isLifetime = cachedLicenseLifetime,
-        expiresAtMs = cachedLicenseExpiresAtMs,
-        lastServerNowMs = cachedLicenseServerNowMs,
-        lastVerifiedDeviceMs = cachedLicenseVerifiedDeviceMs,
-        status = runCatching { LicenseStatus.valueOf(cachedLicenseStatus) }.getOrDefault(LicenseStatus.SIGNED_OUT),
-        couponCode = cachedLicenseCouponCode,
-        licenseKey = cachedLicenseKey,
-    )
+    fun currentLicenseInfo(): LicenseInfo {
+        val rawStatus = runCatching { LicenseStatus.valueOf(cachedLicenseStatus) }.getOrDefault(LicenseStatus.SIGNED_OUT)
+        val blockedNow = cachedAccountBlocked || rawStatus == LicenseStatus.BLOCKED
+        return LicenseInfo(
+            uid = authUid,
+            email = authEmail,
+            displayName = authDisplayName,
+            plan = if (blockedNow) LicensePlan.NONE else cachedLicensePlan,
+            isLifetime = cachedLicenseLifetime && !blockedNow,
+            expiresAtMs = if (blockedNow) 0L else cachedLicenseExpiresAtMs,
+            lastServerNowMs = cachedLicenseServerNowMs,
+            lastVerifiedDeviceMs = cachedLicenseVerifiedDeviceMs,
+            status = if (blockedNow) LicenseStatus.BLOCKED else rawStatus,
+            couponCode = cachedLicenseCouponCode,
+            licenseKey = if (blockedNow) "" else cachedLicenseKey,
+            blocked = blockedNow,
+            blockedReason = cachedBlockedReason,
+            message = if (blockedNow) {
+                cachedBlockedReason.ifBlank { "Your account has been blocked by the administrator." }
+            } else {
+                ""
+            },
+        )
+    }
     fun currentKeyFor(provider: BrainProvider): String = when (provider) {
         BrainProvider.GEMINI -> geminiApiKey
         BrainProvider.GROQ -> groqApiKey

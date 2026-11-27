@@ -1,5 +1,6 @@
 package com.aysha.assistant
 
+import com.aysha.assistant.core.AdminUserRecord
 import com.aysha.assistant.core.AccentPalette
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AwarenessSensitivity
@@ -12,6 +13,7 @@ import com.aysha.assistant.core.MayaPalette
 import com.aysha.assistant.core.OrbRenderMode
 import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.OrbStyle
+import com.aysha.assistant.core.StorePricingConfig
 import com.aysha.assistant.core.SurfaceStyle
 import com.aysha.assistant.core.ThemeMode
 import com.aysha.assistant.core.UserGender
@@ -91,5 +93,53 @@ class AyshaAppUnitTest {
             status = LicenseStatus.ADMIN_ACTIVE,
         )
         assertTrue(adminLic.isUnlocked(tDevice))
+    }
+
+    @Test
+    fun `blocked account fails closed even with active or lifetime license`() {
+        val now = 1_800_000_000_000L
+        val blockedFlagLic = LicenseInfo(
+            uid = "u_blocked",
+            email = "blocked@example.com",
+            plan = LicensePlan.LIFETIME,
+            isLifetime = true,
+            expiresAtMs = now + 1_000_000_000L,
+            status = LicenseStatus.ACTIVE,
+            blocked = true,
+            blockedReason = "Suspended by admin",
+        )
+        assertFalse(blockedFlagLic.isUnlocked(now))
+        assertEquals(0L, blockedFlagLic.remainingMs(now))
+
+        val blockedStatusLic = LicenseInfo(
+            uid = "u_blocked2",
+            email = "blocked2@example.com",
+            plan = LicensePlan.ONE_YEAR,
+            isLifetime = true,
+            status = LicenseStatus.BLOCKED,
+        )
+        assertFalse(blockedStatusLic.isUnlocked(now))
+        assertEquals(0L, blockedStatusLic.remainingMs(now))
+        assertFalse(AppSettings().cachedAccountBlocked)
+    }
+
+    @Test
+    fun `store pricing config defaults and admin user record hold expected values`() {
+        val pricing = StorePricingConfig()
+        assertEquals(199, pricing.priceFor(LicensePlan.ONE_MONTH))
+        assertEquals(349, pricing.priceFor(LicensePlan.TWO_MONTHS))
+        assertEquals(999, pricing.priceFor(LicensePlan.ONE_YEAR))
+        assertEquals(1599, pricing.priceFor(LicensePlan.TWO_YEARS))
+        assertEquals(2999, pricing.priceFor(LicensePlan.LIFETIME))
+
+        val rec = AdminUserRecord(
+            uid = "uid123",
+            email = "user@test.com",
+            displayName = "Test User",
+            lastLoginSource = "android",
+            blocked = true,
+        )
+        assertEquals("android", rec.lastLoginSource)
+        assertTrue(rec.blocked)
     }
 }

@@ -131,6 +131,8 @@ class SettingsRepository(private val context: Context) {
         val cachedLicenseVerifiedDeviceMs = longPreferencesKey("cached_license_verified_device_ms")
         val cachedLicenseCouponCode = stringPreferencesKey("cached_license_coupon_code")
         val cachedLicenseKey = stringPreferencesKey("cached_license_key")
+        val cachedAccountBlocked = booleanPreferencesKey("cached_account_blocked")
+        val cachedBlockedReason = stringPreferencesKey("cached_blocked_reason")
     }
 
     private val _discoveredModels = MutableStateFlow<List<String>>(emptyList())
@@ -228,6 +230,8 @@ class SettingsRepository(private val context: Context) {
                 cachedLicenseVerifiedDeviceMs = p[Keys.cachedLicenseVerifiedDeviceMs] ?: 0L,
                 cachedLicenseCouponCode = p[Keys.cachedLicenseCouponCode].orEmpty(),
                 cachedLicenseKey = p[Keys.cachedLicenseKey].orEmpty(),
+                cachedAccountBlocked = p[Keys.cachedAccountBlocked] ?: false,
+                cachedBlockedReason = p[Keys.cachedBlockedReason].orEmpty(),
             )
         }
 
@@ -325,6 +329,8 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.cachedLicenseVerifiedDeviceMs] = next.cachedLicenseVerifiedDeviceMs
             prefs[Keys.cachedLicenseCouponCode] = next.cachedLicenseCouponCode
             prefs[Keys.cachedLicenseKey] = next.cachedLicenseKey
+            prefs[Keys.cachedAccountBlocked] = next.cachedAccountBlocked
+            prefs[Keys.cachedBlockedReason] = next.cachedBlockedReason
         }
     }
 
@@ -343,6 +349,8 @@ class SettingsRepository(private val context: Context) {
                 cachedLicenseVerifiedDeviceMs = 0L,
                 cachedLicenseCouponCode = "",
                 cachedLicenseKey = "",
+                cachedAccountBlocked = false,
+                cachedBlockedReason = "",
             )
         }
     }

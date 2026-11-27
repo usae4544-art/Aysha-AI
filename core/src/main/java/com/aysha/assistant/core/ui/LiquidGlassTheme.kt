@@ -1,7 +1,9 @@
 package com.aysha.assistant.core.ui
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
@@ -9,6 +11,13 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -293,6 +302,31 @@ private fun AyshaThemeInternal(
 }
 
 @Composable
+fun StaggeredAnimatedEntry(
+    index: Int = 0,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(index) {
+        delay((index.coerceIn(0, 10) * 32L))
+        visible = true
+    }
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = fadeIn(tween(260, easing = FastOutSlowInEasing)) +
+            slideInVertically(
+                initialOffsetY = { (it * 0.14f).toInt().coerceAtLeast(18) },
+                animationSpec = spring(dampingRatio = 0.78f, stiffness = 420f),
+            ) +
+            scaleIn(initialScale = 0.96f, animationSpec = tween(260, easing = FastOutSlowInEasing)),
+    ) {
+        content()
+    }
+}
+
+@Composable
 fun LiquidAuroraBackground(
     modifier: Modifier = Modifier,
     content: @Composable BoxScope.() -> Unit,
@@ -539,9 +573,24 @@ fun AuroraGradientButton(
     val shape = RoundedCornerShape(cornerRadius)
     val startCol = if (c.surfaceStyle == SurfaceStyle.CLAY && !c.isDark) Color(0xFF60B2FF) else c.accentPrimary
     val endCol = if (c.surfaceStyle == SurfaceStyle.CLAY && !c.isDark) Color(0xFF2778FF) else c.accentSecondary
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed && enabled) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = 520f),
+        label = "btn_press_scale",
+    )
+    val sheenInf = rememberInfiniteTransition(label = "btn_sheen")
+    val sheenX by sheenInf.animateFloat(
+        initialValue = -0.35f,
+        targetValue = 1.35f,
+        animationSpec = infiniteRepeatable(tween(2800, easing = LinearEasing), RepeatMode.Restart),
+        label = "sheen_x",
+    )
     Box(
         modifier = modifier
             .fillMaxWidth()
+            .scale(pressScale)
             .height(height)
             .shadow(
                 elevation = if (enabled) 12.dp else 2.dp,
@@ -557,9 +606,25 @@ fun AuroraGradientButton(
                 shape,
             )
             .border(1.2.dp, Color.White.copy(alpha = if (enabled) 0.45f else 0.2f), shape)
-            .clickable(enabled = enabled, onClick = onClick),
+            .clickable(interactionSource = interactionSource, indication = null, enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
+        if (enabled) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val x = size.width * sheenX
+                drawRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.16f),
+                            Color.Transparent,
+                        ),
+                        startX = x - size.width * 0.28f,
+                        endX = x + size.width * 0.28f,
+                    ),
+                )
+            }
+        }
         Row(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center,
@@ -594,8 +659,16 @@ fun ClayCircleButton(
     tint: Color? = null,
 ) {
     val c = LocalAyshaColors.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val pressed by interactionSource.collectIsPressedAsState()
+    val pressScale by animateFloatAsState(
+        targetValue = if (pressed) 0.90f else 1f,
+        animationSpec = spring(dampingRatio = 0.65f, stiffness = 550f),
+        label = "clay_circle_press",
+    )
     Box(
         modifier = modifier
+            .scale(pressScale)
             .size(size)
             .shadow(
                 elevation = if (c.isDark) 4.dp else 10.dp,
@@ -615,7 +688,7 @@ fun ClayCircleButton(
                 brush = Brush.linearGradient(listOf(Color.White.copy(alpha = if (c.isDark) 0.22f else 0.95f), c.glassBorder)),
                 shape = CircleShape,
             )
-            .clickable(onClick = onClick),
+            .clickable(interactionSource = interactionSource, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         Icon(

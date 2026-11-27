@@ -63,6 +63,8 @@ const state = {
   functions: null,
   user: null,
   isAdmin: false,
+  isBlocked: false,
+  blockedReason: "",
   license: null,
   store: structuredClone(DEFAULT_STORE),
   appliedCoupon: null,
@@ -416,6 +418,12 @@ function renderAccountPanel() {
       $("acc-plan").textContent = "Lifetime (Admin)";
       $("acc-timer").textContent = "Unlimited";
       orbLabel.textContent = "AYSHA 2047 · Owner active";
+    } else if (state.isBlocked) {
+      badge.className = "status-pill status-err";
+      badge.textContent = "Account Blocked";
+      $("acc-plan").textContent = "Suspended";
+      $("acc-timer").textContent = state.blockedReason ? `Blocked: ${state.blockedReason}` : "Blocked by Owner Admin";
+      orbLabel.textContent = "AYSHA 2047 · Blocked";
     } else if (isLicenseActive(state.license)) {
       const plan = planById(state.license.planId);
       const isLife = state.license.isLifetime || state.license.planId === "LIFETIME";
@@ -546,6 +554,8 @@ function renderAdminTables() {
   $("stat-coupons").textContent = String(liveCoupons.length);
   const pendingReqs = state.adminPayments.filter((p) => p.status === "pending");
   $("stat-pending").textContent = String(pendingReqs.length);
+  const blockedUsersCount = state.adminUsers.filter((u) => u.blocked === true).length;
+  if ($("stat-blocked")) $("stat-blocked").textContent = String(blockedUsersCount);
 
   // Coupons table
   const cBody = $("admin-coupons-tbody");
@@ -638,32 +648,55 @@ function renderAdminTables() {
   const uBody = $("admin-users-tbody");
   const filteredUsers = state.adminUsers.filter((u) => {
     if (!filter) return true;
-    return String(u.email || "").toLowerCase().includes(filter) || String(u.uid || "").toLowerCase().includes(filter);
+    return String(u.email || "").toLowerCase().includes(filter)
+      || String(u.uid || "").toLowerCase().includes(filter)
+      || String(u.displayName || "").toLowerCase().includes(filter)
+      || String(u.lastLoginSource || "").toLowerCase().includes(filter)
+      || String(u.deviceModel || "").toLowerCase().includes(filter);
   });
 
   uBody.innerHTML = filteredUsers.map((u) => {
     const lic = state.adminLicensesMap.get(u.uid);
     const active = isLicenseActive(lic);
+    const isBlocked = u.blocked === true;
+    const isOwnerAdminRow = String(u.email || "").toLowerCase() === ADMIN_EMAIL;
     const isLife = lic && (lic.isLifetime || lic.planId === "LIFETIME");
     const expMs = licenseExpiryMs(lic);
     const planLabel = lic?.planId && lic.planId !== "NONE" ? planById(lic.planId).name : "None";
     const keyShort = lic?.licenseKey ? esc(lic.licenseKey) : "—";
-    const statusPill = active
-      ? `<span class="status-pill status-ok">Active</span>`
-      : lic?.status === "revoked"
-        ? `<span class="status-pill status-err">Revoked</span>`
-        : `<span class="status-pill status-neutral">Inactive</span>`;
+    const sourceBadge = u.lastLoginSource === "android"
+      ? `<span class="status-pill status-ok">Android APK</span>`
+      : u.lastLoginSource === "web"
+        ? `<span class="status-pill status-neutral">Web</span>`
+        : `<span class="status-pill status-neutral">${esc(u.lastLoginSource || "Unknown")}</span>`;
+    const lastSeenMs = toMs(u.lastLoginAt);
+    const lastSeenStr = lastSeenMs > 0 ? formatDate(lastSeenMs) : "—";
+    const deviceStr = [u.deviceModel || "", u.appVersion ? `v${u.appVersion}` : ""].filter(Boolean).join(" · ") || "—";
+
+    const statusPill = isBlocked
+      ? `<span class="status-pill status-err">Blocked</span>${u.blockedReason ? `<div class="muted-text" style="font-size:11px;margin-top:3px;">${esc(u.blockedReason)}</div>` : ""}`
+      : active
+        ? `<span class="status-pill status-ok">Active</span>`
+        : lic?.status === "revoked"
+          ? `<span class="status-pill status-err">Revoked</span>`
+          : `<span class="status-pill status-neutral">Inactive</span>`;
 
     return `<tr>
       <td>
         <div>${esc(u.displayName || "User")}</div>
         <div class="mono muted-text">${esc(u.email || u.uid)}</div>
+        <div class="mono muted-text" style="font-size:10px;">UID: ${esc(String(u.uid || "").slice(0, 14))}…</div>
+      </td>
+      <td>
+        <div>${sourceBadge}</div>
+        <div class="muted-text" style="font-size:11px;margin-top:3px;">${esc(deviceStr)}</div>
+        <div class="mono muted-text" style="font-size:11px;">${esc(lastSeenStr)}</div>
       </td>
       <td class="mono">${esc(planLabel)}</td>
       <td class="mono" style="font-size:11px;">
         ${keyShort !== "—" ? `${keyShort} <button type="button" class="btn btn-ghost btn-sm" data-u-copykey="${keyShort}">Copy</button>` : "—"}
       </td>
-      <td class="mono" data-countdown-ms="${isLife || !active ? 0 : expMs}">${isLife && active ? "All-time" : active ? esc(formatCountdown(expMs)) : "—"}</td>
+      <td class="mono" data-countdown-ms="${isLife || !active || isBlocked ? 0 : expMs}">${isBlocked ? "Blocked" : isLife && active ? "All-time" : active ? esc(formatCountdown(expMs)) : "—"}</td>
       <td>${statusPill}</td>
       <td>
         <div class="row-actions">
@@ -675,11 +708,12 @@ function renderAdminTables() {
             <option value="LIFETIME">Lifetime</option>
           </select>
           <button type="button" class="btn btn-secondary btn-sm" data-u-grant="${esc(u.uid)}">Grant</button>
+          ${isOwnerAdminRow ? "" : `<button type="button" class="btn ${isBlocked ? "btn-secondary" : "btn-warn"} btn-sm" data-u-block="${esc(u.uid)}" data-u-blocked="${isBlocked ? "1" : "0"}">${isBlocked ? "Unblock" : "Block"}</button>`}
           <button type="button" class="btn btn-danger btn-sm" data-u-revoke="${esc(u.uid)}">Revoke</button>
         </div>
       </td>
     </tr>`;
-  }).join("") || `<tr><td colspan="6" class="muted-text">No users found.</td></tr>`;
+  }).join("") || `<tr><td colspan="7" class="muted-text">No users found.</td></tr>`;
 
   uBody.querySelectorAll("[data-u-copykey]").forEach((b) => {
     b.addEventListener("click", () => {
@@ -694,6 +728,9 @@ function renderAdminTables() {
       const sel = uBody.querySelector(`[data-u-select="${CSS.escape(uid)}"]`);
       adminSetLicense(uid, sel ? sel.value : "ONE_MONTH");
     });
+  });
+  uBody.querySelectorAll("[data-u-block]").forEach((b) => {
+    b.addEventListener("click", () => adminToggleBlockUser(b.dataset.uBlock, b.dataset.uBlocked === "1"));
   });
   uBody.querySelectorAll("[data-u-revoke]").forEach((b) => {
     b.addEventListener("click", () => adminRevokeLicense(b.dataset.uRevoke));
@@ -763,16 +800,46 @@ function syncStoreFormInputs() {
 async function syncUserRecords(user) {
   if (!state.db || !user) return;
   let firestoreIssue = null;
+  state.isBlocked = false;
+  state.blockedReason = "";
 
-  const userWrite = setDoc(doc(state.db, "users", user.uid), {
+  // Check block status first so blocked accounts fail closed without failing telemetry writes
+  try {
+    const uSnap = await withTimeout(getDoc(doc(state.db, "users", user.uid)), 4500);
+    if (uSnap.exists()) {
+      const uData = uSnap.data() || {};
+      if (uData.blocked === true && !state.isAdmin) {
+        state.isBlocked = true;
+        state.blockedReason = String(uData.blockedReason || "");
+        state.license = null;
+        state.myPayments = [];
+        state.myRedemptions = [];
+        showAuthError(state.blockedReason ? `Account blocked by Admin: ${state.blockedReason}` : "This account has been blocked by the Owner Admin.");
+        renderAccountPanel();
+        renderMyHistory();
+        return;
+      }
+    }
+  } catch (readErr) {
+    firestoreIssue = readErr;
+  }
+
+  const rawPhoto = String(user.photoURL || "");
+  const telemetryPayload = {
     uid: user.uid,
-    email: String(user.email || "").toLowerCase(),
     emailVerified: Boolean(user.emailVerified),
-    displayName: user.displayName || "",
-    photoUrl: user.photoURL || "",
+    displayName: String(user.displayName || "").slice(0, 120),
+    photoUrl: rawPhoto.length <= 512 && (!rawPhoto || /^https?:\/\//i.test(rawPhoto)) ? rawPhoto : "",
     lastLoginAt: serverTimestamp(),
     lastLoginSource: "web",
-  }, { merge: true });
+    deviceModel: `${navigator.platform || "Web"} · Browser`.slice(0, 120),
+    appVersion: "web-2.11.0",
+  };
+  if (user.email) {
+    telemetryPayload.email = String(user.email).toLowerCase().slice(0, 254);
+  }
+
+  const userWrite = setDoc(doc(state.db, "users", user.uid), telemetryPayload, { merge: true });
 
   const [writeRes, licRes, payRes, redRes] = await Promise.allSettled([
     withTimeout(userWrite, 4500),
@@ -781,7 +848,7 @@ async function syncUserRecords(user) {
     withTimeout(getDocs(query(collection(state.db, "redemptions"), where("uid", "==", user.uid))), 4500),
   ]);
 
-  if (writeRes.status === "rejected") {
+  if (writeRes.status === "rejected" && !firestoreIssue) {
     firestoreIssue = writeRes.reason;
   }
   if (licRes.status === "fulfilled" && licRes.value.exists()) {
@@ -911,6 +978,10 @@ async function handleCheckCoupon(e) {
     await triggerGoogleAuth();
     return;
   }
+  if (state.isBlocked && !state.isAdmin) {
+    showCouponFeedback(false, "Your account is blocked by Owner Admin.");
+    return;
+  }
   const raw = ($("coupon-input").value || "").trim().toUpperCase();
   if (!raw) {
     showCouponFeedback(false, "Enter a coupon code or license key.");
@@ -996,6 +1067,10 @@ async function handleCheckCoupon(e) {
 
 async function handleRedeemFreeCoupon() {
   if (!state.user || !state.db) return;
+  if (state.isBlocked && !state.isAdmin) {
+    showToast("Your account is blocked by Owner Admin.");
+    return;
+  }
   const btn = $("btn-redeem-free");
 
   if (state.pendingLicenseKeyDoc) {
@@ -1127,6 +1202,20 @@ async function handleRedeemFreeCoupon() {
 }
 
 /* --- Checkout & UPI UTR --- */
+function openCheckoutModal() {
+  const modal = $("checkout-modal");
+  if (!modal) return;
+  modal.classList.remove("hidden");
+  document.body.style.overflow = "hidden";
+}
+
+function closeCheckoutModal() {
+  const modal = $("checkout-modal");
+  if (!modal) return;
+  modal.classList.add("hidden");
+  document.body.style.overflow = "";
+}
+
 async function handleSelectPlan(planId) {
   if (!state.firebaseReady) {
     showToast("Configure Firebase first.");
@@ -1135,6 +1224,10 @@ async function handleSelectPlan(planId) {
   if (!state.user) {
     showToast("Sign in with Google to activate a plan.");
     await triggerGoogleAuth();
+    return;
+  }
+  if (state.isBlocked && !state.isAdmin) {
+    showToast("Your account is blocked by Owner Admin.");
     return;
   }
   const pricing = discountedPrice(planId);
@@ -1180,7 +1273,7 @@ async function handleSelectPlan(planId) {
       saveQrBtn.classList.add("hidden");
     });
 
-  $("checkout-modal").classList.remove("hidden");
+  openCheckoutModal();
 }
 
 async function handleUtrSubmit(e) {
@@ -1446,6 +1539,35 @@ async function adminRevokeLicense(uid) {
   }
 }
 
+async function adminToggleBlockUser(uid, currentlyBlocked) {
+  if (!state.isAdmin || !state.db || !uid) return;
+  const targetUser = state.adminUsers.find((u) => u.uid === uid);
+  if (targetUser && String(targetUser.email || "").toLowerCase() === ADMIN_EMAIL) {
+    showToast("Owner Admin account cannot be blocked.");
+    return;
+  }
+  const nextBlocked = !currentlyBlocked;
+  let reason = "";
+  if (nextBlocked) {
+    const entered = window.prompt?.("Reason for blocking this user (optional, Cancel to abort):", "Blocked by Owner Admin");
+    if (entered === null) return;
+    reason = String(entered || "Blocked by Owner Admin").trim().slice(0, 200);
+  }
+  try {
+    await setDoc(doc(state.db, "users", uid), {
+      uid,
+      blocked: nextBlocked,
+      blockedReason: reason,
+      blockedBy: nextBlocked ? state.user.email : "",
+      blockedAt: nextBlocked ? serverTimestamp() : null,
+    }, { merge: true });
+    showToast(nextBlocked ? "User blocked across App & Web." : "User unblocked.");
+    await loadAdminAll();
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
 async function adminResolvePayment(reqId, decision) {
   if (!state.isAdmin || !state.db) return;
   try {
@@ -1516,11 +1638,11 @@ async function handleSaveStoreConfig(e) {
     upiName: ($("s-upi-name").value || "AYSHA AI").trim(),
     currency: "INR",
     prices: {
-      ONE_MONTH: Number($("s-p-1m").value || 0),
-      TWO_MONTHS: Number($("s-p-2m").value || 0),
-      ONE_YEAR: Number($("s-p-1y").value || 0),
-      TWO_YEARS: Number($("s-p-2y").value || 0),
-      LIFETIME: Number($("s-p-life").value || 0),
+      ONE_MONTH: Math.max(0, Math.round(Number($("s-p-1m").value || 0))),
+      TWO_MONTHS: Math.max(0, Math.round(Number($("s-p-2m").value || 0))),
+      ONE_YEAR: Math.max(0, Math.round(Number($("s-p-1y").value || 0))),
+      TWO_YEARS: Math.max(0, Math.round(Number($("s-p-2y").value || 0))),
+      LIFETIME: Math.max(0, Math.round(Number($("s-p-life").value || 0))),
     },
     updatedAt: serverTimestamp(),
     updatedBy: state.user.email,
@@ -1540,7 +1662,7 @@ async function loadLiveOtaConfig() {
   try {
     const snap = await getDoc(doc(state.db, "config", "app_live"));
     const d = snap.exists() ? snap.data() : {};
-    if ($("ota-version")) $("ota-version").value = d.latestVersion || "2.5.0";
+    if ($("ota-version")) $("ota-version").value = d.latestVersion || "2.11.0";
     if ($("ota-version-code")) $("ota-version-code").value = d.latestVersionCode || 8;
     if ($("ota-apk-url")) $("ota-apk-url").value = d.apkDownloadUrl || "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk";
     if ($("ota-notes")) $("ota-notes").value = d.updateNotes || "";
@@ -1610,7 +1732,15 @@ async function init() {
   $("btn-hero-signin").addEventListener("click", triggerGoogleAuth);
   $("coupon-form").addEventListener("submit", handleCheckCoupon);
   $("btn-redeem-free").addEventListener("click", handleRedeemFreeCoupon);
-  $("btn-close-modal").addEventListener("click", () => $("checkout-modal").classList.add("hidden"));
+  $("btn-close-modal").addEventListener("click", closeCheckoutModal);
+  $("checkout-modal").addEventListener("click", (e) => {
+    if (e.target === $("checkout-modal")) closeCheckoutModal();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !$("checkout-modal").classList.contains("hidden")) {
+      closeCheckoutModal();
+    }
+  });
   $("btn-copy-upi").addEventListener("click", () => {
     navigator.clipboard?.writeText(state.store.upiId);
     showToast("UPI ID copied.");
@@ -1651,6 +1781,16 @@ async function init() {
     if (isFree && $("c-plan").value === "ANY") $("c-plan").value = "ONE_MONTH";
   });
   $("c-type").dispatchEvent(new Event("change"));
+
+  document.querySelectorAll("[data-price-step]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const inp = $(b.dataset.priceStep);
+      if (!inp) return;
+      const cur = Number(inp.value || 0);
+      const delta = Number(b.dataset.delta || 0);
+      inp.value = String(Math.max(0, Math.round(cur + delta)));
+    });
+  });
 
   document.querySelectorAll(".quick-timers button[data-minutes]").forEach((b) => {
     b.addEventListener("click", () => setQuickExpiry(Number(b.dataset.minutes)));
@@ -1710,6 +1850,8 @@ async function init() {
         renderAccountPanel();
         void syncUserRecords(user);
       } else {
+        state.isBlocked = false;
+        state.blockedReason = "";
         state.license = null;
         state.myPayments = [];
         state.myRedemptions = [];

@@ -5,7 +5,9 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
@@ -13,6 +15,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.ui.draw.scale
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -96,6 +99,7 @@ import com.aysha.assistant.core.ui.ClayRecessedBox
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
 import com.aysha.assistant.core.ui.LocalAyshaColors
+import com.aysha.assistant.core.ui.StaggeredAnimatedEntry
 import com.aysha.assistant.ui.AyshaViewModel
 import com.aysha.assistant.ui.components.AyshaVoiceOrb
 import com.aysha.assistant.ui.components.EqualizerWaveformRow
@@ -509,85 +513,96 @@ fun HomeOrbScreen(
             }
 
             // Exact Screenshot 3-Pill Strip: [Gaane] [Padhai] [Journal]
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                HomeQuickClayPill("Gaane", Icons.Rounded.MusicNote, Modifier.weight(1f), onOpenRulesAgents)
-                HomeQuickClayPill("Padhai", Icons.Rounded.MenuBook, Modifier.weight(1f), onOpenWhiteboard)
-                HomeQuickClayPill("Notes", Icons.Rounded.Edit, Modifier.weight(1f)) {
-                    showNotesDialog = true
+            StaggeredAnimatedEntry(index = 1) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    HomeQuickClayPill("Gaane", Icons.Rounded.MusicNote, Modifier.weight(1f), onOpenRulesAgents)
+                    HomeQuickClayPill("Padhai", Icons.Rounded.MenuBook, Modifier.weight(1f), onOpenWhiteboard)
+                    HomeQuickClayPill("Notes", Icons.Rounded.Edit, Modifier.weight(1f)) {
+                        showNotesDialog = true
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
             // Exact Screenshot 3-Card Telemetry Row: [Mausam] [Aaj] [Mood]
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-            ) {
-                GlassCard(
-                    modifier = Modifier.weight(1f).height(94.dp),
-                    cornerRadius = 20.dp,
-                    elevated = true,
-                    onClick = {
-                        viewModel.sendTextMessage("Aaj ka mausam aur weather forecast batao", speakReply = true)
-                        onOpenChat()
-                    },
-                    contentPadding = PaddingValues(12.dp),
+            StaggeredAnimatedEntry(index = 2) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.Cloud, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Mausam", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
-                        Text("—", color = c.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
-                        Text("Check live", color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
-                    }
-                }
-
-                GlassCard(
-                    modifier = Modifier.weight(1f).height(94.dp),
-                    cornerRadius = 20.dp,
-                    elevated = true,
-                    onClick = onOpenAutomation,
-                    contentPadding = PaddingValues(12.dp),
-                ) {
-                    Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Rounded.CalendarToday, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(13.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Aaj", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
-                        }
-                        Text(dayNum, color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
-                        Text(dayMonth, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
-                    }
-                }
-
-                GlassCard(
-                    modifier = Modifier.weight(1f).height(94.dp),
-                    cornerRadius = 20.dp,
-                    elevated = true,
-                    onClick = onOpenSecretSettings,
-                    contentPadding = PaddingValues(12.dp),
-                ) {
-                    Box(modifier = Modifier.fillMaxSize()) {
-                        Icon(
-                            imageVector = Icons.Rounded.Favorite,
-                            contentDescription = null,
-                            tint = Color(mood.colorHex).copy(alpha = 0.22f),
-                            modifier = Modifier.size(46.dp).align(Alignment.CenterEnd),
-                        )
+                    GlassCard(
+                        modifier = Modifier.weight(1f).height(94.dp),
+                        cornerRadius = 20.dp,
+                        elevated = true,
+                        onClick = {
+                            viewModel.sendTextMessage("Aaj ka mausam aur weather forecast batao", speakReply = true)
+                            onOpenChat()
+                        },
+                        contentPadding = PaddingValues(12.dp),
+                    ) {
                         Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(13.dp))
+                                Icon(Icons.Rounded.Cloud, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(14.dp))
                                 Spacer(modifier = Modifier.width(4.dp))
-                                Text("Mood", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                Text("Mausam", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                             }
-                            Text(mood.label, color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            Text(mood.caption, color = c.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text("—", color = c.textPrimary, fontSize = 20.sp, fontWeight = FontWeight.ExtraBold)
+                            Text("Check live", color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
+
+                    GlassCard(
+                        modifier = Modifier.weight(1f).height(94.dp),
+                        cornerRadius = 20.dp,
+                        elevated = true,
+                        onClick = onOpenAutomation,
+                        contentPadding = PaddingValues(12.dp),
+                    ) {
+                        Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(Icons.Rounded.CalendarToday, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(13.dp))
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Aaj", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                            }
+                            Text(dayNum, color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.ExtraBold)
+                            Text(dayMonth, color = c.textSecondary, fontSize = 11.sp, maxLines = 1)
+                        }
+                    }
+
+                    val heartInf = rememberInfiniteTransition(label = "mood_heart")
+                    val heartScale by heartInf.animateFloat(
+                        initialValue = 0.94f,
+                        targetValue = 1.08f,
+                        animationSpec = infiniteRepeatable(tween(1100, easing = FastOutSlowInEasing), RepeatMode.Reverse),
+                        label = "heart_pulse",
+                    )
+                    GlassCard(
+                        modifier = Modifier.weight(1f).height(94.dp),
+                        cornerRadius = 20.dp,
+                        elevated = true,
+                        onClick = onOpenSecretSettings,
+                        contentPadding = PaddingValues(12.dp),
+                    ) {
+                        Box(modifier = Modifier.fillMaxSize()) {
+                            Icon(
+                                imageVector = Icons.Rounded.Favorite,
+                                contentDescription = null,
+                                tint = Color(mood.colorHex).copy(alpha = 0.24f),
+                                modifier = Modifier.size(46.dp).scale(heartScale).align(Alignment.CenterEnd),
+                            )
+                            Column(verticalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxSize()) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.textSecondary, modifier = Modifier.size(13.dp))
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text("Mood", color = c.textSecondary, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                                }
+                                Text(mood.label, color = c.textPrimary, fontSize = 17.sp, fontWeight = FontWeight.ExtraBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(mood.caption, color = c.textSecondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            }
                         }
                     }
                 }

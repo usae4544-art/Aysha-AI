@@ -26,7 +26,7 @@
     "alternateName": "AYSHA – Your Personal AI Assistant",
     "applicationCategory": "UtilitiesApplication",
     "operatingSystem": "Android 8.0+",
-    "softwareVersion": "2.10.0",
+    "softwareVersion": "2.11.0",
     "url": "https://usae4544-art.github.io/Aysha-AI/",
     "downloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk",
     "license": "https://usae4544-art.github.io/Aysha-AI/license.html",
@@ -36,7 +36,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="styles.css?v=20261127b" />
+  <link rel="stylesheet" href="styles.css?v=20261127d" />
 </head>
 <body>
   <header class="topbar">
@@ -49,7 +49,7 @@
           </svg>
         </span>
         <span class="brand-name">AYSHA</span>
-        <span class="brand-version mono" id="nav-version">v2.10.0</span>
+        <span class="brand-version mono" id="nav-version">v2.11.0</span>
       </a>
 
       <nav class="nav-links" aria-label="Primary">
@@ -301,7 +301,7 @@
         <div class="card download-box">
           <div class="kv-row">
             <span class="kv-k">Latest build</span>
-            <span class="kv-v mono" id="dl-version">AYSHA v2.10.0</span>
+            <span class="kv-v mono" id="dl-version">AYSHA v2.11.0</span>
           </div>
           <div class="kv-row">
             <span class="kv-k">Minimum Android</span>
@@ -350,6 +350,10 @@
           <div class="stat-box">
             <span class="stat-label">Pending UPI UTRs</span>
             <strong class="stat-val mono" id="stat-pending">0</strong>
+          </div>
+          <div class="stat-box">
+            <span class="stat-label">Blocked users</span>
+            <strong class="stat-val mono" id="stat-blocked">0</strong>
           </div>
         </div>
 
@@ -479,19 +483,20 @@
         <div id="tab-users" class="tab-pane">
           <div class="card table-card">
             <div class="table-head">
-              <h3>Manage users &amp; licenses</h3>
-              <input type="search" id="admin-user-search" placeholder="Filter by email or UID..." />
+              <h3>All logged-in users &amp; access control</h3>
+              <input type="search" id="admin-user-search" placeholder="Filter by email, name, source, or UID..." />
             </div>
             <div class="table-wrap">
               <table>
                 <thead>
                   <tr>
                     <th>User</th>
+                    <th>Login / Device</th>
                     <th>Current plan</th>
                     <th>License key</th>
                     <th>Time left / Expiry</th>
                     <th>Status</th>
-                    <th>Grant or Revoke</th>
+                    <th>Grant · Block · Revoke</th>
                   </tr>
                 </thead>
                 <tbody id="admin-users-tbody"></tbody>
@@ -539,23 +544,43 @@
             </label>
             <label>
               <span>1 Month price (INR)</span>
-              <input type="number" id="s-p-1m" min="0" required />
+              <div class="price-adj-row">
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-1m" data-delta="-50">-₹50</button>
+                <input type="number" id="s-p-1m" min="0" required />
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-1m" data-delta="50">+₹50</button>
+              </div>
             </label>
             <label>
               <span>2 Months price (INR)</span>
-              <input type="number" id="s-p-2m" min="0" required />
+              <div class="price-adj-row">
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-2m" data-delta="-50">-₹50</button>
+                <input type="number" id="s-p-2m" min="0" required />
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-2m" data-delta="50">+₹50</button>
+              </div>
             </label>
             <label>
               <span>1 Year price (INR)</span>
-              <input type="number" id="s-p-1y" min="0" required />
+              <div class="price-adj-row">
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-1y" data-delta="-50">-₹50</button>
+                <input type="number" id="s-p-1y" min="0" required />
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-1y" data-delta="50">+₹50</button>
+              </div>
             </label>
             <label>
               <span>2 Years price (INR)</span>
-              <input type="number" id="s-p-2y" min="0" required />
+              <div class="price-adj-row">
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-2y" data-delta="-50">-₹50</button>
+                <input type="number" id="s-p-2y" min="0" required />
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-2y" data-delta="50">+₹50</button>
+              </div>
             </label>
             <label>
               <span>Lifetime price (INR)</span>
-              <input type="number" id="s-p-life" min="0" required />
+              <div class="price-adj-row">
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-life" data-delta="-50">-₹50</button>
+                <input type="number" id="s-p-life" min="0" required />
+                <button type="button" class="btn btn-ghost btn-sm" data-price-step="s-p-life" data-delta="50">+₹50</button>
+              </div>
             </label>
             <div class="full-span form-actions">
               <button type="submit" class="btn btn-primary">Save store configuration</button>
@@ -670,6 +695,6 @@
 
   <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 
-  <script type="module" src="app.js?v=20261127c"></script>
+  <script type="module" src="app.js?v=20261127d"></script>
 </body>
 </html>

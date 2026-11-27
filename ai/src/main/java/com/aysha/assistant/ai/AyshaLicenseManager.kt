@@ -1,9 +1,13 @@
 package com.aysha.assistant.ai
 
+import android.os.Build
+import com.aysha.assistant.core.AdminUserRecord
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.LicenseInfo
 import com.aysha.assistant.core.LicensePlan
 import com.aysha.assistant.core.LicenseStatus
+import com.aysha.assistant.core.SafeLogger
+import com.aysha.assistant.core.StorePricingConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.FormBody
@@ -44,12 +48,16 @@ class AyshaLicenseManager {
         .readTimeout(20, TimeUnit.SECONDS)
         .build()
 
-    suspend fun verifyWithSettings(settings: AppSettings): LicenseVerificationOutcome =
-        verifyWithRefreshToken(settings.firebaseRefreshToken, settings)
+    suspend fun verifyWithSettings(
+        settings: AppSettings,
+        appVersion: String = "",
+    ): LicenseVerificationOutcome =
+        verifyWithRefreshToken(settings.firebaseRefreshToken, settings, appVersion)
 
     suspend fun verifyWithRefreshToken(
         rawRefreshToken: String,
         fallbackSettings: AppSettings,
+        appVersion: String = "",
     ): LicenseVerificationOutcome = withContext(Dispatchers.IO) {
         val refreshToken = rawRefreshToken.trim()
         val configRes = fetchPinnedFirebaseConfig()
@@ -139,8 +147,17 @@ class AyshaLicenseManager {
         val deviceNow = System.currentTimeMillis()
         val serverNow = tokenResult.serverNowMs.takeIf { it > 0L } ?: deviceNow
 
+        // Check user record for block status first (even before license check)
+        val userDocRes = fetchFirestoreDoc(cfg.projectId, "users/${account.uid}", tokenResult.idToken)
+        val userFields = userDocRes.getOrNull()?.rawJson?.let {
+            runCatching { JSONObject(it).optJSONObject("fields") }.getOrNull()
+        }
+        val isBlockedByAdmin = userFields?.optJSONObject("blocked")?.optBoolean("booleanValue", false) == true
+        val blockedReason = userFields?.optJSONObject("blockedReason")?.optString("stringValue", "").orEmpty()
+
         // Admin override strictly gated on verified Google account email matching ADMIN_EMAIL
         if (account.emailVerified && account.email.equals(ADMIN_EMAIL, ignoreCase = true)) {
+            upsertAndroidUserLogin(cfg.projectId, tokenResult.idToken, account, serverNow, appVersion)
             return@withContext LicenseVerificationOutcome(
                 license = LicenseInfo(
                     uid = account.uid,
@@ -154,11 +171,36 @@ class AyshaLicenseManager {
                     status = LicenseStatus.ADMIN_ACTIVE,
                     couponCode = "",
                     firebaseConfigured = true,
+                    blocked = false,
                     message = "Owner administrator access verified",
                 ),
                 updatedRefreshToken = tokenResult.refreshToken,
             )
         }
+
+        if (isBlockedByAdmin) {
+            return@withContext LicenseVerificationOutcome(
+                license = LicenseInfo(
+                    uid = account.uid,
+                    email = account.email,
+                    displayName = account.displayName,
+                    plan = LicensePlan.NONE,
+                    isLifetime = false,
+                    expiresAtMs = 0L,
+                    lastServerNowMs = serverNow,
+                    lastVerifiedDeviceMs = deviceNow,
+                    status = LicenseStatus.BLOCKED,
+                    firebaseConfigured = true,
+                    blocked = true,
+                    blockedReason = blockedReason,
+                    message = blockedReason.ifBlank { "Your account has been blocked by the administrator." },
+                ),
+                updatedRefreshToken = tokenResult.refreshToken,
+            )
+        }
+
+        // Log APK login metadata for non-blocked user (never touches admin/block fields)
+        upsertAndroidUserLogin(cfg.projectId, tokenResult.idToken, account, serverNow, appVersion)
 
         val docRes = fetchFirestoreLicense(cfg.projectId, account.uid, tokenResult.idToken)
         if (docRes.isFailure) {
@@ -584,6 +626,327 @@ class AyshaLicenseManager {
                 error("Firestore HTTP ${resp.code}")
             }
             FirestoreDocResult(body, serverNow)
+        }
+    }
+
+    private fun upsertAndroidUserLogin(
+        projectId: String,
+        idToken: String,
+        account: VerifiedAccount,
+        serverNowMs: Long,
+        appVersion: String,
+    ) {
+        runCatching {
+            val nowIso = Instant.ofEpochMilli(serverNowMs.takeIf { it > 0L } ?: System.currentTimeMillis()).toString()
+            val deviceLabel = "${Build.MANUFACTURER.orEmpty()} ${Build.MODEL.orEmpty()}".trim().take(110)
+            val fields = JSONObject().apply {
+                put("uid", JSONObject().put("stringValue", account.uid))
+                put("email", JSONObject().put("stringValue", account.email.lowercase()))
+                put("emailVerified", JSONObject().put("booleanValue", account.emailVerified))
+                put("displayName", JSONObject().put("stringValue", account.displayName.take(110)))
+                put("lastLoginSource", JSONObject().put("stringValue", "android"))
+                put("deviceModel", JSONObject().put("stringValue", deviceLabel.ifBlank { "Android Device" }))
+                if (appVersion.isNotBlank()) {
+                    put("appVersion", JSONObject().put("stringValue", appVersion.take(36)))
+                }
+                put("lastLoginAt", JSONObject().put("timestampValue", nowIso))
+            }
+            val maskParams = buildList {
+                add("uid"); add("email"); add("emailVerified"); add("displayName")
+                add("lastLoginSource"); add("deviceModel"); add("lastLoginAt")
+                if (appVersion.isNotBlank()) add("appVersion")
+            }.joinToString("&") { "updateMask.fieldPaths=$it" }
+
+            val url = "https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/users/${account.uid}?$maskParams"
+            val req = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer $idToken")
+                .patch(JSONObject().put("fields", fields).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+            http.newCall(req).execute().close()
+        }.onFailure { err ->
+            SafeLogger.w("AyshaLicenseManager", "User login sync skipped: ${err.message}")
+        }
+    }
+
+    suspend fun fetchStorePricingConfig(): StorePricingConfig? = withContext(Dispatchers.IO) {
+        runCatching {
+            val cfg = fetchPinnedFirebaseConfig().getOrNull() ?: return@runCatching null
+            if (!cfg.configured || cfg.projectId.isBlank()) return@runCatching null
+            val url = "https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/config/store"
+            val req = Request.Builder().url(url).get().build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@runCatching null
+                val fields = JSONObject(resp.body?.string().orEmpty()).optJSONObject("fields") ?: return@runCatching null
+                val priceFields = fields.optJSONObject("prices")?.optJSONObject("mapValue")?.optJSONObject("fields") ?: JSONObject()
+                fun readPrice(id: String, fallback: Int): Int {
+                    val obj = priceFields.optJSONObject(id) ?: return fallback
+                    val iVal = obj.optString("integerValue", "").toIntOrNull()
+                    if (iVal != null) return iVal.coerceAtLeast(0)
+                    val dVal = obj.optDouble("doubleValue", Double.NaN)
+                    return if (!dVal.isNaN()) dVal.toInt().coerceAtLeast(0) else fallback
+                }
+                val defaults = StorePricingConfig()
+                StorePricingConfig(
+                    upiId = fields.optJSONObject("upiId")?.optString("stringValue", "").orEmpty().ifBlank { defaults.upiId },
+                    upiName = fields.optJSONObject("upiName")?.optString("stringValue", "").orEmpty().ifBlank { defaults.upiName },
+                    currency = fields.optJSONObject("currency")?.optString("stringValue", "").orEmpty().ifBlank { "INR" },
+                    prices = mapOf(
+                        LicensePlan.ONE_MONTH to readPrice("ONE_MONTH", 149),
+                        LicensePlan.TWO_MONTHS to readPrice("TWO_MONTHS", 249),
+                        LicensePlan.ONE_YEAR to readPrice("ONE_YEAR", 999),
+                        LicensePlan.TWO_YEARS to readPrice("TWO_YEARS", 1599),
+                        LicensePlan.LIFETIME to readPrice("LIFETIME", 2999),
+                    ),
+                )
+            }
+        }.getOrNull()
+    }
+
+    private suspend fun verifyAdminSession(refreshToken: String): Result<Triple<RemoteFirebaseConfig, TokenExchangeData, VerifiedAccount>> =
+        withContext(Dispatchers.IO) {
+            runCatching {
+                val cfg = fetchPinnedFirebaseConfig().getOrThrow()
+                require(cfg.configured && cfg.apiKey.isNotBlank() && cfg.projectId.isNotBlank()) { "Firebase not configured" }
+                val tok = exchangeRefreshToken(cfg.apiKey, refreshToken.trim()).getOrThrow()
+                val acc = lookupGoogleAccount(cfg.apiKey, tok.idToken).getOrThrow()
+                require(acc.emailVerified && acc.email.equals(ADMIN_EMAIL, ignoreCase = true)) {
+                    "Admin privileges restricted to verified $ADMIN_EMAIL only"
+                }
+                Triple(cfg, tok, acc)
+            }
+        }
+
+    suspend fun fetchAdminUserDirectory(refreshToken: String): Result<List<AdminUserRecord>> = withContext(Dispatchers.IO) {
+        runCatching {
+            val (cfg, tok, _) = verifyAdminSession(refreshToken).getOrThrow()
+            val usersJson = listCollectionDocs(cfg.projectId, "users", tok.idToken)
+            val licensesJson = listCollectionDocs(cfg.projectId, "licenses", tok.idToken)
+
+            val licMap = mutableMapOf<String, JSONObject>()
+            for (docObj in licensesJson) {
+                val docId = docObj.optString("name", "").substringAfterLast('/')
+                if (docId.isNotBlank()) licMap[docId] = docObj.optJSONObject("fields") ?: JSONObject()
+            }
+
+            val out = mutableListOf<AdminUserRecord>()
+            val seenUids = mutableSetOf<String>()
+
+            fun parseTsMs(fields: JSONObject?, key: String): Long {
+                val ts = fields?.optJSONObject(key)?.optString("timestampValue", "").orEmpty()
+                if (ts.isNotBlank()) {
+                    return runCatching { Instant.parse(ts).toEpochMilli() }.getOrDefault(0L)
+                }
+                return fields?.optJSONObject("${key}Ms")?.optString("integerValue", "0")?.toLongOrNull() ?: 0L
+            }
+
+            for (uDoc in usersJson) {
+                val fields = uDoc.optJSONObject("fields") ?: JSONObject()
+                val docUid = uDoc.optString("name", "").substringAfterLast('/')
+                val uid = fields.optJSONObject("uid")?.optString("stringValue", "").orEmpty().ifBlank { docUid }
+                if (uid.isBlank()) continue
+                seenUids.add(uid)
+                val licFields = licMap[uid]
+                val plan = LicensePlan.fromId(licFields?.optJSONObject("planId")?.optString("stringValue", ""))
+                val expFromTs = parseTsMs(licFields, "expiresAt")
+                val expFromInt = licFields?.optJSONObject("expiresAtMs")?.optString("integerValue", "0")?.toLongOrNull() ?: 0L
+                out.add(
+                    AdminUserRecord(
+                        uid = uid,
+                        email = fields.optJSONObject("email")?.optString("stringValue", "").orEmpty(),
+                        displayName = fields.optJSONObject("displayName")?.optString("stringValue", "").orEmpty().ifBlank { "User" },
+                        lastLoginSource = fields.optJSONObject("lastLoginSource")?.optString("stringValue", "").orEmpty().ifBlank { "unknown" },
+                        deviceModel = fields.optJSONObject("deviceModel")?.optString("stringValue", "").orEmpty(),
+                        appVersion = fields.optJSONObject("appVersion")?.optString("stringValue", "").orEmpty(),
+                        lastLoginAtMs = parseTsMs(fields, "lastLoginAt"),
+                        blocked = fields.optJSONObject("blocked")?.optBoolean("booleanValue", false) == true,
+                        blockedReason = fields.optJSONObject("blockedReason")?.optString("stringValue", "").orEmpty(),
+                        plan = plan,
+                        licenseStatus = licFields?.optJSONObject("status")?.optString("stringValue", "").orEmpty(),
+                        isLifetime = licFields?.optJSONObject("isLifetime")?.optBoolean("booleanValue", false) == true || plan == LicensePlan.LIFETIME,
+                        expiresAtMs = maxOf(expFromTs, expFromInt),
+                        licenseKey = licFields?.optJSONObject("licenseKey")?.optString("stringValue", "").orEmpty(),
+                    ),
+                )
+            }
+
+            // Include any user who has a license doc even before visiting users directory
+            for ((uid, licFields) in licMap) {
+                if (uid in seenUids) continue
+                val plan = LicensePlan.fromId(licFields.optJSONObject("planId")?.optString("stringValue", ""))
+                val expFromTs = parseTsMs(licFields, "expiresAt")
+                val expFromInt = licFields.optJSONObject("expiresAtMs")?.optString("integerValue", "0")?.toLongOrNull() ?: 0L
+                out.add(
+                    AdminUserRecord(
+                        uid = uid,
+                        email = licFields.optJSONObject("email")?.optString("stringValue", "").orEmpty(),
+                        displayName = "User",
+                        lastLoginSource = licFields.optJSONObject("source")?.optString("stringValue", "").orEmpty().ifBlank { "license" },
+                        lastLoginAtMs = parseTsMs(licFields, "updatedAt"),
+                        plan = plan,
+                        licenseStatus = licFields.optJSONObject("status")?.optString("stringValue", "").orEmpty(),
+                        isLifetime = licFields.optJSONObject("isLifetime")?.optBoolean("booleanValue", false) == true || plan == LicensePlan.LIFETIME,
+                        expiresAtMs = maxOf(expFromTs, expFromInt),
+                        licenseKey = licFields.optJSONObject("licenseKey")?.optString("stringValue", "").orEmpty(),
+                    ),
+                )
+            }
+
+            out.sortedByDescending { it.lastLoginAtMs }
+        }
+    }
+
+    private fun listCollectionDocs(projectId: String, collection: String, idToken: String): List<JSONObject> {
+        val url = "https://firestore.googleapis.com/v1/projects/$projectId/databases/(default)/documents/$collection?pageSize=200"
+        val req = Request.Builder()
+            .url(url)
+            .header("Authorization", "Bearer $idToken")
+            .get()
+            .build()
+        http.newCall(req).execute().use { resp ->
+            val body = resp.body?.string().orEmpty()
+            if (!resp.isSuccessful) error("Firestore list $collection HTTP ${resp.code}: $body")
+            val arr = JSONObject(body).optJSONArray("documents") ?: return emptyList()
+            return (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+        }
+    }
+
+    suspend fun adminSetUserBlocked(
+        refreshToken: String,
+        targetUid: String,
+        block: Boolean,
+        reason: String = "",
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(targetUid.isNotBlank()) { "Invalid target UID" }
+            val (cfg, tok, acc) = verifyAdminSession(refreshToken).getOrThrow()
+            require(targetUid != acc.uid) { "Admin cannot block own owner account" }
+            val nowIso = Instant.ofEpochMilli(tok.serverNowMs.takeIf { it > 0L } ?: System.currentTimeMillis()).toString()
+            val cleanReason = reason.trim().take(280).ifBlank { if (block) "Blocked by administrator" else "" }
+            val fields = JSONObject().apply {
+                put("uid", JSONObject().put("stringValue", targetUid))
+                put("blocked", JSONObject().put("booleanValue", block))
+                put("blockedReason", JSONObject().put("stringValue", cleanReason))
+                put("blockedBy", JSONObject().put("stringValue", if (block) acc.email else ""))
+                if (block) {
+                    put("blockedAt", JSONObject().put("timestampValue", nowIso))
+                } else {
+                    put("blockedAt", JSONObject().put("nullValue", JSONObject.NULL))
+                }
+            }
+            val mask = "updateMask.fieldPaths=uid&updateMask.fieldPaths=blocked&updateMask.fieldPaths=blockedReason&updateMask.fieldPaths=blockedBy&updateMask.fieldPaths=blockedAt"
+            val url = "https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/users/$targetUid?$mask"
+            val req = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer ${tok.idToken}")
+                .patch(JSONObject().put("fields", fields).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    error("Block update HTTP ${resp.code}: ${resp.body?.string().orEmpty().take(180)}")
+                }
+            }
+        }
+    }
+
+    suspend fun adminSaveStorePricing(
+        refreshToken: String,
+        store: StorePricingConfig,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            val (cfg, tok, acc) = verifyAdminSession(refreshToken).getOrThrow()
+            val cleanUpi = store.upiId.trim().take(120)
+            require(cleanUpi.isNotBlank()) { "UPI ID cannot be empty" }
+            val nowIso = Instant.ofEpochMilli(tok.serverNowMs.takeIf { it > 0L } ?: System.currentTimeMillis()).toString()
+
+            val priceFields = JSONObject().apply {
+                listOf(
+                    LicensePlan.ONE_MONTH,
+                    LicensePlan.TWO_MONTHS,
+                    LicensePlan.ONE_YEAR,
+                    LicensePlan.TWO_YEARS,
+                    LicensePlan.LIFETIME,
+                ).forEach { plan ->
+                    val amount = (store.prices[plan] ?: 0).coerceIn(0, 10_000_000)
+                    put(plan.id, JSONObject().put("integerValue", amount.toString()))
+                }
+            }
+
+            val fields = JSONObject().apply {
+                put("upiId", JSONObject().put("stringValue", cleanUpi))
+                put("upiName", JSONObject().put("stringValue", store.upiName.trim().ifBlank { "AYSHA AI" }.take(100)))
+                put("currency", JSONObject().put("stringValue", store.currency.ifBlank { "INR" }))
+                put("prices", JSONObject().put("mapValue", JSONObject().put("fields", priceFields)))
+                put("updatedAt", JSONObject().put("timestampValue", nowIso))
+                put("updatedBy", JSONObject().put("stringValue", acc.email))
+            }
+
+            val mask = "updateMask.fieldPaths=upiId&updateMask.fieldPaths=upiName&updateMask.fieldPaths=currency&updateMask.fieldPaths=prices&updateMask.fieldPaths=updatedAt&updateMask.fieldPaths=updatedBy"
+            val url = "https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/config/store?$mask"
+            val req = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer ${tok.idToken}")
+                .patch(JSONObject().put("fields", fields).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    error("Store save HTTP ${resp.code}: ${resp.body?.string().orEmpty().take(180)}")
+                }
+            }
+        }
+    }
+
+    suspend fun adminGrantOrRevokeLicense(
+        refreshToken: String,
+        targetUid: String,
+        targetEmail: String,
+        plan: LicensePlan?,
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+        runCatching {
+            require(targetUid.isNotBlank()) { "Invalid target UID" }
+            val (cfg, tok, acc) = verifyAdminSession(refreshToken).getOrThrow()
+            val nowMs = tok.serverNowMs.takeIf { it > 0L } ?: System.currentTimeMillis()
+            val nowIso = Instant.ofEpochMilli(nowMs).toString()
+
+            val fields = JSONObject().apply {
+                put("uid", JSONObject().put("stringValue", targetUid))
+                put("email", JSONObject().put("stringValue", targetEmail.lowercase()))
+                if (plan == null || plan == LicensePlan.NONE) {
+                    put("planId", JSONObject().put("stringValue", "NONE"))
+                    put("status", JSONObject().put("stringValue", "revoked"))
+                    put("isLifetime", JSONObject().put("booleanValue", false))
+                    put("expiresAt", JSONObject().put("nullValue", JSONObject.NULL))
+                    put("expiresAtMs", JSONObject().put("integerValue", "0"))
+                    put("source", JSONObject().put("stringValue", "admin_revoke"))
+                } else {
+                    val isLife = plan == LicensePlan.LIFETIME
+                    val expMs = if (isLife) 0L else nowMs + plan.durationDays * 86_400_000L
+                    put("planId", JSONObject().put("stringValue", plan.id))
+                    put("status", JSONObject().put("stringValue", "active"))
+                    put("isLifetime", JSONObject().put("booleanValue", isLife))
+                    if (isLife) {
+                        put("expiresAt", JSONObject().put("nullValue", JSONObject.NULL))
+                    } else {
+                        put("expiresAt", JSONObject().put("timestampValue", Instant.ofEpochMilli(expMs).toString()))
+                    }
+                    put("expiresAtMs", JSONObject().put("integerValue", expMs.toString()))
+                    put("source", JSONObject().put("stringValue", "admin_grant"))
+                }
+                put("updatedAt", JSONObject().put("timestampValue", nowIso))
+                put("updatedBy", JSONObject().put("stringValue", acc.email))
+            }
+
+            val url = "https://firestore.googleapis.com/v1/projects/${cfg.projectId}/databases/(default)/documents/licenses/$targetUid"
+            val req = Request.Builder()
+                .url(url)
+                .header("Authorization", "Bearer ${tok.idToken}")
+                .patch(JSONObject().put("fields", fields).toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                .build()
+            http.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) {
+                    error("License update HTTP ${resp.code}: ${resp.body?.string().orEmpty().take(180)}")
+                }
+            }
         }
     }
 

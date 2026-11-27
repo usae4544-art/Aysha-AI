@@ -492,11 +492,14 @@ private fun ChatBubbleItem(
     val isUser = message.role == ChatRole.USER
     val isSystem = message.role == ChatRole.SYSTEM
     val timeStr = SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(message.timestampMs))
-    var shown by remember(message.id) { mutableStateOf(true) }
+    var shown by remember(message.id) { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(message.id) {
+        shown = true
+    }
 
     AnimatedVisibility(
         visible = shown,
-        enter = fadeIn(tween(220)) + slideInVertically(tween(240)) { it / 5 },
+        enter = fadeIn(tween(220, easing = FastOutSlowInEasing)) + slideInVertically(tween(240, easing = FastOutSlowInEasing)) { it / 4 },
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -27,6 +27,7 @@ import com.aysha.assistant.ai.SmartMemoryExtractor
 import com.aysha.assistant.ai.ToolExecutor
 import com.aysha.assistant.automation.AyshaAccessibilityService
 import com.aysha.assistant.automation.MacroEngine
+import com.aysha.assistant.core.AdminUserRecord
 import com.aysha.assistant.core.AdultModeGuard
 import com.aysha.assistant.core.AppSettings
 import com.aysha.assistant.core.AssistantMood
@@ -47,6 +48,7 @@ import com.aysha.assistant.core.MemoryEntry
 import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.PendingActionConfirmation
 import com.aysha.assistant.core.PendingConfirmationType
+import com.aysha.assistant.core.StorePricingConfig
 import com.aysha.assistant.core.ThemeMode
 import com.aysha.assistant.core.ToolLogEntry
 import com.aysha.assistant.core.UserGender
@@ -221,6 +223,18 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     private val _checkingUpdate = MutableStateFlow(false)
     val checkingUpdate: StateFlow<Boolean> = _checkingUpdate.asStateFlow()
 
+    private val _storePricing = MutableStateFlow(StorePricingConfig())
+    val storePricing: StateFlow<StorePricingConfig> = _storePricing.asStateFlow()
+
+    private val _adminUsers = MutableStateFlow<List<AdminUserRecord>>(emptyList())
+    val adminUsers: StateFlow<List<AdminUserRecord>> = _adminUsers.asStateFlow()
+
+    private val _adminBusy = MutableStateFlow(false)
+    val adminBusy: StateFlow<Boolean> = _adminBusy.asStateFlow()
+
+    private val _adminFeedback = MutableStateFlow<String?>(null)
+    val adminFeedback: StateFlow<String?> = _adminFeedback.asStateFlow()
+
     val updateAvailableInfo: StateFlow<LiveRemoteConfig?> = _remoteConfig
         .map { cfg ->
             val newerByCode = cfg.latestVersionCode > BuildConfig.VERSION_CODE
@@ -343,8 +357,100 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                 if (fetched != null) {
                     _remoteConfig.value = fetched
                 }
+                licenseManager.fetchStorePricingConfig()?.let { pricing ->
+                    _storePricing.value = pricing
+                }
             } finally {
                 _checkingUpdate.value = false
+            }
+        }
+    }
+
+    fun isVerifiedOwnerAdmin(): Boolean {
+        val cur = licenseInfo.value
+        return cur.status == LicenseStatus.ADMIN_ACTIVE &&
+            cur.email.equals(AyshaLicenseManager.ADMIN_EMAIL, ignoreCase = true)
+    }
+
+    fun loadAdminDashboard() {
+        if (!isVerifiedOwnerAdmin()) return
+        viewModelScope.launch {
+            _adminBusy.value = true
+            _adminFeedback.value = null
+            try {
+                val rt = settingsRepo.settingsFlow.first().firebaseRefreshToken
+                licenseManager.fetchStorePricingConfig()?.let { _storePricing.value = it }
+                val res = licenseManager.fetchAdminUserDirectory(rt)
+                if (res.isSuccess) {
+                    _adminUsers.value = res.getOrThrow()
+                } else {
+                    _adminFeedback.value = res.exceptionOrNull()?.message ?: "Failed to load users"
+                }
+            } finally {
+                _adminBusy.value = false
+            }
+        }
+    }
+
+    fun adminToggleBlockUser(uid: String, block: Boolean, reason: String = "") {
+        if (!isVerifiedOwnerAdmin()) return
+        viewModelScope.launch {
+            _adminBusy.value = true
+            try {
+                val rt = settingsRepo.settingsFlow.first().firebaseRefreshToken
+                val res = licenseManager.adminSetUserBlocked(rt, uid, block, reason)
+                if (res.isSuccess) {
+                    _adminFeedback.value = if (block) "User blocked & locked out." else "User unblocked."
+                    val listRes = licenseManager.fetchAdminUserDirectory(rt)
+                    if (listRes.isSuccess) _adminUsers.value = listRes.getOrThrow()
+                } else {
+                    _adminFeedback.value = res.exceptionOrNull()?.message ?: "Block action failed"
+                }
+            } finally {
+                _adminBusy.value = false
+            }
+        }
+    }
+
+    fun adminGrantOrRevokeUser(uid: String, email: String, plan: LicensePlan?) {
+        if (!isVerifiedOwnerAdmin()) return
+        viewModelScope.launch {
+            _adminBusy.value = true
+            try {
+                val rt = settingsRepo.settingsFlow.first().firebaseRefreshToken
+                val res = licenseManager.adminGrantOrRevokeUserLicense(rt, uid, email, plan)
+                if (res.isSuccess) {
+                    _adminFeedback.value = if (plan == null || plan == LicensePlan.NONE) {
+                        "License revoked."
+                    } else {
+                        "Granted ${plan.label}."
+                    }
+                    val listRes = licenseManager.fetchAdminUserDirectory(rt)
+                    if (listRes.isSuccess) _adminUsers.value = listRes.getOrThrow()
+                } else {
+                    _adminFeedback.value = res.exceptionOrNull()?.message ?: "License update failed"
+                }
+            } finally {
+                _adminBusy.value = false
+            }
+        }
+    }
+
+    fun adminSaveStorePricing(nextStore: StorePricingConfig) {
+        if (!isVerifiedOwnerAdmin()) return
+        viewModelScope.launch {
+            _adminBusy.value = true
+            try {
+                val rt = settingsRepo.settingsFlow.first().firebaseRefreshToken
+                val res = licenseManager.adminSaveStorePricing(rt, nextStore)
+                if (res.isSuccess) {
+                    _storePricing.value = nextStore
+                    _adminFeedback.value = "Live prices & UPI config saved to Cloud!"
+                } else {
+                    _adminFeedback.value = res.exceptionOrNull()?.message ?: "Store save failed"
+                }
+            } finally {
+                _adminBusy.value = false
             }
         }
     }
@@ -415,7 +521,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             _licenseChecking.value = true
             try {
                 val cur = settingsRepo.settingsFlow.first()
-                val outcome = licenseManager.verifyWithRefreshToken(clean, cur)
+                val outcome = licenseManager.verifyWithRefreshToken(clean, cur, BuildConfig.VERSION_NAME)
                 applyLicenseOutcome(outcome, clean)
             } finally {
                 _licenseChecking.value = false
@@ -428,7 +534,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             if (!silent) _licenseChecking.value = true
             try {
                 val cur = settingsRepo.settingsFlow.first()
-                val outcome = licenseManager.verifyWithSettings(cur)
+                val outcome = licenseManager.verifyWithSettings(cur, BuildConfig.VERSION_NAME)
                 applyLicenseOutcome(outcome, cur.firebaseRefreshToken)
             } finally {
                 _licenseChecking.value = false
@@ -463,6 +569,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         }
         val finalToken = outcome.updatedRefreshToken ?: tokenFallback
         if (lic.uid.isNotBlank() && finalToken.isNotBlank()) {
+            val hardLocked = lic.blocked || lic.status == LicenseStatus.BLOCKED || lic.status == LicenseStatus.REVOKED
             settingsRepo.update { s ->
                 s.copy(
                     firebaseRefreshToken = finalToken,
@@ -470,14 +577,16 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                     authEmail = lic.email,
                     authDisplayName = lic.displayName,
                     userName = if (s.userName == "Friend" && lic.displayName.isNotBlank()) lic.displayName else s.userName,
-                    cachedLicensePlan = lic.plan,
+                    cachedLicensePlan = if (hardLocked) LicensePlan.NONE else lic.plan,
                     cachedLicenseStatus = lic.status.name,
-                    cachedLicenseLifetime = lic.isLifetime,
-                    cachedLicenseExpiresAtMs = lic.expiresAtMs,
+                    cachedLicenseLifetime = if (hardLocked) false else lic.isLifetime,
+                    cachedLicenseExpiresAtMs = if (hardLocked) 0L else lic.expiresAtMs,
                     cachedLicenseServerNowMs = lic.lastServerNowMs,
                     cachedLicenseVerifiedDeviceMs = lic.lastVerifiedDeviceMs,
                     cachedLicenseCouponCode = lic.couponCode,
-                    cachedLicenseKey = lic.licenseKey,
+                    cachedLicenseKey = if (hardLocked) "" else lic.licenseKey,
+                    cachedAccountBlocked = lic.blocked || lic.status == LicenseStatus.BLOCKED,
+                    cachedBlockedReason = lic.blockedReason,
                 )
             }
         }

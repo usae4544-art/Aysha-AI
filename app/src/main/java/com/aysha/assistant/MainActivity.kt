@@ -16,8 +16,17 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.animation.Crossfade
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -80,6 +89,7 @@ import com.aysha.assistant.ui.components.MayaDrawerSheetContent
 import com.aysha.assistant.ui.components.PrimaryBottomTab
 import com.aysha.assistant.ui.screens.AboutAyshaScreen
 import com.aysha.assistant.ui.screens.AccessibilityFixScreen
+import com.aysha.assistant.ui.screens.AdminConsoleScreen
 import com.aysha.assistant.ui.screens.AiProvidersScreen
 import com.aysha.assistant.ui.screens.AppLanguageScreen
 import com.aysha.assistant.ui.screens.AppearanceScreen
@@ -448,6 +458,7 @@ private fun AyshaMainRouter(
                     isHomeActive = currentScreen == AppScreenRoute.HOME,
                     unreadNotifications = !noticesCleared,
                     isDarkMode = settings.mayaPalette.isDark,
+                    isOwnerAdmin = viewModel.isVerifiedOwnerAdmin(),
                     onToggleDarkMode = { dark -> viewModel.toggleDarkMode(dark) },
                     onSelectHome = {
                         currentScreen = AppScreenRoute.HOME
@@ -463,9 +474,24 @@ private fun AyshaMainRouter(
         },
     ) {
         LiquidAuroraBackground {
-            Crossfade(
+            AnimatedContent(
                 targetState = currentScreen to settingsRoute,
-                animationSpec = tween(200),
+                transitionSpec = {
+                    val enteringHome = targetState.first == AppScreenRoute.HOME
+                    val dir = if (enteringHome) -1 else 1
+                    (fadeIn(tween(240, easing = FastOutSlowInEasing)) +
+                        slideInHorizontally(
+                            animationSpec = spring(dampingRatio = 0.85f, stiffness = 460f),
+                            initialOffsetX = { fullWidth -> (fullWidth * 0.14f * dir).toInt() },
+                        ) +
+                        scaleIn(initialScale = 0.97f, animationSpec = tween(240))) togetherWith
+                        (fadeOut(tween(180)) +
+                            slideOutHorizontally(
+                                animationSpec = tween(200),
+                                targetOffsetX = { fullWidth -> (-fullWidth * 0.08f * dir).toInt() },
+                            ) +
+                            scaleOut(targetScale = 0.98f, animationSpec = tween(180)))
+                },
                 label = "aysha_router",
             ) { (screen, sub) ->
                 when (screen) {
@@ -566,6 +592,7 @@ private fun AyshaMainRouter(
                         )
                         SettingsSubRoute.WHITEBOARD -> WhiteboardScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
                         SettingsSubRoute.BROWSER -> BrowserScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
+                        SettingsSubRoute.OWNER_ADMIN -> AdminConsoleScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
                         SettingsSubRoute.LICENSES -> LicensesScreen { settingsRoute = SettingsSubRoute.ABOUT }
                         SettingsSubRoute.ABOUT -> {
                             val upd by viewModel.updateAvailableInfo.collectAsState()

@@ -16,6 +16,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 
 data class AiTurnResult(
     val text: String,
@@ -45,8 +46,40 @@ class MultiProviderAiClient {
     @Volatile
     private var cachedWorkingGeminiModel: String? = null
 
+    // Circuit breaker state per provider
+    private val circuitBreakerFailures = mutableMapOf<BrainProvider, AtomicInteger>()
+    private val circuitBreakerLastFailure = mutableMapOf<BrainProvider, Long>()
+    private val CIRCUIT_BREAKER_THRESHOLD = 3
+    private val CIRCUIT_BREAKER_RESET_MS = 60_000L // 1 minute
+
     private fun sanitizeKey(raw: String): String =
         raw.trim().replace(Regex("\\s+"), "")
+
+    private fun isCircuitOpen(provider: BrainProvider): Boolean {
+        val failures = circuitBreakerFailures[provider]?.get() ?: 0
+        val lastFailure = circuitBreakerLastFailure[provider] ?: 0L
+        if (failures >= CIRCUIT_BREAKER_THRESHOLD) {
+            if (System.currentTimeMillis() - lastFailure > CIRCUIT_BREAKER_RESET_MS) {
+                // Reset circuit breaker after timeout
+                circuitBreakerFailures[provider]?.set(0)
+                circuitBreakerLastFailure.remove(provider)
+                return false
+            }
+            return true
+        }
+        return false
+    }
+
+    private fun recordFailure(provider: BrainProvider) {
+        val failures = circuitBreakerFailures.getOrPut(provider) { AtomicInteger() }
+        failures.incrementAndGet()
+        circuitBreakerLastFailure[provider] = System.currentTimeMillis()
+    }
+
+    private fun recordSuccess(provider: BrainProvider) {
+        circuitBreakerFailures[provider]?.set(0)
+        circuitBreakerLastFailure.remove(provider)
+    }
 
     suspend fun testConnection(
         provider: BrainProvider,
@@ -121,6 +154,11 @@ class MultiProviderAiClient {
             val root = baseUrl.trim().trimEnd('/').ifBlank { provider.defaultBaseUrl }
             val reqBuilder = Request.Builder().url("$root/models").get()
             if (cleanKey.isNotEmpty()) reqBuilder.header("Authorization", "Bearer $cleanKey")
+            // OpenRouter requires additional headers
+            if (root.contains("openrouter.ai", ignoreCase = true)) {
+                reqBuilder.header("HTTP-Referer", "https://aysha.ai")
+                reqBuilder.header("X-Title", "AYSHA AI Assistant")
+            }
             http.newCall(reqBuilder.build()).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
@@ -146,13 +184,16 @@ class MultiProviderAiClient {
 
     /**
      * Builds the ordered list of cloud providers prioritizing Google Gemini API (100% Online, zero Offline model).
+     * Validates that API keys are present and non-empty before adding to chain.
+     * Skips providers with open circuit breakers.
      */
     fun buildProviderChain(settings: AppSettings): List<BrainProvider> {
         val candidates = mutableListOf<BrainProvider>()
         fun addIfConfigured(p: BrainProvider) {
             if (p == BrainProvider.OFFLINE) return
-            val hasCreds = !p.requiresApiKey || settings.currentKeyFor(p).isNotBlank()
-            if (hasCreds && p !in candidates) {
+            val key = settings.currentKeyFor(p)
+            val hasCreds = !p.requiresApiKey || key.isNotBlank()
+            if (hasCreds && p !in candidates && !isCircuitOpen(p)) {
                 candidates.add(p)
             }
         }
@@ -212,7 +253,7 @@ class MultiProviderAiClient {
                     )
                     BrainProvider.OPENAI -> runOpenAiTurn(
                         provider = BrainProvider.OPENAI,
-                        baseUrl = settings.openAiBaseUrl,
+                        baseUrl = settings.openAiBaseUrl.ifBlank { BrainProvider.OPENAI.defaultBaseUrl },
                         apiKey = settings.openAiApiKey,
                         model = settings.openAiModel,
                         systemInstruction = systemInstruction,
@@ -228,6 +269,7 @@ class MultiProviderAiClient {
 
             if (attempt.isSuccess) {
                 val res = attempt.getOrThrow()
+                recordSuccess(provider)
                 return@withContext if (lastFailureNote != null) {
                     res.copy(providerTag = "${res.providerTag} (Fallback)")
                 } else {
@@ -236,6 +278,7 @@ class MultiProviderAiClient {
             } else {
                 val errMsg = SafeLogger.redact(attempt.exceptionOrNull()?.message ?: "${provider.displayName} failed")
                 SafeLogger.w(TAG, "Provider ${provider.displayName} failed: $errMsg")
+                recordFailure(provider)
                 lastFailureNote = "${provider.displayName}: ${errMsg.take(160)}"
             }
         }
@@ -376,7 +419,12 @@ class MultiProviderAiClient {
                                 Result.failure<JSONObject>(RetryWithoutToolsException(ex.message ?: ""))
                             } else {
                                 val isModelNotSupported = resp.code == 404 || (resp.code == 400 && (errMsg?.contains("model", ignoreCase = true) == true))
-                                Result.failure<JSONObject>(if (isModelNotSupported) UnsupportedModelException(ex.message ?: "") else ex)
+                                val isRateLimited = resp.code == 429
+                                Result.failure<JSONObject>(
+                                    if (isModelNotSupported) UnsupportedModelException(ex.message ?: "")
+                                    else if (isRateLimited) RateLimitedException(ex.message ?: "")
+                                    else ex
+                                )
                             }
                         }
                     }
@@ -394,7 +442,7 @@ class MultiProviderAiClient {
                     }
                 }
                 if (respJson != null) break
-                if (lastErr != null && lastErr !is UnsupportedModelException) {
+                if (lastErr != null && lastErr !is UnsupportedModelException && lastErr !is RateLimitedException) {
                     throw lastErr
                 }
             }
@@ -475,7 +523,8 @@ class MultiProviderAiClient {
         val cleanKey = apiKey.trim()
         if (provider.requiresApiKey) require(cleanKey.isNotEmpty()) { "${provider.displayName} API key missing" }
         val safeModel = model.ifBlank { provider.defaultModel }
-        val endpoint = baseUrl.trim().trimEnd('/').ifBlank { provider.defaultBaseUrl } + "/chat/completions"
+        val root = baseUrl.trim().trimEnd('/').ifBlank { provider.defaultBaseUrl }
+        val endpoint = "$root/chat/completions"
 
         val messages = JSONArray().apply {
             put(JSONObject().put("role", "system").put("content", systemInstruction))
@@ -514,7 +563,8 @@ class MultiProviderAiClient {
                 .url(endpoint)
                 .post(payload.toString().toRequestBody(jsonMedia))
             if (cleanKey.isNotEmpty()) builder.header("Authorization", "Bearer $cleanKey")
-            if (endpoint.contains("openrouter.ai", ignoreCase = true)) {
+            // OpenRouter requires additional headers (case-insensitive check)
+            if (root.contains("openrouter.ai", ignoreCase = true)) {
                 builder.header("HTTP-Referer", "https://aysha.ai")
                 builder.header("X-Title", "AYSHA AI Assistant")
             }
@@ -522,6 +572,8 @@ class MultiProviderAiClient {
             val respJson = http.newCall(builder.build()).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
+                    val isRateLimited = resp.code == 429
+                    if (isRateLimited) throw RateLimitedException("${provider.displayName} rate limited (429)")
                     throw IllegalStateException("${provider.displayName} HTTP ${resp.code}: ${body.take(180)}")
                 }
                 JSONObject(body)
@@ -576,6 +628,7 @@ class MultiProviderAiClient {
 
     private class UnsupportedModelException(message: String) : IllegalStateException(message)
     private class RetryWithoutToolsException(message: String) : IllegalStateException(message)
+    private class RateLimitedException(message: String) : IllegalStateException(message)
 
     companion object {
         private const val TAG = "AyshaMultiAi"

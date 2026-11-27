@@ -816,6 +816,7 @@ fun DrawerToolWorkspaceScreen(
                 }
 
                 SettingsSubRoute.LICENSE_INFO -> {
+                    val storePricing by viewModel.storePricing.collectAsState()
                     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         Icon(Icons.Rounded.Favorite, contentDescription = null, tint = c.accentPrimary, modifier = Modifier.size(48.dp))
                         Text(
@@ -831,6 +832,17 @@ fun DrawerToolWorkspaceScreen(
                             fontSize = 13.sp,
                             textAlign = TextAlign.Center,
                         )
+                        GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 16.dp, contentPadding = PaddingValues(14.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                                Text("Live Plans (${storePricing.currency})", color = c.accentPrimary, fontWeight = FontWeight.Bold, fontSize = 13.5.sp)
+                                storePricing.prices.forEach { (plan, price) ->
+                                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(plan.label, color = c.textPrimary, fontSize = 13.sp)
+                                        Text("₹$price", color = c.success, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                                    }
+                                }
+                            }
+                        }
                         AuroraGradientButton(text = "Refresh License Status", onClick = { viewModel.refreshLicenseStatus(silent = false) })
                         GlassPill(text = "Manage / Coupon Portal", dotColor = c.accentPrimary) { viewModel.openLicensePortalInBrowser() }
                     }

@@ -289,13 +289,22 @@ code {
   font-size: 14px;
   font-weight: 500;
   cursor: pointer;
-  transition: background-color 140ms ease, border-color 140ms ease, opacity 140ms ease;
+  transition: transform 140ms cubic-bezier(0.22, 1, 0.36, 1), background-color 140ms ease, border-color 140ms ease, opacity 140ms ease;
   white-space: nowrap;
 }
 
 .btn:hover {
   background: var(--surface-3);
   border-color: var(--border-strong);
+}
+
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+
+:where(a, button, input, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .btn:disabled {
@@ -672,6 +681,7 @@ h3 {
   flex-direction: column;
   justify-content: space-between;
   gap: 16px;
+  animation: ayshaFadeUp 0.55s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 .plan-card.plan-featured {
@@ -868,7 +878,7 @@ th {
 
 .admin-stats {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
   gap: 12px;
   margin-bottom: 20px;
 }
@@ -927,24 +937,63 @@ th {
   display: block;
 }
 
-/* Modal */
+/* Modal — Flex scrollable container so tall QR/UTR checkout never cuts off on phones */
 .modal {
   position: fixed;
   inset: 0;
   z-index: 60;
-  background: rgba(0, 0, 0, 0.78);
-  display: grid;
-  place-items: center;
-  padding: 16px;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  padding: 18px 12px calc(44px + env(safe-area-inset-bottom));
 }
 
 .modal-card {
   width: 100%;
   max-width: 440px;
+  margin: auto;
   background: var(--surface);
   border: 1px solid var(--border-strong);
   border-radius: var(--radius);
   padding: 20px;
+  box-shadow: 0 28px 64px rgba(0, 0, 0, 0.72);
+}
+
+#upi-qr-canvas {
+  width: 176px;
+  height: 176px;
+  max-width: 100%;
+  border-radius: 10px;
+  background: #ffffff;
+  padding: 6px;
+  flex-shrink: 0;
+  display: block;
+}
+
+.price-adj-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.price-adj-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.btn-warn {
+  background: rgba(245, 158, 11, 0.12);
+  border-color: rgba(245, 158, 11, 0.4);
+  color: var(--warn);
+}
+
+.btn-warn:hover {
+  background: rgba(245, 158, 11, 0.22);
 }
 
 .modal-head {
@@ -999,7 +1048,7 @@ th {
 /* Footer */
 .footer {
   border-top: 1px solid var(--border);
-  padding: 28px 0;
+  padding: 28px 0 calc(40px + env(safe-area-inset-bottom));
 }
 
 .footer-inner {
@@ -1065,5 +1114,18 @@ th {
   .form-grid,
   .hero-metrics {
     grid-template-columns: 1fr;
+  }
+
+  .upi-box {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  #upi-qr-canvas {
+    align-self: center;
+  }
+
+  .modal-card {
+    padding: 16px;
   }
 }
