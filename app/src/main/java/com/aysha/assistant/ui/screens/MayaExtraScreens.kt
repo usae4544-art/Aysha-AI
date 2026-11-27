@@ -869,7 +869,10 @@ fun DrawerToolWorkspaceScreen(
                                 label = { Text("$title ke liye request likho") },
                                 modifier = Modifier.fillMaxWidth(),
                             )
-                            AuroraGradientButton(text = "${settings.assistantName} se Poochho", onClick = {
+                            AuroraGradientButton(text = if (isDoc) "Save Note & Ask ${settings.assistantName}" else "${settings.assistantName} se Poochho", onClick = {
+                                if (isDoc && promptDraft.isNotBlank()) {
+                                    viewModel.addQuickNote("Quick Note", promptDraft)
+                                }
                                 val req = promptDraft.ifBlank { "$title me meri help karo (${settings.userName})" }
                                 viewModel.sendTextMessage(req, speakReply = false)
                                 onOpenChat()
@@ -877,7 +880,19 @@ fun DrawerToolWorkspaceScreen(
                             if (isPhoto) {
                                 GlassPill(text = "Visual Camera Scanner Kholo", dotColor = c.accentPrimary, onClick = onOpenScanner)
                             } else if (isDoc) {
+                                val savedDocs by viewModel.documents.collectAsState()
+                                GlassPill(text = "Save as Note (${savedDocs.size} Saved)", dotColor = c.success) {
+                                    if (promptDraft.isNotBlank()) {
+                                        viewModel.addQuickNote("Note", promptDraft)
+                                        promptDraft = ""
+                                    }
+                                }
                                 GlassPill(text = "Indexed Documents & Yaadein Kholo", dotColor = c.accentPrimary, onClick = onOpenMemory)
+                                savedDocs.take(5).forEach { doc ->
+                                    GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 14.dp, contentPadding = PaddingValues(10.dp)) {
+                                        Text("${doc.title}: ${doc.content.take(120)}", color = c.textPrimary, fontSize = 12.sp)
+                                    }
+                                }
                             }
                         }
                     }

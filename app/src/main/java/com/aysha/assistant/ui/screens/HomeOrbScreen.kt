@@ -57,9 +57,14 @@ import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.Timer
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -143,6 +148,7 @@ fun HomeOrbScreen(
     val remoteConfig by viewModel.remoteConfig.collectAsState()
 
     var draft by rememberSaveable { mutableStateOf("") }
+    var showNotesDialog by remember { mutableStateOf(false) }
 
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.GetContent(),
@@ -509,9 +515,8 @@ fun HomeOrbScreen(
             ) {
                 HomeQuickClayPill("Gaane", Icons.Rounded.MusicNote, Modifier.weight(1f), onOpenRulesAgents)
                 HomeQuickClayPill("Padhai", Icons.Rounded.MenuBook, Modifier.weight(1f), onOpenWhiteboard)
-                HomeQuickClayPill("Journal", Icons.Rounded.Edit, Modifier.weight(1f)) {
-                    viewModel.sendTextMessage("Aaj ka chhota journal note likhte hain — puchho mera din kaisa raha?", speakReply = false)
-                    onOpenChat()
+                HomeQuickClayPill("Notes", Icons.Rounded.Edit, Modifier.weight(1f)) {
+                    showNotesDialog = true
                 }
             }
 
@@ -703,6 +708,61 @@ fun HomeOrbScreen(
                 }
             },
             onMicOrStopClick = { viewModel.onOrbTap() },
+        )
+    }
+
+    if (showNotesDialog) {
+        var noteTitle by remember { mutableStateOf("") }
+        var noteBody by remember { mutableStateOf("") }
+        val docs by viewModel.documents.collectAsState()
+        AlertDialog(
+            onDismissRequest = { showNotesDialog = false },
+            title = { Text("Journal & Quick Notes (${docs.size})") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    OutlinedTextField(
+                        value = noteTitle,
+                        onValueChange = { noteTitle = it },
+                        label = { Text("Note Title (optional)") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    OutlinedTextField(
+                        value = noteBody,
+                        onValueChange = { noteBody = it },
+                        label = { Text("Aaj ka note / baat / task likho...") },
+                        minLines = 3,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    if (docs.isNotEmpty()) {
+                        Text(
+                            text = "Latest Note: ${docs.first().title} — ${docs.first().content.take(70)}",
+                            color = c.textSecondary,
+                            fontSize = 12.sp,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    if (noteBody.isNotBlank()) {
+                        viewModel.addQuickNote(noteTitle, noteBody)
+                        showNotesDialog = false
+                    }
+                }) { Text("Save Note") }
+            },
+            dismissButton = {
+                Row {
+                    OutlinedButton(onClick = {
+                        val content = noteBody.trim().ifBlank { "Aaj ka chhota journal note likhte hain — puchho mera din kaisa raha?" }
+                        if (noteBody.isNotBlank()) viewModel.addQuickNote(noteTitle, noteBody)
+                        viewModel.sendTextMessage(content, speakReply = false)
+                        showNotesDialog = false
+                        onOpenChat()
+                    }) { Text("Ask AYSHA") }
+                    TextButton(onClick = { showNotesDialog = false }) { Text("Close") }
+                }
+            },
         )
     }
 }

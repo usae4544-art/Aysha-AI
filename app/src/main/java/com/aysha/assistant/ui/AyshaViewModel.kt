@@ -96,7 +96,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val settings: StateFlow<AppSettings> = settingsRepo.settingsFlow
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), AppSettings())
+        .stateIn(viewModelScope, SharingStarted.Eagerly, AppSettings())
 
     private val _whiteboardCards = MutableStateFlow<List<WhiteboardCard>>(emptyList())
     val whiteboardCards: StateFlow<List<WhiteboardCard>> = _whiteboardCards.asStateFlow()
@@ -610,13 +610,16 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
 
-        pauseWakeWordForActiveMic()
-        consecutiveSilentTimeouts = 0
-        if (current.geminiApiKey.isNotBlank() && current.voiceEngineMode != VoiceEngineMode.TEXT_ONLY) {
-            startGeminiLiveSession()
-        } else {
-            continuousVoiceActive = current.continuousConversation
-            startStandardVoiceListen()
+        viewModelScope.launch {
+            val latest = settingsRepo.settingsFlow.first()
+            pauseWakeWordForActiveMic()
+            consecutiveSilentTimeouts = 0
+            if (latest.geminiApiKey.isNotBlank() && latest.voiceEngineMode != VoiceEngineMode.TEXT_ONLY) {
+                startGeminiLiveSession()
+            } else {
+                continuousVoiceActive = latest.continuousConversation
+                startStandardVoiceListen()
+            }
         }
     }
 
@@ -654,7 +657,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startGeminiLiveSession() {
         viewModelScope.launch {
-            val raw = settings.value
+            val raw = settingsRepo.settingsFlow.first()
             val liveCfg = _remoteConfig.value
             val s = raw.copy(
                 geminiLiveModel = liveCfg.geminiLiveModelOverride.ifBlank { raw.geminiLiveModel },
@@ -812,7 +815,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         _assistantEnergy.value = nextEnergy
 
         viewModelScope.launch {
-            val s = settings.value
+            val s = settingsRepo.settingsFlow.first()
             _agentOrbState.value = OrbState.PROCESSING
             _agentStatusText.value = "${s.assistantName} is thinking..."
 
@@ -1057,7 +1060,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             _scannerAnalyzing.value = true
             _scannerReply.value = null
-            val s = settings.value
+            val s = settingsRepo.settingsFlow.first()
             val turn = aiClient.runTurnWithFallback(
                 settings = s,
                 systemInstruction = "You are ${s.assistantName}'s Visual Scanner. Describe what you see accurately in ${s.language.label}, solve any question or read text clearly.",
@@ -1071,6 +1074,23 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
             appendMessage(ChatRole.USER, "📷 Scanner: $prompt", "")
             appendMessage(ChatRole.ASSISTANT, turn.text, turn.providerTag)
             if (s.autoSpeakReplies) speakText(turn.text, s, null)
+        }
+    }
+
+    fun addQuickNote(title: String, body: String) {
+        val cleanTitle = title.trim().ifBlank { "Quick Note" }
+        val cleanBody = body.trim()
+        if (cleanBody.isEmpty()) return
+        viewModelScope.launch(Dispatchers.IO) {
+            memoryRepo.saveMemory(
+                title = cleanTitle,
+                content = cleanBody,
+                tags = "note,journal",
+                approvedByUser = true,
+                source = "notes",
+            )
+            memoryRepo.addDocument(title = cleanTitle, content = cleanBody)
+            refreshData()
         }
     }
 

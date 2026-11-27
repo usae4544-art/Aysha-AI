@@ -251,4 +251,22 @@ class AiUnitTest {
         assertTrue(withOta.contains("LIVE OTA UPDATES"))
         assertTrue(withOta.contains("happy festival today"))
     }
+
+    @Test
+    fun `gemini tool declarations omit parameters for zero-arg tools`() {
+        val decls = ToolRegistry.toGeminiFunctionDeclarations()
+        var checkedOpenCamera = false
+        for (i in 0 until decls.length()) {
+            val fn = decls.getJSONObject(i)
+            if (fn.getString("name") == "open_camera") {
+                checkedOpenCamera = true
+                assertFalse(fn.has("parameters"))
+            }
+            if (fn.has("parameters")) {
+                val props = fn.getJSONObject("parameters").getJSONObject("properties")
+                assertTrue(props.length() > 0)
+            }
+        }
+        assertTrue(checkedOpenCamera)
+    }
 }

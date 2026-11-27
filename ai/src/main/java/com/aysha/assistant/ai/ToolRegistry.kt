@@ -227,7 +227,10 @@ object ToolRegistry {
                         if (nonBlocking) {
                             put("behavior", "NON_BLOCKING")
                         }
-                        put("parameters", buildSchemaObject(spec.params))
+                        // Gemini API rejects OBJECT schemas with empty properties; omit parameters for 0-arg tools
+                        if (spec.params.isNotEmpty()) {
+                            put("parameters", buildSchemaObject(spec.params, uppercaseTypes = true))
+                        }
                     },
                 )
             }
@@ -245,7 +248,7 @@ object ToolRegistry {
                             JSONObject().apply {
                                 put("name", spec.name)
                                 put("description", spec.description)
-                                put("parameters", buildSchemaObject(spec.params))
+                                put("parameters", buildSchemaObject(spec.params, uppercaseTypes = false))
                             },
                         )
                     },
@@ -254,20 +257,21 @@ object ToolRegistry {
         }
     }
 
-    private fun buildSchemaObject(params: List<ToolParamSpec>): JSONObject {
+    private fun buildSchemaObject(params: List<ToolParamSpec>, uppercaseTypes: Boolean): JSONObject {
         val props = JSONObject()
         val req = JSONArray()
         for (p in params) {
+            val mappedType = if (uppercaseTypes) p.type.uppercase() else p.type.lowercase()
             props.put(
                 p.name,
                 JSONObject()
-                    .put("type", p.type)
+                    .put("type", mappedType)
                     .put("description", p.description),
             )
             if (p.required) req.put(p.name)
         }
         return JSONObject().apply {
-            put("type", "object")
+            put("type", if (uppercaseTypes) "OBJECT" else "object")
             put("properties", props)
             if (req.length() > 0) put("required", req)
         }

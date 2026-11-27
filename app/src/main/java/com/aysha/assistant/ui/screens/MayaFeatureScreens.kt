@@ -1,10 +1,12 @@
 package com.aysha.assistant.ui.screens
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -13,6 +15,17 @@ import android.webkit.WebViewClient
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.camera.core.CameraSelector
+import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
+import androidx.camera.core.Preview
+import androidx.camera.lifecycle.ProcessCameraProvider
+import androidx.camera.view.PreviewView
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.core.content.ContextCompat
+import kotlinx.coroutines.delay
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -91,7 +104,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
-import androidx.core.content.FileProvider
 import com.aysha.assistant.core.AssistantMood
 import com.aysha.assistant.core.CompanionMode
 import com.aysha.assistant.core.SubAgentRole
@@ -277,6 +289,7 @@ fun ScannerScreen(
 ) {
     val c = LocalAyshaColors.current
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val settings by viewModel.settings.collectAsState()
     val orbState by viewModel.orbState.collectAsState()
     val scannerReply by viewModel.scannerReply.collectAsState()
@@ -284,8 +297,31 @@ fun ScannerScreen(
 
     var previewBitmap by remember { mutableStateOf<Bitmap?>(null) }
     var imageBytes by remember { mutableStateOf<ByteArray?>(null) }
-    var question by remember { mutableStateOf("Is image me kya dikh raha hai? Detail me batao.") }
-    var camLabel by remember { mutableStateOf("BACK CAM") }
+    var question by remember { mutableStateOf("Kya dikh raha hai? Hinglish me detail me batao.") }
+    var useFrontCam by remember { mutableStateOf(false) }
+    var autoRecActive by remember { mutableStateOf(false) }
+    var hasCamPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED,
+        )
+    }
+    var imageCaptureRef by remember { mutableStateOf<ImageCapture?>(null) }
+    val previewView = remember {
+        PreviewView(context).apply {
+            implementationMode = PreviewView.ImplementationMode.COMPATIBLE
+            scaleType = PreviewView.ScaleType.FILL_CENTER
+        }
+    }
+
+    val camPermLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        hasCamPermission = granted
+    }
+
+    LaunchedEffect(Unit) {
+        if (!hasCamPermission) {
+            camPermLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     val scanInf = rememberInfiniteTransition(label = "scanner_laser")
     val sweep by scanInf.animateFloat(
@@ -295,30 +331,94 @@ fun ScannerScreen(
         label = "sweep",
     )
 
-    val tempUri = remember {
-        val file = File(context.cacheDir, "aysha_scan_capture.jpg")
-        FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-    }
+    val tempFile = remember { File(context.cacheDir, "aysha_scan_capture.jpg") }
 
-    fun loadUriToBytes(uri: Uri) {
+    fun loadUriToBytes(uri: Uri, autoAnalyze: Boolean = false) {
         runCatching {
             context.contentResolver.openInputStream(uri)?.use { stream ->
                 val bmp = BitmapFactory.decodeStream(stream)
                 if (bmp != null) {
                     previewBitmap = bmp
                     val bos = ByteArrayOutputStream()
-                    bmp.compress(Bitmap.CompressFormat.JPEG, 84, bos)
-                    imageBytes = bos.toByteArray()
+                    bmp.compress(Bitmap.CompressFormat.JPEG, 82, bos)
+                    val bytes = bos.toByteArray()
+                    imageBytes = bytes
+                    if (autoAnalyze) viewModel.analyzeScannerImage(bytes, question)
                 }
             }
         }
     }
 
-    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
-        if (ok) loadUriToBytes(tempUri)
+    fun captureLiveFrameAndAnalyze(silentAuto: Boolean = false) {
+        val ic = imageCaptureRef
+        if (ic == null) {
+            Toast.makeText(context, "Camera ready nahi hai — ek second ruko ya PICK use karo", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val opts = ImageCapture.OutputFileOptions.Builder(tempFile).build()
+        ic.takePicture(
+            opts,
+            ContextCompat.getMainExecutor(context),
+            object : ImageCapture.OnImageSavedCallback {
+                override fun onImageSaved(outputFileResults: ImageCapture.OutputFileResults) {
+                    val bmp = BitmapFactory.decodeFile(tempFile.absolutePath)
+                    if (bmp != null) {
+                        if (!silentAuto) previewBitmap = bmp
+                        val bos = ByteArrayOutputStream()
+                        bmp.compress(Bitmap.CompressFormat.JPEG, 80, bos)
+                        val bytes = bos.toByteArray()
+                        imageBytes = bytes
+                        viewModel.analyzeScannerImage(bytes, question)
+                    }
+                }
+
+                override fun onError(exception: ImageCaptureException) {
+                    if (!silentAuto) {
+                        Toast.makeText(context, "Capture failed: ${exception.message}", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            },
+        )
     }
+
+    DisposableEffect(hasCamPermission, useFrontCam, lifecycleOwner) {
+        if (!hasCamPermission) {
+            onDispose { }
+        } else {
+            val future = ProcessCameraProvider.getInstance(context)
+            val listener = Runnable {
+                runCatching {
+                    val provider = future.get()
+                    val preview = Preview.Builder().build().also {
+                        it.surfaceProvider = previewView.surfaceProvider
+                    }
+                    val cap = ImageCapture.Builder()
+                        .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+                        .build()
+                    val selector = if (useFrontCam) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+                    provider.unbindAll()
+                    provider.bindToLifecycle(lifecycleOwner, selector, preview, cap)
+                    imageCaptureRef = cap
+                }
+            }
+            future.addListener(listener, ContextCompat.getMainExecutor(context))
+            onDispose {
+                runCatching { future.get().unbindAll() }
+            }
+        }
+    }
+
+    LaunchedEffect(autoRecActive, hasCamPermission) {
+        while (autoRecActive && hasCamPermission) {
+            delay(4500L)
+            if (!analyzing && autoRecActive) {
+                captureLiveFrameAndAnalyze(silentAuto = true)
+            }
+        }
+    }
+
     val galleryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-        if (uri != null) loadUriToBytes(uri)
+        if (uri != null) loadUriToBytes(uri, autoAnalyze = true)
     }
 
     Column(
@@ -341,11 +441,11 @@ fun ScannerScreen(
                 .padding(horizontal = 10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            // Screenshot-2 exact Neural Link Viewfinder Stage
+            // Screenshot-3 exact Neural Link Viewfinder Stage with real live CameraX feed
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(410.dp)
+                    .height(430.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .background(Color(0xFF05080F))
                     .border(1.dp, Color(0xFF1E3A5F), RoundedCornerShape(22.dp)),
@@ -357,15 +457,49 @@ fun ScannerScreen(
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize(),
                     )
+                } else if (hasCamPermission) {
+                    AndroidView(
+                        factory = { previewView },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                } else {
+                    Column(
+                        modifier = Modifier.align(Alignment.Center).padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        Text("Live Camera Preview ke liye Camera permission dein", color = Color(0xFF93C5FD), fontSize = 13.sp)
+                        GlassPill("Enable Live Camera", dotColor = Color(0xFF22C55E)) {
+                            camPermLauncher.launch(Manifest.permission.CAMERA)
+                        }
+                    }
                 }
 
-                // Neural reticle crosshair + animated horizontal laser sweep
+                // Neural reticle crosshair + corner brackets + animated horizontal laser sweep
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
                     val cx = w / 2f
                     val cy = h * 0.48f
                     val rad = size.minDimension * 0.28f
+
+                    // 4 Corner HUD Brackets (Screenshot 3 exact look)
+                    val pad = 16.dp.toPx()
+                    val blen = 28.dp.toPx()
+                    val bracketColor = Color(0xFF4FA3FF).copy(alpha = 0.72f)
+                    val bStroke = 2.dp.toPx()
+                    // Top-left
+                    drawLine(bracketColor, Offset(pad, pad), Offset(pad + blen, pad), bStroke)
+                    drawLine(bracketColor, Offset(pad, pad), Offset(pad, pad + blen), bStroke)
+                    // Top-right
+                    drawLine(bracketColor, Offset(w - pad, pad), Offset(w - pad - blen, pad), bStroke)
+                    drawLine(bracketColor, Offset(w - pad, pad), Offset(w - pad, pad + blen), bStroke)
+                    // Bottom-left
+                    drawLine(bracketColor, Offset(pad, h - pad), Offset(pad + blen, h - pad), bStroke)
+                    drawLine(bracketColor, Offset(pad, h - pad), Offset(pad, h - pad - blen), bStroke)
+                    // Bottom-right
+                    drawLine(bracketColor, Offset(w - pad, h - pad), Offset(w - pad - blen, h - pad), bStroke)
+                    drawLine(bracketColor, Offset(w - pad, h - pad), Offset(w - pad, h - pad - blen), bStroke)
 
                     drawCircle(
                         color = Color(0xFF4FA3FF).copy(alpha = 0.45f),
@@ -396,6 +530,7 @@ fun ScannerScreen(
                 }
 
                 // HUD Header overlay
+                val camLabel = if (useFrontCam) "FRONT CAM" else "BACK CAM"
                 Column(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -405,16 +540,30 @@ fun ScannerScreen(
                 ) {
                     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
-                            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(Color(0xFF22C55E)))
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (autoRecActive) Color(0xFFEF4444) else Color(0xFF22C55E)),
+                            )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text("${settings.assistantName.uppercase()} VISION", color = Color(0xFF60B2FF), fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                         }
-                        Text(camLabel, color = Color(0xFF60B2FF), fontFamily = FontFamily.Monospace, fontSize = 11.5.sp)
+                        Text(
+                            text = camLabel,
+                            color = Color(0xFF60B2FF),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.5.sp,
+                            modifier = Modifier.clickable {
+                                previewBitmap = null
+                                useFrontCam = !useFrontCam
+                            },
+                        )
                     }
                     Text("> NEURAL LINK ACTIVE — poochho \"kya dikh raha hai?\"", color = Color(0xFF4ADE80), fontFamily = FontFamily.Monospace, fontSize = 11.5.sp)
                 }
 
-                // Telemetry Footer + FLIP / Glowing Capture Orb / GALLERY
+                // Telemetry Footer + FLIP / Glowing Capture Orb / REC
                 Column(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
@@ -422,12 +571,23 @@ fun ScannerScreen(
                         .padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(
-                        text = if (analyzing) "AI-FEED ANALYZING...\nNEURAL VISION LOCK" else "FRM 004128 SIG 30\nAI-FEED 0.8 FPS  LATENCY OK",
-                        color = Color(0xFF4FA3FF),
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.5.sp,
-                    )
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Bottom) {
+                        Text(
+                            text = when {
+                                analyzing -> "AI-FEED ANALYZING...\nNEURAL VISION LOCK"
+                                autoRecActive -> "REC ACTIVE · LIVE SCAN\nAUTO-ANALYZING EVERY 4.5S"
+                                else -> "FRM 004128  SIG 30\nAI-FEED 0.8 FPS  LATENCY OK"
+                            },
+                            color = Color(0xFF4FA3FF),
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.5.sp,
+                        )
+                        if (previewBitmap != null) {
+                            GlassPill("Live Cam", dotColor = Color(0xFF22C55E)) {
+                                previewBitmap = null
+                            }
+                        }
+                    }
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceEvenly,
@@ -436,8 +596,9 @@ fun ScannerScreen(
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier.clickable {
-                                camLabel = if (camLabel == "BACK CAM") "FRONT CAM" else "BACK CAM"
-                                Toast.makeText(context, camLabel, Toast.LENGTH_SHORT).show()
+                                previewBitmap = null
+                                useFrontCam = !useFrontCam
+                                Toast.makeText(context, if (useFrontCam) "FRONT CAM" else "BACK CAM", Toast.LENGTH_SHORT).show()
                             },
                         ) {
                             Box(
@@ -451,10 +612,16 @@ fun ScannerScreen(
 
                         Box(
                             modifier = Modifier
-                                .size(62.dp)
+                                .size(64.dp)
                                 .clip(CircleShape)
                                 .background(Brush.radialGradient(listOf(Color.White, Color(0xFF93C5FD), Color(0xFF2563EB))))
-                                .clickable { cameraLauncher.launch(tempUri) },
+                                .clickable {
+                                    if (!hasCamPermission) {
+                                        camPermLauncher.launch(Manifest.permission.CAMERA)
+                                    } else {
+                                        captureLiveFrameAndAnalyze(silentAuto = false)
+                                    }
+                                },
                             contentAlignment = Alignment.Center,
                         ) {
                             if (analyzing) CircularProgressIndicator(color = Color(0xFF1E3A8A), modifier = Modifier.size(24.dp), strokeWidth = 2.5.dp)
@@ -463,18 +630,39 @@ fun ScannerScreen(
 
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier.clickable { galleryLauncher.launch("image/*") },
+                            modifier = Modifier.clickable {
+                                if (!hasCamPermission) {
+                                    camPermLauncher.launch(Manifest.permission.CAMERA)
+                                } else {
+                                    autoRecActive = !autoRecActive
+                                    Toast.makeText(context, if (autoRecActive) "Live Auto-Scan ON" else "Live Auto-Scan OFF", Toast.LENGTH_SHORT).show()
+                                }
+                            },
                         ) {
                             Box(
-                                modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF162236)),
+                                modifier = Modifier
+                                    .size(44.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(if (autoRecActive) Color(0xFF7F1D1D) else Color(0xFF162236)),
                                 contentAlignment = Alignment.Center,
                             ) {
-                                Icon(Icons.Rounded.PhotoLibrary, contentDescription = "Pick", tint = Color(0xFF94A3B8))
+                                Icon(
+                                    Icons.Rounded.Videocam,
+                                    contentDescription = "REC",
+                                    tint = if (autoRecActive) Color(0xFFFCA5A5) else Color(0xFF94A3B8),
+                                )
                             }
-                            Text("PICK", color = Color(0xFF94A3B8), fontFamily = FontFamily.Monospace, fontSize = 10.5.sp)
+                            Text("REC", color = if (autoRecActive) Color(0xFFFCA5A5) else Color(0xFF94A3B8), fontFamily = FontFamily.Monospace, fontSize = 10.5.sp)
                         }
                     }
                 }
+            }
+
+            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                GlassPill("Gallery Pick", dotColor = c.accentPrimary) { galleryLauncher.launch("image/*") }
+                GlassPill("Kya dikh raha hai?") { question = "Kya dikh raha hai? Hinglish me explain karo." }
+                GlassPill("Solve Question") { question = "Isme likha sawaal step-by-step solve karo." }
+                GlassPill("Extract Text") { question = "Is image ka saara text read karke do." }
             }
 
             OutlinedTextField(
@@ -484,12 +672,6 @@ fun ScannerScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
             )
-
-            Row(modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassPill("Kya dikh raha hai?") { question = "Kya dikh raha hai? Hinglish me explain karo." }
-                GlassPill("Solve Question") { question = "Isme likha sawaal step-by-step solve karo." }
-                GlassPill("Extract Text") { question = "Is image ka saara text read karke do." }
-            }
 
             AuroraGradientButton(
                 text = "Analyze with ${settings.assistantName} Vision",

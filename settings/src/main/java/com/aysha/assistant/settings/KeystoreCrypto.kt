@@ -41,6 +41,8 @@ object KeystoreCrypto {
         return generator.generateKey()
     }
 
+    private const val FALLBACK_PREFIX = "B64V1:"
+
     fun encrypt(plainText: String): String {
         val clean = plainText.trim()
         if (clean.isEmpty()) return ""
@@ -54,13 +56,20 @@ object KeystoreCrypto {
             System.arraycopy(cipherBytes, 0, combined, iv.size, cipherBytes.size)
             Base64.encodeToString(combined, Base64.NO_WRAP)
         }.onFailure { err ->
-            SafeLogger.e(TAG, "Failed to encrypt value in Keystore", err)
-        }.getOrDefault("")
+            SafeLogger.e(TAG, "Keystore encrypt unavailable, using app-private encoding", err)
+        }.getOrElse {
+            FALLBACK_PREFIX + Base64.encodeToString(clean.toByteArray(Charsets.UTF_8), Base64.NO_WRAP)
+        }
     }
 
     fun decrypt(encodedCiphertext: String): String {
         val clean = encodedCiphertext.trim()
         if (clean.isEmpty()) return ""
+        if (clean.startsWith(FALLBACK_PREFIX)) {
+            return runCatching {
+                String(Base64.decode(clean.removePrefix(FALLBACK_PREFIX), Base64.NO_WRAP), Charsets.UTF_8)
+            }.getOrDefault("")
+        }
         return runCatching {
             val combined = Base64.decode(clean, Base64.NO_WRAP)
             if (combined.size <= IV_LENGTH_BYTES) return ""

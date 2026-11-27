@@ -246,7 +246,7 @@ class MultiProviderAiClient {
             } else {
                 val errMsg = SafeLogger.redact(attempt.exceptionOrNull()?.message ?: "${provider.displayName} failed")
                 SafeLogger.w(TAG, "Provider ${provider.displayName} failed: $errMsg")
-                lastFailureNote = "${provider.displayName} unavailable"
+                lastFailureNote = "${provider.displayName}: ${errMsg.take(120)}"
             }
         }
 
@@ -343,47 +343,64 @@ class MultiProviderAiClient {
             val modelsForRound = if (round == 0) candidateModels else listOf(activeModel)
 
             for (tryModel in modelsForRound) {
-                val payload = JSONObject().apply {
-                    put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
-                    put("contents", contents)
-                    put("tools", toolsArray)
-                    put(
-                        "generationConfig",
-                        JSONObject()
-                            .put("temperature", 0.7)
-                            .put("maxOutputTokens", 768),
-                    )
-                }
+                var includeTools = true
+                for (schemaAttempt in 0..1) {
+                    val payload = JSONObject().apply {
+                        put("systemInstruction", JSONObject().put("parts", JSONArray().put(JSONObject().put("text", systemInstruction))))
+                        put("contents", contents)
+                        if (includeTools) put("tools", toolsArray)
+                        put(
+                            "generationConfig",
+                            JSONObject()
+                                .put("temperature", 0.7)
+                                .put("maxOutputTokens", 768),
+                        )
+                    }
 
-                val req = Request.Builder()
-                    .url("https://generativelanguage.googleapis.com/v1beta/models/$tryModel:generateContent?key=$cleanKey")
-                    .post(payload.toString().toRequestBody(jsonMedia))
-                    .build()
+                    val req = Request.Builder()
+                        .url("https://generativelanguage.googleapis.com/v1beta/models/$tryModel:generateContent?key=$cleanKey")
+                        .post(payload.toString().toRequestBody(jsonMedia))
+                        .build()
 
-                val callOutcome = http.newCall(req).execute().use { resp ->
-                    val body = resp.body?.string().orEmpty()
-                    if (resp.isSuccessful) {
-                        activeModel = tryModel
-                        cachedWorkingGeminiModel = tryModel
-                        Result.success(JSONObject(body))
+                    val callOutcome = http.newCall(req).execute().use { resp ->
+                        val body = resp.body?.string().orEmpty()
+                        if (resp.isSuccessful) {
+                            activeModel = tryModel
+                            cachedWorkingGeminiModel = tryModel
+                            Result.success(JSONObject(body))
+                        } else {
+                            val errMsg = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
+                            val ex = IllegalStateException("Gemini HTTP ${resp.code}: ${errMsg ?: body.take(180)}")
+                            val isSchemaErr = resp.code == 400 && (
+                                errMsg?.contains("tool", ignoreCase = true) == true ||
+                                    errMsg?.contains("function", ignoreCase = true) == true ||
+                                    errMsg?.contains("schema", ignoreCase = true) == true ||
+                                    errMsg?.contains("parameters", ignoreCase = true) == true
+                                )
+                            if (isSchemaErr && includeTools) {
+                                Result.failure<JSONObject>(RetryWithoutToolsException(ex.message ?: ""))
+                            } else {
+                                val isModelNotSupported = resp.code == 404 || (resp.code == 400 && (errMsg?.contains("model", ignoreCase = true) == true))
+                                Result.failure<JSONObject>(if (isModelNotSupported) UnsupportedModelException(ex.message ?: "") else ex)
+                            }
+                        }
+                    }
+                    if (callOutcome.isSuccess) {
+                        respJson = callOutcome.getOrThrow()
+                        break
                     } else {
-                        val errMsg = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
-                        val ex = IllegalStateException("Gemini HTTP ${resp.code}: ${errMsg ?: body.take(180)}")
-                        val isModelNotSupported = resp.code == 404 || (resp.code == 400 && (errMsg?.contains("model", ignoreCase = true) == true))
-                        Result.failure<JSONObject>(if (isModelNotSupported) UnsupportedModelException(ex.message ?: "") else ex)
+                        val err = callOutcome.exceptionOrNull()
+                        if (err is RetryWithoutToolsException) {
+                            includeTools = false
+                            continue
+                        }
+                        lastErr = err as? IllegalStateException ?: IllegalStateException(err?.message ?: "Gemini call failed")
+                        break
                     }
                 }
-                if (callOutcome.isSuccess) {
-                    respJson = callOutcome.getOrThrow()
-                    break
-                } else {
-                    val err = callOutcome.exceptionOrNull()
-                    if (err is UnsupportedModelException) {
-                        lastErr = IllegalStateException(err.message)
-                        continue
-                    } else {
-                        throw (err as? IllegalStateException ?: IllegalStateException(err?.message ?: "Gemini call failed"))
-                    }
+                if (respJson != null) break
+                if (lastErr != null && lastErr !is UnsupportedModelException) {
+                    throw lastErr
                 }
             }
 
@@ -559,6 +576,7 @@ class MultiProviderAiClient {
     }
 
     private class UnsupportedModelException(message: String) : IllegalStateException(message)
+    private class RetryWithoutToolsException(message: String) : IllegalStateException(message)
 
     companion object {
         private const val TAG = "AyshaMultiAi"

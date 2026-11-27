@@ -1,8 +1,8 @@
 {
-  "latestVersion": "2.6.0",
-  "latestVersionCode": 9,
-  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.6.0/AYSHA-latest-release.apk",
-  "updateNotes": "Real Gemini Live voice default on Mic tap, zero mic OFF/ON flicker, faster Gemini reply speed, auto model fallback on API key connect, and smooth site animations.",
+  "latestVersion": "2.7.0",
+  "latestVersionCode": 10,
+  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.7.0/AYSHA-latest-release.apk",
+  "updateNotes": "Fixed Gemini API key reply failure (tool schema 400 fix + Keystore fallback), added real live CameraX Vision Scanner HUD (FLIP/Capture/REC), and added Quick Notes & Journal saving.",
   "forceUpdate": false,
   "announcementBanner": "",
   "geminiTextModel": "gemini-3.8-flash",
