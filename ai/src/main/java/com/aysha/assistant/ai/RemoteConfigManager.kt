@@ -13,12 +13,11 @@ import java.util.concurrent.TimeUnit
  * and latest APK version metadata) from Firestore `config/app_live` or GitHub Pages `remote-config.json`,
  * falling back to GitHub Releases `/releases/latest` for app update discovery.
  */
-class RemoteConfigManager(
+class RemoteConfigManager {
     private val http: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(12, TimeUnit.SECONDS)
         .readTimeout(15, TimeUnit.SECONDS)
-        .build(),
-) {
+        .build()
     companion object {
         const val FIREBASE_PROJECT_ID = "gemini-494602"
         const val PAGES_REMOTE_CONFIG_URL = "https://usae4544-art.github.io/Aysha-AI/remote-config.json"
