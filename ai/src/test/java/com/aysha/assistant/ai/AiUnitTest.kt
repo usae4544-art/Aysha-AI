@@ -58,7 +58,7 @@ class AiUnitTest {
     }
 
     @Test
-    fun `provider fallback chain builds configured providers ending with offline`() {
+    fun `provider fallback chain prioritizes Gemini and excludes local mode`() {
         val settings = AppSettings(
             activeProvider = BrainProvider.GEMINI,
             geminiApiKey = "AIzaTest1234",
@@ -68,10 +68,10 @@ class AiUnitTest {
         )
         val client = MultiProviderAiClient()
         val chain = client.buildProviderChain(settings)
-        assertEquals(listOf(BrainProvider.GEMINI, BrainProvider.GROQ, BrainProvider.LOCAL_MODEL, BrainProvider.OFFLINE), chain)
+        assertEquals(listOf(BrainProvider.GEMINI, BrainProvider.GROQ, BrainProvider.OFFLINE), chain)
 
-        val offlineOnly = client.buildProviderChain(settings.copy(offlineOnlyMode = true))
-        assertEquals(listOf(BrainProvider.OFFLINE), offlineOnly)
+        val evenIfOldFlag = client.buildProviderChain(settings.copy(offlineOnlyMode = true))
+        assertEquals(listOf(BrainProvider.GEMINI, BrainProvider.GROQ, BrainProvider.OFFLINE), evenIfOldFlag)
     }
 
     @Test
@@ -232,5 +232,23 @@ class AiUnitTest {
         )
         assertTrue(femalePrompt.contains("Relationship Level (Friendly)"))
         assertFalse(femalePrompt.contains("Maya"))
+    }
+
+    @Test
+    fun `remote config version comparison and prompt extra work`() {
+        assertTrue(RemoteConfigManager.isNewerVersion("2.5.0", "2.4.0"))
+        assertTrue(RemoteConfigManager.isNewerVersion("v2.5.1", "2.5.0"))
+        assertFalse(RemoteConfigManager.isNewerVersion("2.5.0", "2.5.0"))
+        assertFalse(RemoteConfigManager.isNewerVersion("2.4.0", "2.5.0"))
+
+        val withOta = PromptBuilder.buildSystemInstruction(
+            settings = AppSettings(),
+            memories = emptyList(),
+            accessibilityEnabled = false,
+            notificationsEnabled = false,
+            remoteExtraInstruction = "Always wish the user a happy festival today.",
+        )
+        assertTrue(withOta.contains("LIVE OTA UPDATES"))
+        assertTrue(withOta.contains("happy festival today"))
     }
 }

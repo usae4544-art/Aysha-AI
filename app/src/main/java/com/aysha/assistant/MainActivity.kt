@@ -257,6 +257,7 @@ class MainActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         viewModel.refreshPermissions()
+        viewModel.refreshRemoteConfig()
         if (viewModel.settings.value.firebaseRefreshToken.isNotBlank()) {
             viewModel.refreshLicenseStatus(silent = true)
         }
@@ -423,6 +424,8 @@ private fun AyshaMainRouter(
                     activeRoute = if (currentScreen == AppScreenRoute.SETTINGS) settingsRoute else null,
                     isHomeActive = currentScreen == AppScreenRoute.HOME,
                     unreadNotifications = !noticesCleared,
+                    isDarkMode = settings.mayaPalette.isDark,
+                    onToggleDarkMode = { dark -> viewModel.toggleDarkMode(dark) },
                     onSelectHome = {
                         currentScreen = AppScreenRoute.HOME
                         drawerScope.launch { drawerState.close() }
@@ -541,13 +544,21 @@ private fun AyshaMainRouter(
                         SettingsSubRoute.WHITEBOARD -> WhiteboardScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
                         SettingsSubRoute.BROWSER -> BrowserScreen(viewModel) { settingsRoute = SettingsSubRoute.HUB }
                         SettingsSubRoute.LICENSES -> LicensesScreen { settingsRoute = SettingsSubRoute.ABOUT }
-                        SettingsSubRoute.ABOUT -> AboutAyshaScreen(
-                            languageLabel = settings.language.label,
-                            onOpenLanguage = { settingsRoute = SettingsSubRoute.APP_LANGUAGE },
-                            onOpenLicenses = { settingsRoute = SettingsSubRoute.LICENSES },
-                            onNotifications = { settingsRoute = SettingsSubRoute.NOTIFICATIONS },
-                            onBack = { settingsRoute = SettingsSubRoute.HUB },
-                        )
+                        SettingsSubRoute.ABOUT -> {
+                            val upd by viewModel.updateAvailableInfo.collectAsState()
+                            val checkingUpd by viewModel.checkingUpdate.collectAsState()
+                            AboutAyshaScreen(
+                                languageLabel = settings.language.label,
+                                updateInfo = upd,
+                                checkingUpdate = checkingUpd,
+                                onCheckForUpdates = { viewModel.refreshRemoteConfig(manual = true) },
+                                onDownloadUpdate = { url -> viewModel.downloadAndOpenUpdateApk(url) },
+                                onOpenLanguage = { settingsRoute = SettingsSubRoute.APP_LANGUAGE },
+                                onOpenLicenses = { settingsRoute = SettingsSubRoute.LICENSES },
+                                onNotifications = { settingsRoute = SettingsSubRoute.NOTIFICATIONS },
+                                onBack = { settingsRoute = SettingsSubRoute.HUB },
+                            )
+                        }
                         SettingsSubRoute.NOTIFICATIONS -> NotificationsScreen(
                             viewModel = viewModel,
                             noticesCleared = noticesCleared,

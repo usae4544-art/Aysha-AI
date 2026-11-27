@@ -30,12 +30,14 @@ import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.ChatBubbleOutline
 import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material.icons.rounded.Code
+import androidx.compose.material.icons.rounded.DarkMode
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Home
 import androidx.compose.material.icons.rounded.HomeWork
 import androidx.compose.material.icons.rounded.Info
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.LightMode
 import androidx.compose.material.icons.rounded.Lock
 import androidx.compose.material.icons.rounded.Menu
 import androidx.compose.material.icons.rounded.Mic
@@ -54,6 +56,7 @@ import androidx.compose.material.icons.rounded.SwapHoriz
 import androidx.compose.material.icons.rounded.Terminal
 import androidx.compose.material.icons.rounded.TrendingUp
 import androidx.compose.material3.Icon
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -95,6 +98,8 @@ fun MayaTopBar(
     title: String,
     showMenuInsteadOfBack: Boolean,
     unreadNotifications: Boolean = true,
+    isDarkMode: Boolean? = null,
+    onToggleDarkMode: (() -> Unit)? = null,
     onLeadingClick: () -> Unit,
     onNotificationsClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -123,12 +128,21 @@ fun MayaTopBar(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        ClayCircleButton(
-            icon = Icons.Rounded.Notifications,
-            contentDescription = "Notifications",
-            showBadgeDot = unreadNotifications,
-            onClick = onNotificationsClick,
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (isDarkMode != null && onToggleDarkMode != null) {
+                ClayCircleButton(
+                    icon = if (isDarkMode) Icons.Rounded.LightMode else Icons.Rounded.DarkMode,
+                    contentDescription = if (isDarkMode) "Switch to Light Mode" else "Switch to Dark Mode",
+                    onClick = onToggleDarkMode,
+                )
+            }
+            ClayCircleButton(
+                icon = Icons.Rounded.Notifications,
+                contentDescription = "Notifications",
+                showBadgeDot = unreadNotifications,
+                onClick = onNotificationsClick,
+            )
+        }
     }
 }
 
@@ -298,6 +312,8 @@ fun MayaDrawerSheetContent(
     activeRoute: SettingsSubRoute?,
     isHomeActive: Boolean,
     unreadNotifications: Boolean,
+    isDarkMode: Boolean = false,
+    onToggleDarkMode: (Boolean) -> Unit = {},
     onSelectHome: () -> Unit,
     onSelectRoute: (SettingsSubRoute) -> Unit,
 ) {
@@ -390,7 +406,40 @@ fun MayaDrawerSheetContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // Quick Dark Mode Switch inside Drawer
+        GlassCard(
+            modifier = Modifier.fillMaxWidth(),
+            cornerRadius = 18.dp,
+            elevated = false,
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = if (isDarkMode) Icons.Rounded.DarkMode else Icons.Rounded.LightMode,
+                        contentDescription = null,
+                        tint = c.accentPrimary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Text(
+                        text = if (isDarkMode) "Dark Mode ON" else "Dark Mode",
+                        color = c.textPrimary,
+                        fontSize = 13.5.sp,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
+                Switch(checked = isDarkMode, onCheckedChange = onToggleDarkMode)
+            }
+        }
+
+        Spacer(modifier = Modifier.height(8.dp))
 
         Column(
             modifier = Modifier

@@ -23,6 +23,7 @@ import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Description
 import androidx.compose.material.icons.rounded.Favorite
 import androidx.compose.material.icons.rounded.Language
+import androidx.compose.material.icons.rounded.SystemUpdate
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.aysha.assistant.BuildConfig
+import com.aysha.assistant.core.LiveRemoteConfig
 import com.aysha.assistant.core.ui.ColoredIconBadge
 import com.aysha.assistant.core.ui.GlassCard
 import com.aysha.assistant.core.ui.GlassPill
@@ -44,6 +46,10 @@ import com.aysha.assistant.ui.components.MayaTopBar
 @Composable
 fun AboutAyshaScreen(
     languageLabel: String = "Baat-cheet wali bhasha ke saath (Hinglish)",
+    updateInfo: LiveRemoteConfig? = null,
+    checkingUpdate: Boolean = false,
+    onCheckForUpdates: () -> Unit = {},
+    onDownloadUpdate: (String) -> Unit = {},
     onOpenLanguage: () -> Unit = {},
     onOpenLicenses: () -> Unit = {},
     onNotifications: () -> Unit = {},
@@ -134,6 +140,53 @@ fun AboutAyshaScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text("Open-source licences", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
                             Text("Dusron ka kaam jis par ye app bana hai", color = c.textSecondary, fontSize = 12.5.sp)
+                        }
+                        Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                GlassCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    cornerRadius = 22.dp,
+                    elevated = true,
+                    borderColor = if (updateInfo != null) c.accentPrimary else null,
+                    onClick = {
+                        if (updateInfo != null) {
+                            onDownloadUpdate(updateInfo.apkDownloadUrl)
+                        } else {
+                            onCheckForUpdates()
+                        }
+                    },
+                    contentPadding = PaddingValues(16.dp),
+                ) {
+                    Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                        ColoredIconBadge(
+                            icon = Icons.Rounded.SystemUpdate,
+                            tintColor = if (updateInfo != null) c.success else Color(0xFF3B82F6),
+                            size = 38.dp,
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = when {
+                                    updateInfo != null -> "Update Ready: v${updateInfo.latestVersion}"
+                                    checkingUpdate -> "Update check ho raha hai..."
+                                    else -> "Check for App Updates"
+                                },
+                                color = c.textPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.5.sp,
+                            )
+                            Text(
+                                text = when {
+                                    updateInfo != null -> updateInfo.updateNotes.ifBlank { "Tap karke latest APK download karein" }
+                                    else -> "Current: v${BuildConfig.VERSION_NAME} · Live OTA Config active"
+                                },
+                                color = c.textSecondary,
+                                fontSize = 12.5.sp,
+                            )
                         }
                         Icon(Icons.AutoMirrored.Rounded.KeyboardArrowRight, contentDescription = null, tint = c.textSecondary)
                     }

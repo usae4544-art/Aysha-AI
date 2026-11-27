@@ -20,6 +20,7 @@ object PromptBuilder {
         mood: AssistantMood = AssistantMood.KHUSH,
         energy: Int = 85,
         documentSnippets: List<String> = emptyList(),
+        remoteExtraInstruction: String = "",
     ): String {
         val voicePersona = VoicePersonalities.byId(settings.voicePersonalityId)
         val langNote = when (settings.language) {
@@ -91,6 +92,11 @@ object PromptBuilder {
             appendLine("USER-APPROVED PERSONAL MEMORIES:")
             appendLine(memoryBlock)
             if (docBlock.isNotBlank()) appendLine(docBlock)
+            if (remoteExtraInstruction.isNotBlank()) {
+                appendLine()
+                appendLine("LIVE OTA UPDATES:")
+                appendLine(remoteExtraInstruction.trim())
+            }
         }.trim()
     }
 }

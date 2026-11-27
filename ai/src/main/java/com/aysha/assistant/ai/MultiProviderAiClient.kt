@@ -133,24 +133,24 @@ class MultiProviderAiClient {
     }
 
     /**
-     * Builds the ordered list of providers to attempt for a request, honoring fallback configuration.
+     * Builds the ordered list of providers to attempt for a request, prioritizing Google Gemini API
+     * (Local / LAN model mode removed).
      */
     fun buildProviderChain(settings: AppSettings): List<BrainProvider> {
-        if (settings.offlineOnlyMode || settings.activeProvider == BrainProvider.OFFLINE) {
-            return listOf(BrainProvider.OFFLINE)
-        }
         val candidates = mutableListOf<BrainProvider>()
         fun addIfConfigured(p: BrainProvider) {
             if (p == BrainProvider.OFFLINE) return
             val hasCreds = !p.requiresApiKey || settings.currentKeyFor(p).isNotBlank()
-            val localConfigured = p != BrainProvider.LOCAL_MODEL || settings.localBaseUrl.isNotBlank()
-            if (hasCreds && localConfigured && p !in candidates) {
+            if (hasCreds && p !in candidates) {
                 candidates.add(p)
             }
         }
-        addIfConfigured(settings.activeProvider)
+        addIfConfigured(BrainProvider.GEMINI)
+        if (settings.activeProvider != BrainProvider.OFFLINE) {
+            addIfConfigured(settings.activeProvider)
+        }
         if (settings.fallbackEnabled) {
-            listOf(BrainProvider.GEMINI, BrainProvider.GROQ, BrainProvider.OPENAI, BrainProvider.LOCAL_MODEL)
+            listOf(BrainProvider.GEMINI, BrainProvider.GROQ, BrainProvider.OPENAI)
                 .forEach { addIfConfigured(it) }
         }
         candidates.add(BrainProvider.OFFLINE)
@@ -213,18 +213,6 @@ class MultiProviderAiClient {
                         baseUrl = settings.openAiBaseUrl,
                         apiKey = settings.openAiApiKey,
                         model = settings.openAiModel,
-                        systemInstruction = systemInstruction,
-                        history = history,
-                        userText = userText,
-                        attachedImageJpeg = attachedImageJpeg,
-                        toolExecutor = toolExecutor,
-                        onToolEvent = onToolEvent,
-                    )
-                    BrainProvider.LOCAL_MODEL -> runOpenAiTurn(
-                        provider = BrainProvider.LOCAL_MODEL,
-                        baseUrl = settings.localBaseUrl,
-                        apiKey = settings.localApiKey,
-                        model = settings.localModel,
                         systemInstruction = systemInstruction,
                         history = history,
                         userText = userText,
@@ -456,10 +444,8 @@ class MultiProviderAiClient {
             val payload = JSONObject().apply {
                 put("model", safeModel)
                 put("messages", messages)
-                if (provider != BrainProvider.LOCAL_MODEL) {
-                    put("tools", tools)
-                    put("tool_choice", "auto")
-                }
+                put("tools", tools)
+                put("tool_choice", "auto")
             }
             val builder = Request.Builder()
                 .url(endpoint)

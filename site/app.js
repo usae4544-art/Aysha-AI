@@ -1439,6 +1439,45 @@ async function handleSaveStoreConfig(e) {
   }
 }
 
+async function loadLiveOtaConfig() {
+  if (!state.db) return;
+  try {
+    const snap = await getDoc(doc(state.db, "config", "app_live"));
+    const d = snap.exists() ? snap.data() : {};
+    if ($("ota-version")) $("ota-version").value = d.latestVersion || "2.5.0";
+    if ($("ota-version-code")) $("ota-version-code").value = d.latestVersionCode || 8;
+    if ($("ota-apk-url")) $("ota-apk-url").value = d.apkDownloadUrl || "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk";
+    if ($("ota-notes")) $("ota-notes").value = d.updateNotes || "";
+    if ($("ota-banner")) $("ota-banner").value = d.announcementBanner || "";
+    if ($("ota-gemini-text")) $("ota-gemini-text").value = d.geminiTextModel || "gemini-3.8-flash";
+    if ($("ota-gemini-live")) $("ota-gemini-live").value = d.geminiLiveModel || "gemini-3.8-live";
+    if ($("ota-prompt-extra")) $("ota-prompt-extra").value = d.systemPromptExtra || "";
+  } catch (_) {}
+}
+
+async function handleSaveLiveOtaConfig(e) {
+  e.preventDefault();
+  if (!state.isAdmin || !state.db) return;
+  const payload = {
+    latestVersion: ($("ota-version")?.value || "2.5.0").trim(),
+    latestVersionCode: Number($("ota-version-code")?.value || 8),
+    apkDownloadUrl: ($("ota-apk-url")?.value || "").trim(),
+    updateNotes: ($("ota-notes")?.value || "").trim(),
+    announcementBanner: ($("ota-banner")?.value || "").trim(),
+    geminiTextModel: ($("ota-gemini-text")?.value || "gemini-3.8-flash").trim(),
+    geminiLiveModel: ($("ota-gemini-live")?.value || "gemini-3.8-live").trim(),
+    systemPromptExtra: ($("ota-prompt-extra")?.value || "").trim(),
+    updatedAt: serverTimestamp(),
+    updatedBy: state.user?.email || "",
+  };
+  try {
+    await setDoc(doc(state.db, "config", "app_live"), payload, { merge: true });
+    showToast("Live OTA Config published to all AYSHA phones!");
+  } catch (err) {
+    showToast(err.message);
+  }
+}
+
 /* --- Live 1s countdown loop --- */
 function startCountdowns() {
   setInterval(() => {
@@ -1501,6 +1540,7 @@ async function init() {
   $("admin-coupon-form").addEventListener("submit", handleCreateCoupon);
   $("admin-key-form").addEventListener("submit", handleCreateLicenseKey);
   $("admin-store-form").addEventListener("submit", handleSaveStoreConfig);
+  if ($("admin-ota-form")) $("admin-ota-form").addEventListener("submit", handleSaveLiveOtaConfig);
   $("admin-user-search").addEventListener("input", renderAdminTables);
   $("btn-gen-code").addEventListener("click", () => {
     const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -1586,6 +1626,7 @@ async function init() {
     });
 
     void loadStoreConfig();
+    void loadLiveOtaConfig();
   } catch (err) {
     console.error("Initialization error:", err);
     showAuthError(`Init error: ${err.message}`);

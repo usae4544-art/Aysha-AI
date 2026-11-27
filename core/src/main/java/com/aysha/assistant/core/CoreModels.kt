@@ -415,16 +415,9 @@ enum class BrainProvider(
         defaultModel = "gpt-4o-mini",
         requiresApiKey = true,
     ),
-    LOCAL_MODEL(
-        displayName = "Local / LAN Model",
-        subtitle = "Ollama / llama.cpp server",
-        defaultBaseUrl = "http://127.0.0.1:11434/v1",
-        defaultModel = "llama3.2",
-        requiresApiKey = false,
-    ),
     OFFLINE(
-        displayName = "Offline Mode",
-        subtitle = "100% On-Device Commands",
+        displayName = "Offline Fallback",
+        subtitle = "Emergency Device Commands",
         defaultBaseUrl = "",
         defaultModel = "aysha-local-engine",
         requiresApiKey = false,
@@ -869,7 +862,6 @@ data class AppSettings(
         BrainProvider.GEMINI -> geminiApiKey
         BrainProvider.GROQ -> groqApiKey
         BrainProvider.OPENAI -> openAiApiKey
-        BrainProvider.LOCAL_MODEL -> localApiKey
         BrainProvider.OFFLINE -> ""
     }
 
@@ -877,7 +869,6 @@ data class AppSettings(
         BrainProvider.GEMINI -> geminiTextModel.ifBlank { provider.defaultModel }
         BrainProvider.GROQ -> groqModel.ifBlank { provider.defaultModel }
         BrainProvider.OPENAI -> openAiModel.ifBlank { provider.defaultModel }
-        BrainProvider.LOCAL_MODEL -> localModel.ifBlank { provider.defaultModel }
         BrainProvider.OFFLINE -> provider.defaultModel
     }
 
@@ -890,3 +881,23 @@ data class AppSettings(
         }
     }
 }
+
+/**
+ * Live Over-The-Air configuration fetched from Firestore (config/app_live) or GitHub Pages
+ * so announcements, Gemini model defaults, prompt tweaks, and update prompts take effect
+ * without requiring an APK reinstall.
+ */
+data class LiveRemoteConfig(
+    val latestVersion: String = "",
+    val latestVersionCode: Int = 0,
+    val apkDownloadUrl: String = "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.5.0/AYSHA-latest-release.apk",
+    val updateNotes: String = "",
+    val forceUpdate: Boolean = false,
+    val announcementBanner: String = "",
+    val geminiTextModelOverride: String = "",
+    val geminiLiveModelOverride: String = "",
+    val systemPromptExtra: String = "",
+    val maintenanceMode: Boolean = false,
+    val maintenanceMessage: String = "",
+    val fetchedAtMs: Long = 0L,
+)

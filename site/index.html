@@ -49,7 +49,7 @@
           </svg>
         </span>
         <span class="brand-name">AYSHA</span>
-        <span class="brand-version mono" id="nav-version">v2.4.0</span>
+        <span class="brand-version mono" id="nav-version">v2.5.0</span>
       </a>
 
       <nav class="nav-links" aria-label="Primary">
@@ -301,7 +301,7 @@
         <div class="card download-box">
           <div class="kv-row">
             <span class="kv-k">Latest build</span>
-            <span class="kv-v mono" id="dl-version">AYSHA v2.4.0</span>
+            <span class="kv-v mono" id="dl-version">AYSHA v2.5.0</span>
           </div>
           <div class="kv-row">
             <span class="kv-k">Minimum Android</span>
@@ -559,6 +559,45 @@
             </label>
             <div class="full-span form-actions">
               <button type="submit" class="btn btn-primary">Save store configuration</button>
+            </div>
+          </form>
+
+          <form id="admin-ota-form" class="card form-grid" style="margin-top: 16px;">
+            <h3 class="full-span">Live App OTA Config (Updates User Phones Without APK Update)</h3>
+            <label>
+              <span>Latest App Version (e.g. 2.5.0)</span>
+              <input type="text" id="ota-version" placeholder="2.5.0" />
+            </label>
+            <label>
+              <span>Latest Version Code (integer)</span>
+              <input type="number" id="ota-version-code" min="1" placeholder="8" />
+            </label>
+            <label class="full-span">
+              <span>APK Download URL</span>
+              <input type="url" id="ota-apk-url" placeholder="https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk" />
+            </label>
+            <label class="full-span">
+              <span>Update Notes</span>
+              <input type="text" id="ota-notes" placeholder="New features & improvements..." />
+            </label>
+            <label class="full-span">
+              <span>Live Announcement Banner (shows on Home screen)</span>
+              <input type="text" id="ota-banner" placeholder="Leave empty to hide banner" />
+            </label>
+            <label>
+              <span>Gemini Text Model Override</span>
+              <input type="text" id="ota-gemini-text" placeholder="gemini-3.8-flash" />
+            </label>
+            <label>
+              <span>Gemini Live Model Override</span>
+              <input type="text" id="ota-gemini-live" placeholder="gemini-3.8-live" />
+            </label>
+            <label class="full-span">
+              <span>Live System Prompt Extra Instructions</span>
+              <input type="text" id="ota-prompt-extra" placeholder="Optional live instructions applied immediately" />
+            </label>
+            <div class="full-span form-actions">
+              <button type="submit" class="btn btn-primary">Publish Live OTA Config</button>
             </div>
           </form>
         </div>

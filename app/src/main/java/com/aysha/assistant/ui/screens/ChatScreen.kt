@@ -202,7 +202,7 @@ fun ChatScreen(
                             Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(c.success))
                             Spacer(modifier = Modifier.width(5.dp))
                             Text(
-                                text = if (settings.offlineOnlyMode) "Offline Mode" else "Live · Online",
+                                text = if (settings.geminiApiKey.isNotBlank()) "Gemini · Live" else "Gemini Key Needed",
                                 color = c.textSecondary,
                                 fontSize = 11.5.sp,
                                 maxLines = 1,

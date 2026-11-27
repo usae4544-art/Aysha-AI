@@ -139,6 +139,8 @@ fun HomeOrbScreen(
     val mood by viewModel.assistantMood.collectAsState()
     val energy by viewModel.assistantEnergy.collectAsState()
     val pendingImage by viewModel.pendingAttachmentJpeg.collectAsState()
+    val updateInfo by viewModel.updateAvailableInfo.collectAsState()
+    val remoteConfig by viewModel.remoteConfig.collectAsState()
 
     var draft by rememberSaveable { mutableStateOf("") }
 
@@ -186,11 +188,13 @@ fun HomeOrbScreen(
             .statusBarsPadding()
             .imePadding(),
     ) {
-        // Maya-exact Top Header: [☰]  AYSHA  [🔔]
+        // Maya-exact Top Header: [☰]  AYSHA  [🌗 🔔]
         MayaTopBar(
             title = settings.assistantName,
             showMenuInsteadOfBack = true,
             unreadNotifications = unreadNotifications,
+            isDarkMode = c.isDark,
+            onToggleDarkMode = { viewModel.toggleDarkMode(!c.isDark) },
             onLeadingClick = onOpenDrawer,
             onNotificationsClick = onOpenNotifications,
         )
@@ -202,6 +206,65 @@ fun HomeOrbScreen(
                 .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
+            // Live OTA Update Banner (shows automatically when a new APK release is published)
+            updateInfo?.let { upd ->
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    cornerRadius = 18.dp,
+                    elevated = true,
+                    borderColor = c.accentPrimary,
+                    onClick = { viewModel.downloadAndOpenUpdateApk(upd.apkDownloadUrl) },
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Naya Update Available · v${upd.latestVersion}",
+                                color = c.textPrimary,
+                                fontWeight = FontWeight.ExtraBold,
+                                fontSize = 13.5.sp,
+                            )
+                            Text(
+                                text = upd.updateNotes.ifBlank { "Tap karke latest APK download aur install karein" },
+                                color = c.textSecondary,
+                                fontSize = 11.5.sp,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        GlassPill(
+                            text = "Update",
+                            dotColor = c.success,
+                            onClick = { viewModel.downloadAndOpenUpdateApk(upd.apkDownloadUrl) },
+                        )
+                    }
+                }
+            }
+
+            // Live OTA Announcement Banner (editable from Firestore without APK update)
+            if (remoteConfig.announcementBanner.isNotBlank()) {
+                GlassCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 8.dp),
+                    cornerRadius = 16.dp,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = remoteConfig.announcementBanner,
+                        color = c.textPrimary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                    )
+                }
+            }
             // Screenshot-exact soft blue License / Companion Banner
             Box(
                 modifier = Modifier

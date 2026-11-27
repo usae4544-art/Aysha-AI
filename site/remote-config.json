@@ -1,0 +1,13 @@
+{
+  "latestVersion": "2.5.0",
+  "latestVersionCode": 8,
+  "apkDownloadUrl": "https://github.com/usae4544-art/Aysha-AI/releases/download/v2.5.0/AYSHA-latest-release.apk",
+  "updateNotes": "In-App Auto Update Checker, 1-Tap Dark Mode, Pure Gemini API (Local Mode removed), Live OTA Config",
+  "forceUpdate": false,
+  "announcementBanner": "",
+  "geminiTextModel": "gemini-3.8-flash",
+  "geminiLiveModel": "gemini-3.8-live",
+  "systemPromptExtra": "",
+  "maintenanceMode": false,
+  "maintenanceMessage": ""
+}

@@ -88,7 +88,7 @@ fun AiProvidersScreen(
             Text("AI Provider Settings", color = c.textPrimary, fontSize = 21.sp, fontWeight = FontWeight.Bold)
         }
 
-        // Google Gemini, Groq, OpenAI cards matching Screen 8
+        // Google Gemini primary + optional cloud fallback
         val providerCards = listOf(
             Triple(BrainProvider.GEMINI, Icons.Rounded.AutoAwesome, Color(0xFF3B82F6)),
             Triple(BrainProvider.GROQ, Icons.Rounded.Bolt, Color(0xFFEF4444)),
@@ -96,7 +96,7 @@ fun AiProvidersScreen(
         )
 
         providerCards.forEach { (provider, icon, badgeColor) ->
-            val selected = settings.activeProvider == provider && !settings.offlineOnlyMode
+            val selected = settings.activeProvider == provider
             val currentKey = settings.currentKeyFor(provider)
             val keyStatus = if (currentKey.isBlank()) "Enter API Key" else "${settings.maskedKey(currentKey)} · ${settings.currentModelFor(provider)}"
 
@@ -130,31 +130,7 @@ fun AiProvidersScreen(
             }
         }
 
-        // Local Mode / Offline Switch matching Screen 8
-        GlassCard(
-            modifier = Modifier.fillMaxWidth(),
-            cornerRadius = 18.dp,
-            onClick = { editingProvider = BrainProvider.LOCAL_MODEL },
-            contentPadding = PaddingValues(14.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ColoredIconBadge(icon = Icons.Rounded.Memory, tintColor = Color(0xFF10B981), size = 38.dp)
-                Spacer(modifier = Modifier.width(12.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Local Mode", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.5.sp)
-                    Text("Works Offline (or Ollama LAN)", color = c.textSecondary, fontSize = 12.sp)
-                }
-                Switch(
-                    checked = settings.offlineOnlyMode,
-                    onCheckedChange = { on -> viewModel.updateSettings { it.copy(offlineOnlyMode = on) } },
-                )
-            }
-        }
-
-        // Fallback Provider Switch matching Screen 8
+        // Fallback Provider Switch
         GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 18.dp, contentPadding = PaddingValues(14.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -163,7 +139,7 @@ fun AiProvidersScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text("Fallback Provider", color = c.textPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                    Text("Auto Switch", color = c.textSecondary, fontSize = 12.sp)
+                    Text("Auto Switch (Gemini primary)", color = c.textSecondary, fontSize = 12.sp)
                 }
                 Switch(
                     checked = settings.fallbackEnabled,
@@ -172,7 +148,7 @@ fun AiProvidersScreen(
             }
         }
 
-        // Test Connection Gradient Button matching Screen 8
+        // Test Connection Gradient Button
         if (testing) {
             GlassCard(modifier = Modifier.fillMaxWidth(), cornerRadius = 25.dp, contentPadding = PaddingValues(14.dp)) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
@@ -183,14 +159,10 @@ fun AiProvidersScreen(
             }
         } else {
             AuroraGradientButton(
-                text = "Test Connection",
+                text = "Test Gemini Connection",
                 onClick = {
-                    val p = if (settings.offlineOnlyMode) BrainProvider.OFFLINE else settings.activeProvider
-                    val url = when (p) {
-                        BrainProvider.OPENAI -> settings.openAiBaseUrl
-                        BrainProvider.LOCAL_MODEL -> settings.localBaseUrl
-                        else -> p.defaultBaseUrl
-                    }
+                    val p = if (settings.activeProvider == BrainProvider.OFFLINE) BrainProvider.GEMINI else settings.activeProvider
+                    val url = if (p == BrainProvider.OPENAI) settings.openAiBaseUrl else p.defaultBaseUrl
                     viewModel.testProviderConnection(
                         provider = p,
                         apiKey = settings.currentKeyFor(p),
@@ -232,7 +204,6 @@ fun AiProvidersScreen(
                                     BrainProvider.GEMINI -> s.copy(geminiTextModel = modelId)
                                     BrainProvider.GROQ -> s.copy(groqModel = modelId)
                                     BrainProvider.OPENAI -> s.copy(openAiModel = modelId)
-                                    BrainProvider.LOCAL_MODEL -> s.copy(localModel = modelId)
                                     BrainProvider.OFFLINE -> s
                                 }
                             }
@@ -243,7 +214,7 @@ fun AiProvidersScreen(
         }
 
         Text(
-            text = "No API Key? No Problem!\nAysha works in offline mode too.",
+            text = "AYSHA runs on Google Gemini API\nAdd your free Gemini API key to start.",
             color = c.textSecondary,
             fontSize = 12.5.sp,
             textAlign = TextAlign.Center,
@@ -256,11 +227,7 @@ fun AiProvidersScreen(
         var modelDraft by remember(provider) { mutableStateOf(settings.currentModelFor(provider)) }
         var baseUrlDraft by remember(provider) {
             mutableStateOf(
-                when (provider) {
-                    BrainProvider.OPENAI -> settings.openAiBaseUrl
-                    BrainProvider.LOCAL_MODEL -> settings.localBaseUrl
-                    else -> provider.defaultBaseUrl
-                },
+                if (provider == BrainProvider.OPENAI) settings.openAiBaseUrl else provider.defaultBaseUrl,
             )
         }
         var showKey by remember { mutableStateOf(false) }
@@ -270,7 +237,7 @@ fun AiProvidersScreen(
             title = { Text("${provider.displayName} API Settings") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (provider == BrainProvider.OPENAI || provider == BrainProvider.LOCAL_MODEL) {
+                    if (provider == BrainProvider.OPENAI) {
                         OutlinedTextField(value = baseUrlDraft, onValueChange = { baseUrlDraft = it }, label = { Text("Base URL") }, singleLine = true)
                     }
                     OutlinedTextField(
@@ -302,7 +269,6 @@ fun AiProvidersScreen(
                             BrainProvider.GEMINI -> s.copy(geminiApiKey = keyDraft.trim(), geminiTextModel = modelDraft.trim().ifBlank { provider.defaultModel })
                             BrainProvider.GROQ -> s.copy(groqApiKey = keyDraft.trim(), groqModel = modelDraft.trim().ifBlank { provider.defaultModel })
                             BrainProvider.OPENAI -> s.copy(openAiApiKey = keyDraft.trim(), openAiBaseUrl = baseUrlDraft.trim().ifBlank { provider.defaultBaseUrl }, openAiModel = modelDraft.trim().ifBlank { provider.defaultModel })
-                            BrainProvider.LOCAL_MODEL -> s.copy(localApiKey = keyDraft.trim(), localBaseUrl = baseUrlDraft.trim().ifBlank { provider.defaultBaseUrl }, localModel = modelDraft.trim().ifBlank { provider.defaultModel })
                             BrainProvider.OFFLINE -> s
                         }
                         next.copy(activeProvider = provider, offlineOnlyMode = false)

@@ -2,15 +2,19 @@ package com.aysha.assistant.ui
 
 import android.Manifest
 import android.app.Application
+import android.app.DownloadManager
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Environment
 import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.aysha.assistant.AyshaApplication
+import com.aysha.assistant.BuildConfig
 import com.aysha.assistant.ai.AyshaLicenseManager
 import com.aysha.assistant.ai.ConnectivityCheckResult
 import com.aysha.assistant.ai.GeminiLiveClient
@@ -18,6 +22,7 @@ import com.aysha.assistant.ai.LiveCallbacks
 import com.aysha.assistant.ai.MultiProviderAiClient
 import com.aysha.assistant.ai.OfflineCommandParser
 import com.aysha.assistant.ai.PromptBuilder
+import com.aysha.assistant.ai.RemoteConfigManager
 import com.aysha.assistant.ai.SmartMemoryExtractor
 import com.aysha.assistant.ai.ToolExecutor
 import com.aysha.assistant.automation.AyshaAccessibilityService
@@ -35,11 +40,14 @@ import com.aysha.assistant.core.KnowledgeDocument
 import com.aysha.assistant.core.LicenseInfo
 import com.aysha.assistant.core.LicensePlan
 import com.aysha.assistant.core.LicenseStatus
+import com.aysha.assistant.core.LiveRemoteConfig
 import com.aysha.assistant.core.MacroDefinition
+import com.aysha.assistant.core.MayaPalette
 import com.aysha.assistant.core.MemoryEntry
 import com.aysha.assistant.core.OrbState
 import com.aysha.assistant.core.PendingActionConfirmation
 import com.aysha.assistant.core.PendingConfirmationType
+import com.aysha.assistant.core.ThemeMode
 import com.aysha.assistant.core.ToolLogEntry
 import com.aysha.assistant.core.UserGender
 import com.aysha.assistant.core.UserRule
@@ -202,9 +210,25 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
     val backupFeedback: StateFlow<String?> = _backupFeedback.asStateFlow()
 
     private val licenseManager = AyshaLicenseManager()
+    private val remoteConfigManager = RemoteConfigManager()
     private val _liveLicenseOverride = MutableStateFlow<LicenseInfo?>(null)
     private val _licenseChecking = MutableStateFlow(false)
     val licenseChecking: StateFlow<Boolean> = _licenseChecking.asStateFlow()
+
+    private val _remoteConfig = MutableStateFlow(LiveRemoteConfig())
+    val remoteConfig: StateFlow<LiveRemoteConfig> = _remoteConfig.asStateFlow()
+
+    private val _checkingUpdate = MutableStateFlow(false)
+    val checkingUpdate: StateFlow<Boolean> = _checkingUpdate.asStateFlow()
+
+    val updateAvailableInfo: StateFlow<LiveRemoteConfig?> = _remoteConfig
+        .map { cfg ->
+            val newerByCode = cfg.latestVersionCode > BuildConfig.VERSION_CODE
+            val newerByTag = cfg.latestVersion.isNotBlank() &&
+                RemoteConfigManager.isNewerVersion(cfg.latestVersion, BuildConfig.VERSION_NAME)
+            if (newerByCode || newerByTag) cfg else null
+        }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, null)
 
     val settingsLoaded: StateFlow<Boolean> = settingsRepo.settingsFlow
         .map { true }
@@ -294,11 +318,62 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         refreshPermissions()
         startSessionTicker()
         observeFiredReminders()
+        refreshRemoteConfig()
         viewModelScope.launch {
             val initial = settingsRepo.settingsFlow.first()
             if (initial.firebaseRefreshToken.isNotBlank()) {
                 refreshLicenseStatus(silent = true)
             }
+        }
+    }
+
+    fun refreshRemoteConfig(manual: Boolean = false) {
+        viewModelScope.launch {
+            if (manual) _checkingUpdate.value = true
+            try {
+                val fetched = remoteConfigManager.fetchLiveConfig()
+                if (fetched != null) {
+                    _remoteConfig.value = fetched
+                }
+            } finally {
+                _checkingUpdate.value = false
+            }
+        }
+    }
+
+    fun toggleDarkMode(enableDark: Boolean) {
+        updateSettings { cur ->
+            val targetPalette = if (enableDark) {
+                if (cur.mayaPalette.isDark) cur.mayaPalette else MayaPalette.MIDNIGHT
+            } else {
+                MayaPalette.CLAY_DAY
+            }
+            cur.copy(
+                mayaPalette = targetPalette,
+                themeMode = if (enableDark) ThemeMode.DARK else ThemeMode.LIGHT,
+            )
+        }
+    }
+
+    fun downloadAndOpenUpdateApk(url: String) {
+        val cleanUrl = url.trim().ifBlank {
+            "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk"
+        }
+        if (!cleanUrl.startsWith("https://")) return
+        runCatching {
+            val dm = app.getSystemService(Context.DOWNLOAD_SERVICE) as? DownloadManager
+            if (dm != null) {
+                val req = DownloadManager.Request(Uri.parse(cleanUrl))
+                    .setTitle("AYSHA AI Update")
+                    .setDescription("Downloading latest AYSHA APK...")
+                    .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                    .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "AYSHA-latest-release.apk")
+                    .setMimeType("application/vnd.android.package-archive")
+                dm.enqueue(req)
+            }
+        }
+        runCatching {
+            app.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(cleanUrl)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         }
     }
 
@@ -533,7 +608,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
         }
 
         pauseWakeWordForActiveMic()
-        if (current.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE && current.geminiApiKey.isNotBlank() && !current.offlineOnlyMode) {
+        if (current.voiceEngineMode == VoiceEngineMode.GEMINI_LIVE && current.geminiApiKey.isNotBlank()) {
             startGeminiLiveSession()
         } else {
             continuousVoiceActive = current.continuousConversation || current.followUpWindowSeconds > 0
@@ -575,7 +650,11 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun startGeminiLiveSession() {
         viewModelScope.launch {
-            val s = settings.value
+            val raw = settings.value
+            val liveCfg = _remoteConfig.value
+            val s = raw.copy(
+                geminiLiveModel = liveCfg.geminiLiveModelOverride.ifBlank { raw.geminiLiveModel },
+            )
             val (mems, activeRules) = withContext(Dispatchers.IO) {
                 memoryRepo.getAllMemories().take(12) to memoryRepo.getAllRules()
             }
@@ -587,6 +666,7 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                 rules = activeRules,
                 mood = _assistantMood.value,
                 energy = _assistantEnergy.value,
+                remoteExtraInstruction = liveCfg.systemPromptExtra,
             )
             _liveMuted.value = false
             liveClient.start(s, sys)
@@ -740,8 +820,12 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                 Quadruple(ranked, hist, allRules, snippets)
             }
 
+            val liveCfg = _remoteConfig.value
+            val effectiveSettings = s.copy(
+                geminiTextModel = liveCfg.geminiTextModelOverride.ifBlank { s.geminiTextModel },
+            )
             val sys = PromptBuilder.buildSystemInstruction(
-                settings = s,
+                settings = effectiveSettings,
                 memories = mems,
                 accessibilityEnabled = accessibilityConnected.value,
                 notificationsEnabled = notificationListenerConnected.value,
@@ -749,10 +833,11 @@ class AyshaViewModel(application: Application) : AndroidViewModel(application) {
                 mood = _assistantMood.value,
                 energy = _assistantEnergy.value,
                 documentSnippets = docSnippets,
+                remoteExtraInstruction = liveCfg.systemPromptExtra,
             )
 
             val turn = aiClient.runTurnWithFallback(
-                settings = s,
+                settings = effectiveSettings,
                 systemInstruction = sys,
                 history = history,
                 userText = promptText,
