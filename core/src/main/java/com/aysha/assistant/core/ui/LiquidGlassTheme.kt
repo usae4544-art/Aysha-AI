@@ -67,6 +67,7 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.ExperimentalTextApi
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
@@ -192,6 +193,7 @@ fun buildAyshaColors(
     )
 }
 
+@OptIn(ExperimentalTextApi::class)
 fun resolveComposeFontFamily(uiFont: UiFontFamily): FontFamily {
     return when (uiFont) {
         UiFontFamily.INTER -> FontFamily(
