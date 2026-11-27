@@ -396,9 +396,9 @@ enum class BrainProvider(
 ) {
     GEMINI(
         displayName = "Google Gemini",
-        subtitle = "Gemini 2.5 Flash / Live",
+        subtitle = "Gemini 2.5 Flash-Lite / Live",
         defaultBaseUrl = "https://generativelanguage.googleapis.com/v1beta",
-        defaultModel = "gemini-2.5-flash",
+        defaultModel = "gemini-2.5-flash-lite",
         requiresApiKey = true,
     ),
     GROQ(
@@ -984,7 +984,7 @@ data class AppSettings(
     val emergencySosMessage: String = "Emergency! Please call me or check on me right now.",
     val appLockEnabled: Boolean = false,
     val selectedVibeId: String = "chill",
-    val geminiTextModel: String = "gemini-2.5-flash",
+    val geminiTextModel: String = "gemini-2.5-flash-lite",
     val geminiLiveModel: String = "gemini-3.8-live",
     val groqModel: String = "llama-3.3-70b-versatile",
     val openAiBaseUrl: String = "https://api.openai.com/v1",

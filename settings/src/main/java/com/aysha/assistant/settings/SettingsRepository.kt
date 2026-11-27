@@ -101,6 +101,7 @@ class SettingsRepository(private val context: Context) {
         val appLockEnabled = booleanPreferencesKey("app_lock_enabled")
         val selectedVibeId = stringPreferencesKey("selected_vibe_id")
         val geminiTextModel = stringPreferencesKey("gemini_text_model")
+        val migratedGeminiLite25 = booleanPreferencesKey("migrated_gemini_lite_25")
         val geminiLiveModel = stringPreferencesKey("gemini_live_model")
         val groqModel = stringPreferencesKey("groq_model")
         val openAiBaseUrl = stringPreferencesKey("openai_base_url")
@@ -203,7 +204,13 @@ class SettingsRepository(private val context: Context) {
                     ?: "Emergency! Please call me or check on me right now.",
                 appLockEnabled = p[Keys.appLockEnabled] ?: false,
                 selectedVibeId = p[Keys.selectedVibeId]?.ifBlank { "chill" } ?: "chill",
-                geminiTextModel = p[Keys.geminiTextModel]?.ifBlank { "gemini-2.5-flash" } ?: "gemini-2.5-flash",
+                geminiTextModel = p[Keys.geminiTextModel]?.let { saved ->
+                    when {
+                        saved.isBlank() -> "gemini-2.5-flash-lite"
+                        p[Keys.migratedGeminiLite25] != true && saved == "gemini-2.5-flash" -> "gemini-2.5-flash-lite"
+                        else -> saved
+                    }
+                } ?: "gemini-2.5-flash-lite",
                 geminiLiveModel = p[Keys.geminiLiveModel]?.ifBlank { "gemini-3.8-live" } ?: "gemini-3.8-live",
                 groqModel = p[Keys.groqModel]?.ifBlank { "llama-3.3-70b-versatile" } ?: "llama-3.3-70b-versatile",
                 openAiBaseUrl = p[Keys.openAiBaseUrl]?.ifBlank { "https://api.openai.com/v1" } ?: "https://api.openai.com/v1",
@@ -292,6 +299,7 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.appLockEnabled] = next.appLockEnabled
             prefs[Keys.selectedVibeId] = next.selectedVibeId
             prefs[Keys.geminiTextModel] = next.geminiTextModel
+            prefs[Keys.migratedGeminiLite25] = true
             prefs[Keys.geminiLiveModel] = next.geminiLiveModel
             prefs[Keys.groqModel] = next.groqModel
             prefs[Keys.openAiBaseUrl] = next.openAiBaseUrl
@@ -331,6 +339,18 @@ class SettingsRepository(private val context: Context) {
             prefs[Keys.cachedLicenseKey] = next.cachedLicenseKey
             prefs[Keys.cachedAccountBlocked] = next.cachedAccountBlocked
             prefs[Keys.cachedBlockedReason] = next.cachedBlockedReason
+        }
+    }
+
+    suspend fun migrateDeprecatedFlashDefault() {
+        context.ayshaSettingsDataStore.edit { prefs ->
+            if (prefs[Keys.migratedGeminiLite25] != true) {
+                val cur = prefs[Keys.geminiTextModel]
+                if (cur.isNullOrBlank() || cur == "gemini-2.5-flash") {
+                    prefs[Keys.geminiTextModel] = "gemini-2.5-flash-lite"
+                }
+                prefs[Keys.migratedGeminiLite25] = true
+            }
         }
     }
 

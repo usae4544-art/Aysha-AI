@@ -128,7 +128,7 @@ class MultiProviderAiClient {
                 val models = (0 until arr.length()).mapNotNull { i ->
                     arr.optJSONObject(i)?.optString("name")?.removePrefix("models/")
                 }.sorted()
-                val preferred = listOf("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-3.8-flash", "gemini-3-flash-preview")
+                val preferred = LITE_FIRST_GEMINI_MODELS
                     .firstOrNull { cand -> models.any { it.equals(cand, ignoreCase = true) } }
                 if (preferred != null) {
                     cachedWorkingGeminiModel = preferred
@@ -318,6 +318,26 @@ class MultiProviderAiClient {
         }
     }
 
+    internal fun buildGeminiCandidateModels(configuredModel: String): List<String> {
+        val cleanConfigured = configuredModel.trim()
+        val isLegacyCongestedDefault = cleanConfigured.isBlank() ||
+            cleanConfigured.equals("gemini-2.5-flash", ignoreCase = true)
+        val cached = cachedWorkingGeminiModel
+            ?.takeUnless { it.equals("gemini-2.5-flash", ignoreCase = true) }
+
+        return buildList {
+            if (!isLegacyCongestedDefault) add(cleanConfigured)
+            if (cached != null) add(cached)
+            addAll(LITE_FIRST_GEMINI_MODELS)
+        }.distinct()
+    }
+
+    internal fun isRetryableGeminiError(httpCode: Int, message: String?): Boolean {
+        if (httpCode in RETRYABLE_HTTP_CODES) return true
+        if (message.isNullOrBlank()) return false
+        return RETRYABLE_ERROR_HINTS.any { hint -> message.contains(hint, ignoreCase = true) }
+    }
+
     private suspend fun runGeminiTurn(
         apiKey: String,
         model: String,
@@ -330,16 +350,7 @@ class MultiProviderAiClient {
     ): AiTurnResult {
         val cleanKey = sanitizeKey(apiKey)
         require(cleanKey.isNotEmpty()) { "Gemini API key missing" }
-        val candidateModels = listOfNotNull(
-            model.trim().ifBlank { null },
-            cachedWorkingGeminiModel,
-            BrainProvider.GEMINI.defaultModel,
-            "gemini-2.5-flash",
-            "gemini-2.5-flash-lite",
-            "gemini-2.0-flash",
-            "gemini-3.8-flash",
-            "gemini-3-flash-preview",
-        ).distinct()
+        val candidateModels = buildGeminiCandidateModels(model)
 
         val contents = JSONArray()
         for (msg in history.takeLast(8)) {
@@ -378,7 +389,11 @@ class MultiProviderAiClient {
         for (round in 0 until 5) {
             var respJson: JSONObject? = null
             var lastErr: IllegalStateException? = null
-            val modelsForRound = if (round == 0) candidateModels else listOf(activeModel)
+            val modelsForRound = if (round == 0) {
+                candidateModels
+            } else {
+                listOf(activeModel) + candidateModels.filter { it != activeModel }
+            }
 
             for (tryModel in modelsForRound) {
                 var includeTools = true
@@ -400,34 +415,43 @@ class MultiProviderAiClient {
                         .post(payload.toString().toRequestBody(jsonMedia))
                         .build()
 
-                    val callOutcome = http.newCall(req).execute().use { resp ->
-                        val body = resp.body?.string().orEmpty()
-                        if (resp.isSuccessful) {
-                            activeModel = tryModel
-                            cachedWorkingGeminiModel = tryModel
-                            Result.success(JSONObject(body))
-                        } else {
-                            val errMsg = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
-                            val ex = IllegalStateException("Gemini HTTP ${resp.code}: ${errMsg ?: body.take(180)}")
-                            val isSchemaErr = resp.code == 400 && (
-                                errMsg?.contains("tool", ignoreCase = true) == true ||
-                                    errMsg?.contains("function", ignoreCase = true) == true ||
-                                    errMsg?.contains("schema", ignoreCase = true) == true ||
-                                    errMsg?.contains("parameters", ignoreCase = true) == true
-                                )
-                            if (isSchemaErr && includeTools) {
-                                Result.failure<JSONObject>(RetryWithoutToolsException(ex.message ?: ""))
+                    val callOutcome = runCatching {
+                        http.newCall(req).execute().use { resp ->
+                            val body = resp.body?.string().orEmpty()
+                            if (resp.isSuccessful) {
+                                activeModel = tryModel
+                                cachedWorkingGeminiModel = tryModel
+                                JSONObject(body)
                             } else {
+                                val errMsg = runCatching { JSONObject(body).optJSONObject("error")?.optString("message") }.getOrNull()
+                                val detail = "Gemini HTTP ${resp.code}: ${errMsg ?: body.take(180)}"
+                                val isSchemaErr = resp.code == 400 && (
+                                    errMsg?.contains("tool", ignoreCase = true) == true ||
+                                        errMsg?.contains("function", ignoreCase = true) == true ||
+                                        errMsg?.contains("schema", ignoreCase = true) == true ||
+                                        errMsg?.contains("parameters", ignoreCase = true) == true
+                                    )
+                                if (isSchemaErr && includeTools) {
+                                    throw RetryWithoutToolsException(detail)
+                                }
                                 val isModelNotSupported = resp.code == 404 || (resp.code == 400 && (errMsg?.contains("model", ignoreCase = true) == true))
-                                val isRateLimited = resp.code == 429
-                                Result.failure<JSONObject>(
-                                    if (isModelNotSupported) UnsupportedModelException(ex.message ?: "")
-                                    else if (isRateLimited) RateLimitedException(ex.message ?: "")
-                                    else ex
-                                )
+                                when {
+                                    isModelNotSupported -> throw UnsupportedModelException(detail)
+                                    isRetryableGeminiError(resp.code, errMsg) -> throw TransientOverloadException(detail)
+                                    else -> throw IllegalStateException(detail)
+                                }
                             }
                         }
+                    }.recoverCatching { err ->
+                        when (err) {
+                            is RetryWithoutToolsException,
+                            is UnsupportedModelException,
+                            is TransientOverloadException -> throw err
+                            is java.io.IOException -> throw TransientOverloadException("Gemini network/timeout on $tryModel: ${err.message ?: "timed out"}")
+                            else -> throw err
+                        }
                     }
+
                     if (callOutcome.isSuccess) {
                         respJson = callOutcome.getOrThrow()
                         break
@@ -437,12 +461,18 @@ class MultiProviderAiClient {
                             includeTools = false
                             continue
                         }
+                        if (err is UnsupportedModelException || err is TransientOverloadException) {
+                            if (cachedWorkingGeminiModel == tryModel) {
+                                cachedWorkingGeminiModel = null
+                            }
+                            SafeLogger.w(TAG, "Switching away from Gemini model $tryModel: ${err.message}")
+                        }
                         lastErr = err as? IllegalStateException ?: IllegalStateException(err?.message ?: "Gemini call failed")
                         break
                     }
                 }
                 if (respJson != null) break
-                if (lastErr != null && lastErr !is UnsupportedModelException && lastErr !is RateLimitedException) {
+                if (lastErr != null && lastErr !is UnsupportedModelException && lastErr !is TransientOverloadException) {
                     throw lastErr
                 }
             }
@@ -572,8 +602,9 @@ class MultiProviderAiClient {
             val respJson = http.newCall(builder.build()).execute().use { resp ->
                 val body = resp.body?.string().orEmpty()
                 if (!resp.isSuccessful) {
-                    val isRateLimited = resp.code == 429
-                    if (isRateLimited) throw RateLimitedException("${provider.displayName} rate limited (429)")
+                    if (resp.code in RETRYABLE_HTTP_CODES) {
+                        throw TransientOverloadException("${provider.displayName} overloaded (${resp.code})")
+                    }
                     throw IllegalStateException("${provider.displayName} HTTP ${resp.code}: ${body.take(180)}")
                 }
                 JSONObject(body)
@@ -628,9 +659,29 @@ class MultiProviderAiClient {
 
     private class UnsupportedModelException(message: String) : IllegalStateException(message)
     private class RetryWithoutToolsException(message: String) : IllegalStateException(message)
-    private class RateLimitedException(message: String) : IllegalStateException(message)
+    private class TransientOverloadException(message: String) : IllegalStateException(message)
 
     companion object {
         private const val TAG = "AyshaMultiAi"
+        private val RETRYABLE_HTTP_CODES = setOf(408, 429, 500, 502, 503, 504)
+        private val RETRYABLE_ERROR_HINTS = listOf(
+            "high demand",
+            "overloaded",
+            "unavailable",
+            "resource exhausted",
+            "rate limit",
+            "quota",
+            "temporarily",
+            "try again",
+        )
+        private val LITE_FIRST_GEMINI_MODELS = listOf(
+            "gemini-2.5-flash-lite",
+            "gemini-3.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gemini-2.5-flash",
+            "gemini-3.6-flash",
+            "gemini-3.8-flash",
+            "gemini-3-flash-preview",
+        )
     }
 }

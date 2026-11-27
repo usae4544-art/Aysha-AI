@@ -386,6 +386,7 @@ class GeminiNeuralTtsEngine {
             val err = result.exceptionOrNull()
             if (err is CancellationException) throw err
             if (err is AuthOrFatalApiException) throw err
+            if (cachedBackend == backend) cachedBackend = null
             lastError = err
             SafeLogger.d(TAG, "TTS backend ${backend.model} skipped: ${err?.message}")
         }

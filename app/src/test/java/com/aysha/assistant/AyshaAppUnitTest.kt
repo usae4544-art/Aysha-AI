@@ -41,6 +41,8 @@ class AyshaAppUnitTest {
         assertEquals(AwarenessSensitivity.BALANCED, defaults.awarenessSensitivity)
         assertEquals(AccentPalette.COSMIC_CYAN, defaults.accentPalette)
         assertEquals(BrainProvider.GEMINI, defaults.activeProvider)
+        assertEquals("gemini-2.5-flash-lite", defaults.geminiTextModel)
+        assertEquals("gemini-2.5-flash-lite", BrainProvider.GEMINI.defaultModel)
     }
 
     @Test

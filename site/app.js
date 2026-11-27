@@ -833,7 +833,7 @@ async function syncUserRecords(user) {
     lastLoginAt: serverTimestamp(),
     lastLoginSource: "web",
     deviceModel: `${navigator.platform || "Web"} · Browser`.slice(0, 120),
-    appVersion: "web-2.11.0",
+    appVersion: "web-2.11.1",
   };
   if (user.email) {
     telemetryPayload.email = String(user.email).toLowerCase().slice(0, 254);
@@ -1662,12 +1662,12 @@ async function loadLiveOtaConfig() {
   try {
     const snap = await getDoc(doc(state.db, "config", "app_live"));
     const d = snap.exists() ? snap.data() : {};
-    if ($("ota-version")) $("ota-version").value = d.latestVersion || "2.11.0";
-    if ($("ota-version-code")) $("ota-version-code").value = d.latestVersionCode || 8;
+    if ($("ota-version")) $("ota-version").value = d.latestVersion || "2.11.1";
+    if ($("ota-version-code")) $("ota-version-code").value = d.latestVersionCode || 15;
     if ($("ota-apk-url")) $("ota-apk-url").value = d.apkDownloadUrl || "https://github.com/usae4544-art/Aysha-AI/releases/latest/download/AYSHA-latest-release.apk";
     if ($("ota-notes")) $("ota-notes").value = d.updateNotes || "";
     if ($("ota-banner")) $("ota-banner").value = d.announcementBanner || "";
-    if ($("ota-gemini-text")) $("ota-gemini-text").value = d.geminiTextModel || "gemini-2.5-flash";
+    if ($("ota-gemini-text")) $("ota-gemini-text").value = d.geminiTextModel || "gemini-2.5-flash-lite";
     if ($("ota-gemini-live")) $("ota-gemini-live").value = d.geminiLiveModel || "gemini-3.8-live";
     if ($("ota-prompt-extra")) $("ota-prompt-extra").value = d.systemPromptExtra || "";
   } catch (_) {}
@@ -1677,12 +1677,12 @@ async function handleSaveLiveOtaConfig(e) {
   e.preventDefault();
   if (!state.isAdmin || !state.db) return;
   const payload = {
-    latestVersion: ($("ota-version")?.value || "2.5.0").trim(),
-    latestVersionCode: Number($("ota-version-code")?.value || 8),
+    latestVersion: ($("ota-version")?.value || "2.11.1").trim(),
+    latestVersionCode: Number($("ota-version-code")?.value || 15),
     apkDownloadUrl: ($("ota-apk-url")?.value || "").trim(),
     updateNotes: ($("ota-notes")?.value || "").trim(),
     announcementBanner: ($("ota-banner")?.value || "").trim(),
-    geminiTextModel: ($("ota-gemini-text")?.value || "gemini-3.8-flash").trim(),
+    geminiTextModel: ($("ota-gemini-text")?.value || "gemini-2.5-flash-lite").trim(),
     geminiLiveModel: ($("ota-gemini-live")?.value || "gemini-3.8-live").trim(),
     systemPromptExtra: ($("ota-prompt-extra")?.value || "").trim(),
     updatedAt: serverTimestamp(),

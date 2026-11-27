@@ -269,4 +269,28 @@ class AiUnitTest {
         }
         assertTrue(checkedOpenCamera)
     }
+
+    @Test
+    fun `gemini candidate models prioritize low-demand flash-lite and retry 503 overload errors`() {
+        val client = MultiProviderAiClient()
+
+        // Legacy congested default should put gemini-2.5-flash-lite first ahead of gemini-2.5-flash
+        val fromLegacy = client.buildGeminiCandidateModels("gemini-2.5-flash")
+        assertEquals("gemini-2.5-flash-lite", fromLegacy.first())
+        assertTrue(fromLegacy.indexOf("gemini-2.5-flash-lite") < fromLegacy.indexOf("gemini-2.5-flash"))
+        assertTrue(fromLegacy.contains("gemini-3.5-flash-lite"))
+        assertTrue(fromLegacy.contains("gemini-3.1-flash-lite"))
+
+        // Custom selected model stays primary while keeping lite fallbacks behind it
+        val fromCustom = client.buildGeminiCandidateModels("gemini-3.5-flash-lite")
+        assertEquals("gemini-3.5-flash-lite", fromCustom.first())
+        assertTrue(fromCustom.contains("gemini-2.5-flash-lite"))
+
+        // 503 / high demand / 429 / 500 must trigger failover, whereas 401 auth failure stays terminal
+        assertTrue(client.isRetryableGeminiError(503, "This model is currently experiencing high demand."))
+        assertTrue(client.isRetryableGeminiError(429, "Quota exceeded"))
+        assertTrue(client.isRetryableGeminiError(500, "Internal error"))
+        assertTrue(client.isRetryableGeminiError(400, "Service unavailable right now, try again"))
+        assertFalse(client.isRetryableGeminiError(401, "API key not valid"))
+    }
 }
