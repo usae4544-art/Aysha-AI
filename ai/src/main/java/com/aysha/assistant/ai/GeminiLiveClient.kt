@@ -827,4 +827,8 @@ class GeminiLiveClient(
         if (count == 0) return 0f
         return (sqrt(sumSq / count).toFloat() * 4.5f).coerceIn(0f, 1f)
     }
+
+    companion object {
+        private const val TAG = "AyshaGeminiLive"
+    }
 }
